@@ -11,8 +11,6 @@
 # RUN:     FileCheck --allow-empty %s
 # RUN: lld-link /entry:main %t.main.obj %t_thin.lib /out:%t.exe 2>&1 | \
 # RUN:     FileCheck --allow-empty %s
-# RUN: lld-link /entry:main %t.main.obj /wholearchive:%t_thin.lib /out:%t.exe 2>&1 | \
-# RUN:     FileCheck --allow-empty %s
 
 # RUN: rm %t.lib.obj
 # RUN: lld-link /entry:main %t.main.obj %t.lib /out:%t.exe 2>&1 | \
