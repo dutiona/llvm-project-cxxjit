@@ -54,12 +54,12 @@ catch:
 ; CHECK: # %catch
 ; CHECK: movq    %rdx, 16(%rsp)
 ; CHECK: pushq   %rbp
-; CHECK: .seh_pushreg %rbp
+; CHECK: .seh_pushreg 5
 ; CHECK: subq    $48, %rsp
 ; CHECK: .seh_stackalloc 48
 ; CHECK: leaq    64(%rdx), %rbp
 ; CHECK: movapd  %xmm6, 32(%rsp)
-; CHECK: .seh_savexmm %xmm6, 32
+; CHECK: .seh_savexmm 6, 32
 ; CHECK: .seh_endprologue
 ; CHECK: movapd  32(%rsp), %xmm6
 ; CHECK: leaq    .LBB0_1(%rip), %rax
