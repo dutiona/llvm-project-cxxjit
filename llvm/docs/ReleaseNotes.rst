@@ -491,7 +491,7 @@ LLD combined with lazily building compiler-rt to provide out-of-the-box
 cross-compiling for all supported targets.
 
 
-`Mull <https://github.com/mull-project/mull>`_ is a LLVM-based tool for
+`Mull <https://github.com/mull-project/mull>`_ is an LLVM-based tool for
 mutation testing with a strong focus on C and C++ languages.
 
 Zig Programming Language
