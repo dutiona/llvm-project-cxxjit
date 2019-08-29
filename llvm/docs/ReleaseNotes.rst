@@ -123,6 +123,8 @@ Changes to the ARM Backend
 
 * Support was added for inline asm constraints s,j,x,N,O.
 
+* Code generation support for M-profile low-overhead loops.
+
 
 Changes to the MIPS Target
 --------------------------
