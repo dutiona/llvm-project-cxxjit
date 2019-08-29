@@ -87,6 +87,30 @@ Non-comprehensive list of changes in this release
   by default and can be enabled by passing ``-mllvm -enable-matrix`` to an
   invocation of clang.
 
+* LLVM will now pattern match wide scalar values stored by a succession of
+  narrow stores. For example, Clang will compile the following function that
+  writes a 32-bit value in big-endian order in a portable manner:
+
+  .. code-block:: c
+
+      void write32be(unsigned char *dst, uint32_t x) {
+        dst[0] = x >> 24;
+        dst[1] = x >> 16;
+        dst[2] = x >> 8;
+        dst[3] = x >> 0;
+      }
+
+  into the x86_64 code below:
+
+  .. code-block:: asm
+
+   write32be:
+           bswap   esi
+           mov     dword ptr [rdi], esi
+           ret
+
+  (The corresponding read patterns have been matched since LLVM 5.)
+
 * LLVM will now omit range checks for jump tables when lowering switches with
   unreachable default destination. For example, the switch dispatch in the C++
   code below
