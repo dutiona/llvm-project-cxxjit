@@ -1,3 +1,4 @@
+include(CheckIncludeFileCXX)
 include(CheckCXXSymbolExists)
 include(CheckTypeSize)
 include(CMakeDependentOption)
