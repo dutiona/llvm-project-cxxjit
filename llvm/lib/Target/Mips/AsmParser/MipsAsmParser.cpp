@@ -3410,10 +3410,17 @@ bool MipsAsmParser::expandLoadDoubleImmToGPR(MCInst &Inst, SMLoc IDLoc,
 
   ImmOp64 = convertIntToDoubleImm(ImmOp64);
 
-  if (Lo_32(ImmOp64) == 0) {
-    if (isGP64bit()) {
-      if (loadImmediate(ImmOp64, FirstReg, Mips::NoRegister, false, false,
-                        IDLoc, Out, STI))
+  uint32_t LoImmOp64 = Lo_32(ImmOp64);
+  uint32_t HiImmOp64 = Hi_32(ImmOp64);
+
+  unsigned TmpReg = getATReg(IDLoc);
+  if (!TmpReg)
+    return true;
+
+  if (LoImmOp64 == 0) {
+    if (isABI_N32() || isABI_N64()) {
+      if (loadImmediate(ImmOp64, FirstReg, Mips::NoRegister, false, true, IDLoc,
+                        Out, STI))
         return true;
     } else {
       if (loadImmediate(Hi_32(ImmOp64), FirstReg, Mips::NoRegister, true, false,
@@ -3475,27 +3482,28 @@ bool MipsAsmParser::expandLoadDoubleImmToFPR(MCInst &Inst, bool Is64FPU,
 
   ImmOp64 = convertIntToDoubleImm(ImmOp64);
 
-  unsigned TmpReg = Mips::ZERO;
-  if (ImmOp64 != 0) {
-    TmpReg = getATReg(IDLoc);
-    if (!TmpReg)
-      return true;
-  }
+  uint32_t LoImmOp64 = Lo_32(ImmOp64);
+  uint32_t HiImmOp64 = Hi_32(ImmOp64);
 
-  if ((Lo_32(ImmOp64) == 0) &&
-      !((Hi_32(ImmOp64) & 0xffff0000) && (Hi_32(ImmOp64) & 0x0000ffff))) {
-    if (isGP64bit()) {
-      if (TmpReg != Mips::ZERO &&
-          loadImmediate(ImmOp64, TmpReg, Mips::NoRegister, false, false, IDLoc,
+  unsigned TmpReg = getATReg(IDLoc);
+  if (!TmpReg)
+    return true;
+
+  if ((LoImmOp64 == 0) &&
+      !((HiImmOp64 & 0xffff0000) && (HiImmOp64 & 0x0000ffff))) {
+    // FIXME: In the case where the constant is zero, we can load the
+    // register directly from the zero register.
+
+    if (isABI_N32() || isABI_N64()) {
+      if (loadImmediate(ImmOp64, TmpReg, Mips::NoRegister, false, false, IDLoc,
                         Out, STI))
         return true;
       TOut.emitRR(Mips::DMTC1, FirstReg, TmpReg, IDLoc, STI);
       return false;
     }
 
-    if (TmpReg != Mips::ZERO &&
-        loadImmediate(Hi_32(ImmOp64), TmpReg, Mips::NoRegister, true, false,
-                      IDLoc, Out, STI))
+    if (loadImmediate(HiImmOp64, TmpReg, Mips::NoRegister, true, false, IDLoc,
+                      Out, STI))
       return true;
 
     if (hasMips32r2()) {
