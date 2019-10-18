@@ -10,6 +10,7 @@
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Utility/SelectHelper.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/Errno.h"
 #include "llvm/Support/FileSystem.h"
 
 #if defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 8))
@@ -157,7 +158,7 @@ Status PipePosix::OpenAsReader(llvm::StringRef name,
     flags |= O_CLOEXEC;
 
   Status error;
-  int fd = ::open(name.data(), flags);
+  int fd = llvm::sys::RetryAfterSignal(-1, ::open, name.data(), flags);
   if (fd != -1)
     m_fds[READ] = fd;
   else
@@ -192,7 +193,7 @@ PipePosix::OpenAsWriterWithTimeout(llvm::StringRef name,
     if (fd == -1) {
       const auto errno_copy = errno;
       // We may get ENXIO if a reader side of the pipe hasn't opened yet.
-      if (errno_copy != ENXIO)
+      if (errno_copy != ENXIO && errno_copy != EINTR)
         return Status(errno_copy, eErrorTypePOSIX);
 
       std::this_thread::sleep_for(
@@ -269,12 +270,14 @@ Status PipePosix::ReadWithTimeout(void *buf, size_t size,
   while (error.Success()) {
     error = select_helper.Select();
     if (error.Success()) {
-      auto result = ::read(fd, reinterpret_cast<char *>(buf) + bytes_read,
-                           size - bytes_read);
+      auto result =
+          ::read(fd, static_cast<char *>(buf) + bytes_read, size - bytes_read);
       if (result != -1) {
         bytes_read += result;
         if (bytes_read == size || result == 0)
           break;
+      } else if (errno == EINTR) {
+        continue;
       } else {
         error.SetErrorToErrno();
         break;
@@ -298,13 +301,14 @@ Status PipePosix::Write(const void *buf, size_t size, size_t &bytes_written) {
   while (error.Success()) {
     error = select_helper.Select();
     if (error.Success()) {
-      auto result =
-          ::write(fd, reinterpret_cast<const char *>(buf) + bytes_written,
-                  size - bytes_written);
+      auto result = ::write(fd, static_cast<const char *>(buf) + bytes_written,
+                            size - bytes_written);
       if (result != -1) {
         bytes_written += result;
         if (bytes_written == size)
           break;
+      } else if (errno == EINTR) {
+        continue;
       } else {
         error.SetErrorToErrno();
       }

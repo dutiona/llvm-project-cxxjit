@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/Module.h"
+#include "TargetInfo/AVRTargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 namespace llvm {
 Target &getTheAVRTarget() {
@@ -15,7 +15,7 @@ Target &getTheAVRTarget() {
 }
 }
 
-extern "C" void LLVMInitializeAVRTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVRTargetInfo() {
   llvm::RegisterTarget<llvm::Triple::avr> X(llvm::getTheAVRTarget(), "avr",
                                             "Atmel AVR Microcontroller", "AVR");
 }

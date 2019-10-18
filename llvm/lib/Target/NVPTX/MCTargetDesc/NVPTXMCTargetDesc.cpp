@@ -10,10 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "InstPrinter/NVPTXInstPrinter.h"
+#include "NVPTXInstPrinter.h"
 #include "NVPTXMCAsmInfo.h"
 #include "NVPTXMCTargetDesc.h"
 #include "NVPTXTargetStreamer.h"
+#include "TargetInfo/NVPTXTargetInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -65,7 +66,7 @@ static MCTargetStreamer *createTargetAsmStreamer(MCStreamer &S,
 }
 
 // Force static initialization.
-extern "C" void LLVMInitializeNVPTXTargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeNVPTXTargetMC() {
   for (Target *T : {&getTheNVPTXTarget32(), &getTheNVPTXTarget64()}) {
     // Register the MC asm info.
     RegisterMCAsmInfo<NVPTXMCAsmInfo> X(*T);

@@ -23,6 +23,12 @@ class DefaultTargetInfo(object):
     def platform(self):
         return sys.platform.lower().strip()
 
+    def is_windows(self):
+        return self.platform() == 'win32'
+
+    def is_darwin(self):
+        return self.platform() == 'darwin'
+
     def add_locale_features(self, features):
         self.full_config.lit_config.warning(
             "No locales entry for target_system: %s" % self.platform())
@@ -33,6 +39,16 @@ class DefaultTargetInfo(object):
     def allow_cxxabi_link(self): return True
     def add_sanitizer_features(self, sanitizer_type, features): pass
     def use_lit_shell_default(self): return False
+
+    def add_path(self, dest_env, new_path):
+        if not new_path:
+            return
+        if 'PATH' not in dest_env:
+            dest_env['PATH'] = new_path
+        else:
+            split_char = ';' if self.is_windows() else ':'
+            dest_env['PATH'] = '%s%s%s' % (new_path, split_char,
+                                           dest_env['PATH'])
 
 
 def test_locale(loc):
@@ -156,15 +172,6 @@ class DarwinLocalTI(DefaultTargetInfo):
             env['DYLD_LIBRARY_PATH'] = ':'.join(library_paths)
 
     def allow_cxxabi_link(self):
-        # FIXME: PR27405
-        # libc++ *should* export all of the symbols found in libc++abi on OS X.
-        # For this reason LibcxxConfiguration will not link libc++abi in OS X.
-        # However __cxa_throw_bad_new_array_length doesn't get exported into
-        # libc++ yet so we still need to explicitly link libc++abi when testing
-        # libc++abi
-        # See PR22654.
-        if(self.full_config.get_lit_conf('name', '') == 'libc++abi'):
-            return True
         # Don't link libc++abi explicitly on OS X because the symbols
         # should be available in libc++ directly.
         return False
@@ -200,15 +207,25 @@ class LinuxLocalTI(DefaultTargetInfo):
     def platform(self):
         return 'linux'
 
+    def _distribution(self):
+        try:
+            # linux_distribution is not available since Python 3.8
+            # However, this function is only used to detect SLES 11,
+            # which is quite an old distribution that doesn't have
+            # Python 3.8.
+            return platform.linux_distribution()
+        except AttributeError:
+            return '', '', ''
+
     def platform_name(self):
-        name, _, _ = platform.linux_distribution()
+        name, _, _ = self._distribution()
         # Some distros have spaces, e.g. 'SUSE Linux Enterprise Server'
         # lit features can't have spaces
         name = name.lower().strip().replace(' ', '-')
         return name # Permitted to be None
 
     def platform_ver(self):
-        _, ver, _ = platform.linux_distribution()
+        _, ver, _ = self._distribution()
         ver = ver.lower().strip().replace(' ', '-')
         return ver # Permitted to be None.
 
@@ -234,18 +251,13 @@ class LinuxLocalTI(DefaultTargetInfo):
                           self.full_config.config.available_features)
         llvm_unwinder = self.full_config.get_lit_bool('llvm_unwinder', False)
         shared_libcxx = self.full_config.get_lit_bool('enable_shared', True)
-        # FIXME: Remove the need to link -lrt in all the tests, and instead
-        # limit it only to the filesystem tests. This ensures we don't cause an
-        # implicit dependency on librt except when filesystem is needed.
-        enable_fs = self.full_config.get_lit_bool('enable_filesystem',
-                                                  default=False)
         flags += ['-lm']
         if not llvm_unwinder:
             flags += ['-lgcc_s', '-lgcc']
         if enable_threads:
             flags += ['-lpthread']
-            if not shared_libcxx or enable_fs:
-              flags += ['-lrt']
+            if not shared_libcxx:
+                flags += ['-lrt']
         flags += ['-lc']
         if llvm_unwinder:
             flags += ['-lunwind', '-ldl']

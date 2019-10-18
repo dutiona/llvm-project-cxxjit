@@ -12,10 +12,9 @@
 using namespace llvm;
 
 MCTargetOptions::MCTargetOptions()
-    : SanitizeAddress(false), MCRelaxAll(false), MCNoExecStack(false),
-      MCFatalWarnings(false), MCNoWarn(false), MCNoDeprecatedWarn(false),
-      MCSaveTempLabels(false), MCUseDwarfDirectory(false),
-      MCIncrementalLinkerCompatible(false), MCPIECopyRelocations(false),
+    : MCRelaxAll(false), MCNoExecStack(false), MCFatalWarnings(false),
+      MCNoWarn(false), MCNoDeprecatedWarn(false), MCSaveTempLabels(false),
+      MCUseDwarfDirectory(false), MCIncrementalLinkerCompatible(false),
       ShowMCEncoding(false), ShowMCInst(false), AsmVerbose(false),
       PreserveAsmComments(true) {}
 

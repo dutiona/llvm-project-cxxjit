@@ -437,6 +437,25 @@ class LOAD<BPFWidthModifer SizeOp, string OpcodeStr, list<dag> Pattern>
 class LOADi64<BPFWidthModifer SizeOp, string OpcodeStr, PatFrag OpNode>
     : LOAD<SizeOp, OpcodeStr, [(set i64:$dst, (OpNode ADDRri:$addr))]>;
 
+let isCodeGenOnly = 1 in {
+  def CORE_MEM : TYPE_LD_ST<BPF_MEM.Value, BPF_W.Value,
+                            (outs GPR:$dst),
+                            (ins u64imm:$opcode, GPR:$src, u64imm:$offset),
+                            "$dst = core_mem($opcode, $src, $offset)",
+                            []>;
+  def CORE_ALU32_MEM : TYPE_LD_ST<BPF_MEM.Value, BPF_W.Value,
+                                  (outs GPR32:$dst),
+                                  (ins u64imm:$opcode, GPR:$src, u64imm:$offset),
+                                  "$dst = core_alu32_mem($opcode, $src, $offset)",
+                                  []>;
+  let Constraints = "$dst = $src" in {
+    def CORE_SHIFT : ALU_RR<BPF_ALU64, BPF_LSH,
+                             (outs GPR:$dst),
+                             (ins u64imm:$opcode, GPR:$src, u64imm:$offset),
+                             "$dst = core_shift($opcode, $src, $offset)",
+                             []>;
+  }
+}
 
 let Predicates = [BPFNoALU32] in {
   def LDW : LOADi64<BPF_W, "u32", zextloadi32>;
@@ -473,7 +492,7 @@ class CALL<string OpcodeStr>
 class CALLX<string OpcodeStr>
     : TYPE_ALU_JMP<BPF_CALL.Value, BPF_X.Value,
                    (outs),
-                   (ins calltarget:$BrDst),
+                   (ins GPR:$BrDst),
                    !strconcat(OpcodeStr, " $BrDst"),
                    []> {
   bits<32> BrDst;
@@ -614,11 +633,31 @@ class XADD<BPFWidthModifer SizeOp, string OpcodeStr, PatFrag OpNode>
   let BPFClass = BPF_STX;
 }
 
+class XADD32<BPFWidthModifer SizeOp, string OpcodeStr, PatFrag OpNode>
+    : TYPE_LD_ST<BPF_XADD.Value, SizeOp.Value,
+                 (outs GPR32:$dst),
+                 (ins MEMri:$addr, GPR32:$val),
+                 "lock *("#OpcodeStr#" *)($addr) += $val",
+                 [(set GPR32:$dst, (OpNode ADDRri:$addr, GPR32:$val))]> {
+  bits<4> dst;
+  bits<20> addr;
+
+  let Inst{51-48} = addr{19-16}; // base reg
+  let Inst{55-52} = dst;
+  let Inst{47-32} = addr{15-0}; // offset
+  let BPFClass = BPF_STX;
+}
+
 let Constraints = "$dst = $val" in {
-def XADD32 : XADD<BPF_W, "u32", atomic_load_add_32>;
-def XADD64 : XADD<BPF_DW, "u64", atomic_load_add_64>;
-// undefined def XADD16 : XADD<1, "xadd16", atomic_load_add_16>;
-// undefined def XADD8  : XADD<2, "xadd8", atomic_load_add_8>;
+  let Predicates = [BPFNoALU32] in {
+    def XADDW : XADD<BPF_W, "u32", atomic_load_add_32>;
+  }
+
+  let Predicates = [BPFHasALU32], DecoderNamespace = "BPFALU32" in {
+    def XADDW32 : XADD32<BPF_W, "u32", atomic_load_add_32>;
+  }
+
+  def XADDD : XADD<BPF_DW, "u64", atomic_load_add_64>;
 }
 
 // bswap16, bswap32, bswap64

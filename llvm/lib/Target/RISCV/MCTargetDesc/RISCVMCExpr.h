@@ -29,7 +29,14 @@ public:
     VK_RISCV_PCREL_LO,
     VK_RISCV_PCREL_HI,
     VK_RISCV_GOT_HI,
+    VK_RISCV_TPREL_LO,
+    VK_RISCV_TPREL_HI,
+    VK_RISCV_TPREL_ADD,
+    VK_RISCV_TLS_GOT_HI,
+    VK_RISCV_TLS_GD_HI,
     VK_RISCV_CALL,
+    VK_RISCV_CALL_PLT,
+    VK_RISCV_32_PCREL,
     VK_RISCV_Invalid
   };
 
@@ -38,9 +45,6 @@ private:
   const VariantKind Kind;
 
   int64_t evaluateAsInt64(int64_t Value) const;
-
-  bool evaluatePCRelLo(MCValue &Res, const MCAsmLayout *Layout,
-                       const MCFixup *Fixup) const;
 
   explicit RISCVMCExpr(const MCExpr *Expr, VariantKind Kind)
       : Expr(Expr), Kind(Kind) {}
@@ -54,11 +58,11 @@ public:
   const MCExpr *getSubExpr() const { return Expr; }
 
   /// Get the corresponding PC-relative HI fixup that a VK_RISCV_PCREL_LO
-  /// points to.
+  /// points to, and optionally the fragment containing it.
   ///
   /// \returns nullptr if this isn't a VK_RISCV_PCREL_LO pointing to a
   /// known PC-relative HI fixup.
-  const MCFixup *getPCRelHiFixup() const;
+  const MCFixup *getPCRelHiFixup(const MCFragment **DFOut) const;
 
   void printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const override;
   bool evaluateAsRelocatableImpl(MCValue &Res, const MCAsmLayout *Layout,
@@ -68,8 +72,7 @@ public:
     return getSubExpr()->findAssociatedFragment();
   }
 
-  // There are no TLS RISCVMCExprs at the moment.
-  void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const override {}
+  void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const override;
 
   bool evaluateAsConstant(int64_t &Res) const;
 

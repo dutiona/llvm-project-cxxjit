@@ -15,11 +15,14 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/DiagnosticFrontend.h"
 #include "clang/Basic/FileManager.h"
+#include "clang/Basic/LangStandard.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/CodeGen/BackendUtil.h"
 #include "clang/CodeGen/ModuleBuilder.h"
+#include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
@@ -31,11 +34,13 @@
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/RemarkStreamer.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/YAMLTraits.h"
@@ -46,203 +51,391 @@ using namespace clang;
 using namespace llvm;
 
 namespace clang {
-  class BackendConsumer;
-  class ClangDiagnosticHandler final : public DiagnosticHandler {
-  public:
-    ClangDiagnosticHandler(const CodeGenOptions &CGOpts, BackendConsumer *BCon)
-        : CodeGenOpts(CGOpts), BackendCon(BCon) {}
+class BackendConsumer;
+class ClangDiagnosticHandler final : public DiagnosticHandler {
+public:
+  ClangDiagnosticHandler(const CodeGenOptions &CGOpts, BackendConsumer *BCon)
+      : CodeGenOpts(CGOpts), BackendCon(BCon) {}
 
-    bool handleDiagnostics(const DiagnosticInfo &DI) override;
+  bool handleDiagnostics(const DiagnosticInfo &DI) override;
 
-    bool isAnalysisRemarkEnabled(StringRef PassName) const override {
-      return (CodeGenOpts.OptimizationRemarkAnalysisPattern &&
-              CodeGenOpts.OptimizationRemarkAnalysisPattern->match(PassName));
-    }
-    bool isMissedOptRemarkEnabled(StringRef PassName) const override {
-      return (CodeGenOpts.OptimizationRemarkMissedPattern &&
-              CodeGenOpts.OptimizationRemarkMissedPattern->match(PassName));
-    }
-    bool isPassedOptRemarkEnabled(StringRef PassName) const override {
-      return (CodeGenOpts.OptimizationRemarkPattern &&
-              CodeGenOpts.OptimizationRemarkPattern->match(PassName));
-    }
+  bool isAnalysisRemarkEnabled(StringRef PassName) const override {
+    return (CodeGenOpts.OptimizationRemarkAnalysisPattern &&
+            CodeGenOpts.OptimizationRemarkAnalysisPattern->match(PassName));
+  }
+  bool isMissedOptRemarkEnabled(StringRef PassName) const override {
+    return (CodeGenOpts.OptimizationRemarkMissedPattern &&
+            CodeGenOpts.OptimizationRemarkMissedPattern->match(PassName));
+  }
+  bool isPassedOptRemarkEnabled(StringRef PassName) const override {
+    return (CodeGenOpts.OptimizationRemarkPattern &&
+            CodeGenOpts.OptimizationRemarkPattern->match(PassName));
+  }
 
-    bool isAnyRemarkEnabled() const override {
-      return (CodeGenOpts.OptimizationRemarkAnalysisPattern ||
-              CodeGenOpts.OptimizationRemarkMissedPattern ||
-              CodeGenOpts.OptimizationRemarkPattern);
-    }
+  bool isAnyRemarkEnabled() const override {
+    return (CodeGenOpts.OptimizationRemarkAnalysisPattern ||
+            CodeGenOpts.OptimizationRemarkMissedPattern ||
+            CodeGenOpts.OptimizationRemarkPattern);
+  }
 
-  private:
-    const CodeGenOptions &CodeGenOpts;
-    BackendConsumer *BackendCon;
-  };
+private:
+  const CodeGenOptions &CodeGenOpts;
+  BackendConsumer *BackendCon;
+};
 
-  class JITLocalCollector : public RecursiveASTVisitor<JITLocalCollector> {
-    llvm::SetVector<llvm::GlobalValue *> &Locals;
-    CodeGen::CodeGenModule &CGM;
+class JITLocalCollector : public RecursiveASTVisitor<JITLocalCollector> {
+  llvm::SetVector<llvm::GlobalValue *> &Locals;
+  CodeGen::CodeGenModule &CGM;
 
-    class NameCollector : public RecursiveASTVisitor<NameCollector> {
-      JITLocalCollector &Collector;
-
-    public:
-      explicit NameCollector(JITLocalCollector &C)
-        : Collector(C) { }
-
-      bool shouldVisitTemplateInstantiations() const { return true; }
-
-      bool VisitDeclRefExpr(DeclRefExpr *E) {
-        auto &CGM = Collector.CGM;
-
-        if (auto *ND = dyn_cast<NamedDecl>(E->getDecl())) {
-          if (!ND->hasLinkage())
-            return true;
-        } else {
-          return true;
-        }
-
-        // In theory, we could call getLLVMLinkageVarDefinition to determine
-        // the linkage here. In practice, there are cases where
-        // CodeGenModule::EmitGlobalVarDefinition modifies the linkage before
-        // emission. Thus, we need to check the linkage of the variables at the
-        // IR level. The same technique should work for functions.
-
-        StringRef Name;
-        if (auto *FD = dyn_cast<FunctionDecl>(E->getDecl())) {
-          GlobalDecl GD;
-          if (const auto *D = dyn_cast<CXXConstructorDecl>(FD))
-            GD = GlobalDecl(D, Ctor_Complete);
-          else if (const auto *D = dyn_cast<CXXDestructorDecl>(FD))
-            GD = GlobalDecl(D, Dtor_Complete);
-          else
-            GD = GlobalDecl(FD);
-
-          Name = CGM.getMangledName(GD);
-        } else if (auto *VD = dyn_cast<VarDecl>(E->getDecl())) {
-          Name = CGM.getMangledName(GlobalDecl(VD));
-        }
-
-        if (!Name.empty()) {
-          auto *GV = CGM.getModule().getNamedValue(Name);
-
-	  // Symbols with local linkage must be included (symbols with hidden
-	  // visibility should be included also because the JIT won't be able
-	  // to get those otherwise).
-          if (GV && (GV->hasLocalLinkage() || GV->hasHiddenVisibility()))
-            Collector.Locals.insert(GV);
-        }
-
-        return true;
-      }
-    };
+  class NameCollector : public RecursiveASTVisitor<NameCollector> {
+    JITLocalCollector &Collector;
 
   public:
-    explicit JITLocalCollector(llvm::SetVector<GlobalValue *> &L,
-                               CodeGen::CodeGenModule &CGM)
-      : Locals(L), CGM(CGM) { }
+    explicit NameCollector(JITLocalCollector &C) : Collector(C) {}
 
     bool shouldVisitTemplateInstantiations() const { return true; }
 
-    bool VisitFunctionDecl(const FunctionDecl *D) {
-      if (D->hasAttr<JITFuncAttr>()) {
-        if (D->getTemplateSpecializationKind() != TSK_ExplicitSpecialization)
-          NameCollector(*this)
-            .TraverseFunctionDecl(const_cast<FunctionDecl *>(D));
+    bool VisitDeclRefExpr(DeclRefExpr *E) {
+      auto &CGM = Collector.CGM;
+
+      if (auto *ND = dyn_cast<NamedDecl>(E->getDecl())) {
+        if (!ND->hasLinkage())
+          return true;
+      } else {
+        return true;
+      }
+
+      // In theory, we could call getLLVMLinkageVarDefinition to determine
+      // the linkage here. In practice, there are cases where
+      // CodeGenModule::EmitGlobalVarDefinition modifies the linkage before
+      // emission. Thus, we need to check the linkage of the variables at the
+      // IR level. The same technique should work for functions.
+
+      StringRef Name;
+      if (auto *FD = dyn_cast<FunctionDecl>(E->getDecl())) {
+        GlobalDecl GD;
+        if (const auto *D = dyn_cast<CXXConstructorDecl>(FD))
+          GD = GlobalDecl(D, Ctor_Complete);
+        else if (const auto *D = dyn_cast<CXXDestructorDecl>(FD))
+          GD = GlobalDecl(D, Dtor_Complete);
+        else
+          GD = GlobalDecl(FD);
+
+        Name = CGM.getMangledName(GD);
+      } else if (auto *VD = dyn_cast<VarDecl>(E->getDecl())) {
+        Name = CGM.getMangledName(GlobalDecl(VD));
+      }
+
+      if (!Name.empty()) {
+        auto *GV = CGM.getModule().getNamedValue(Name);
+
+        // Symbols with local linkage must be included (symbols with hidden
+        // visibility should be included also because the JIT won't be able
+        // to get those otherwise).
+        if (GV && (GV->hasLocalLinkage() || GV->hasHiddenVisibility()))
+          Collector.Locals.insert(GV);
       }
 
       return true;
     }
   };
 
-  class BackendConsumer : public ASTConsumer {
-    using LinkModule = CodeGenAction::LinkModule;
+public:
+  explicit JITLocalCollector(llvm::SetVector<GlobalValue *> &L,
+                             CodeGen::CodeGenModule &CGM)
+      : Locals(L), CGM(CGM) {}
 
-    virtual void anchor();
-    DiagnosticsEngine &Diags;
-    BackendAction Action;
-    const HeaderSearchOptions &HeaderSearchOpts;
-    const CodeGenOptions &CodeGenOpts;
-    const TargetOptions &TargetOpts;
-    const LangOptions &LangOpts;
-    std::unique_ptr<raw_pwrite_stream> AsmOutStream;
-    ASTContext *Context;
+  bool shouldVisitTemplateInstantiations() const { return true; }
 
-    Timer LLVMIRGeneration;
-    unsigned LLVMIRGenerationRefCount;
-
-    /// True if we've finished generating IR. This prevents us from generating
-    /// additional LLVM IR after emitting output in HandleTranslationUnit. This
-    /// can happen when Clang plugins trigger additional AST deserialization.
-    bool IRGenFinished = false;
-
-    std::unique_ptr<CodeGenerator> Gen;
-
-    SmallVector<LinkModule, 4> LinkModules;
-
-    // This is here so that the diagnostic printer knows the module a diagnostic
-    // refers to.
-    llvm::Module *CurLinkModule = nullptr;
-
-  public:
-    BackendConsumer(BackendAction Action, DiagnosticsEngine &Diags,
-                    const HeaderSearchOptions &HeaderSearchOpts,
-                    const PreprocessorOptions &PPOpts,
-                    const CodeGenOptions &CodeGenOpts,
-                    const TargetOptions &TargetOpts,
-                    const LangOptions &LangOpts, bool TimePasses,
-                    const std::string &InFile,
-                    SmallVector<LinkModule, 4> LinkModules,
-                    std::unique_ptr<raw_pwrite_stream> OS, LLVMContext &C,
-                    CoverageSourceInfo *CoverageInfo = nullptr)
-        : Diags(Diags), Action(Action), HeaderSearchOpts(HeaderSearchOpts),
-          CodeGenOpts(CodeGenOpts), TargetOpts(TargetOpts), LangOpts(LangOpts),
-          AsmOutStream(std::move(OS)), Context(nullptr),
-          LLVMIRGeneration("irgen", "LLVM IR Generation Time"),
-          LLVMIRGenerationRefCount(0),
-          Gen(CreateLLVMCodeGen(Diags, InFile, HeaderSearchOpts, PPOpts,
-                                CodeGenOpts, C, CoverageInfo)),
-          LinkModules(std::move(LinkModules)) {
-      FrontendTimesIsEnabled = TimePasses;
-      llvm::TimePassesIsEnabled = TimePasses;
-    }
-    llvm::Module *getModule() const { return Gen->GetModule(); }
-    std::unique_ptr<llvm::Module> takeModule() {
-      return std::unique_ptr<llvm::Module>(Gen->ReleaseModule());
+  bool VisitFunctionDecl(const FunctionDecl *D) {
+    if (D->hasAttr<JITFuncAttr>()) {
+      if (D->getTemplateSpecializationKind() != TSK_ExplicitSpecialization)
+        NameCollector(*this).TraverseFunctionDecl(
+            const_cast<FunctionDecl *>(D));
     }
 
-    CodeGenerator *getCodeGenerator() { return Gen.get(); }
+    return true;
+  }
+};
 
-    void HandleCXXStaticMemberVarInstantiation(VarDecl *VD) override {
-      Gen->HandleCXXStaticMemberVarInstantiation(VD);
-    }
+static void reportOptRecordError(Error E, DiagnosticsEngine &Diags,
+                                 const CodeGenOptions CodeGenOpts) {
+  handleAllErrors(
+      std::move(E),
+      [&](const RemarkSetupFileError &E) {
+        Diags.Report(diag::err_cannot_open_file)
+            << CodeGenOpts.OptRecordFile << E.message();
+      },
+      [&](const RemarkSetupPatternError &E) {
+        Diags.Report(diag::err_drv_optimization_remark_pattern)
+            << E.message() << CodeGenOpts.OptRecordPasses;
+      },
+      [&](const RemarkSetupFormatError &E) {
+        Diags.Report(diag::err_drv_optimization_remark_format)
+            << CodeGenOpts.OptRecordFormat;
+      });
+}
 
-    void Initialize(ASTContext &Ctx) override {
-      assert(!Context && "initialized multiple times");
+class BackendConsumer : public ASTConsumer {
+  using LinkModule = CodeGenAction::LinkModule;
 
-      Context = &Ctx;
+  virtual void anchor();
+  DiagnosticsEngine &Diags;
+  BackendAction Action;
+  const HeaderSearchOptions &HeaderSearchOpts;
+  const CodeGenOptions &CodeGenOpts;
+  const TargetOptions &TargetOpts;
+  const LangOptions &LangOpts;
+  std::unique_ptr<raw_pwrite_stream> AsmOutStream;
+  ASTContext *Context;
 
-      if (FrontendTimesIsEnabled)
+  Timer LLVMIRGeneration;
+  unsigned LLVMIRGenerationRefCount;
+
+  /// True if we've finished generating IR. This prevents us from generating
+  /// additional LLVM IR after emitting output in HandleTranslationUnit. This
+  /// can happen when Clang plugins trigger additional AST deserialization.
+  bool IRGenFinished = false;
+
+  std::unique_ptr<CodeGenerator> Gen;
+
+  SmallVector<LinkModule, 4> LinkModules;
+
+  // This is here so that the diagnostic printer knows the module a diagnostic
+  // refers to.
+  llvm::Module *CurLinkModule = nullptr;
+
+public:
+  BackendConsumer(BackendAction Action, DiagnosticsEngine &Diags,
+                  const HeaderSearchOptions &HeaderSearchOpts,
+                  const PreprocessorOptions &PPOpts,
+                  const CodeGenOptions &CodeGenOpts,
+                  const TargetOptions &TargetOpts, const LangOptions &LangOpts,
+                  bool TimePasses, const std::string &InFile,
+                  SmallVector<LinkModule, 4> LinkModules,
+                  std::unique_ptr<raw_pwrite_stream> OS, LLVMContext &C,
+                  CoverageSourceInfo *CoverageInfo = nullptr)
+      : Diags(Diags), Action(Action), HeaderSearchOpts(HeaderSearchOpts),
+        CodeGenOpts(CodeGenOpts), TargetOpts(TargetOpts), LangOpts(LangOpts),
+        AsmOutStream(std::move(OS)), Context(nullptr),
+        LLVMIRGeneration("irgen", "LLVM IR Generation Time"),
+        LLVMIRGenerationRefCount(0),
+        Gen(CreateLLVMCodeGen(Diags, InFile, HeaderSearchOpts, PPOpts,
+                              CodeGenOpts, C, CoverageInfo)),
+        LinkModules(std::move(LinkModules)) {
+    FrontendTimesIsEnabled = TimePasses;
+    llvm::TimePassesIsEnabled = TimePasses;
+  }
+
+  // This constructor is used in installing an empty BackendConsumer
+  // to use the clang diagnostic handler for IR input files. It avoids
+  // initializing the OS field.
+  BackendConsumer(BackendAction Action, DiagnosticsEngine &Diags,
+                  const HeaderSearchOptions &HeaderSearchOpts,
+                  const PreprocessorOptions &PPOpts,
+                  const CodeGenOptions &CodeGenOpts,
+                  const TargetOptions &TargetOpts, const LangOptions &LangOpts,
+                  bool TimePasses, SmallVector<LinkModule, 4> LinkModules,
+                  LLVMContext &C, CoverageSourceInfo *CoverageInfo = nullptr)
+      : Diags(Diags), Action(Action), HeaderSearchOpts(HeaderSearchOpts),
+        CodeGenOpts(CodeGenOpts), TargetOpts(TargetOpts), LangOpts(LangOpts),
+        Context(nullptr), LLVMIRGeneration("irgen", "LLVM IR Generation Time"),
+        LLVMIRGenerationRefCount(0),
+        Gen(CreateLLVMCodeGen(Diags, "", HeaderSearchOpts, PPOpts, CodeGenOpts,
+                              C, CoverageInfo)),
+        LinkModules(std::move(LinkModules)) {
+    FrontendTimesIsEnabled = TimePasses;
+    llvm::TimePassesIsEnabled = TimePasses;
+  }
+  llvm::Module *getModule() const { return Gen->GetModule(); }
+  std::unique_ptr<llvm::Module> takeModule() {
+    return std::unique_ptr<llvm::Module>(Gen->ReleaseModule());
+  }
+
+  CodeGenerator *getCodeGenerator() { return Gen.get(); }
+
+  void HandleCXXStaticMemberVarInstantiation(VarDecl *VD) override {
+    Gen->HandleCXXStaticMemberVarInstantiation(VD);
+  }
+
+  void Initialize(ASTContext &Ctx) override {
+    assert(!Context && "initialized multiple times");
+
+    Context = &Ctx;
+
+    if (FrontendTimesIsEnabled)
+      LLVMIRGeneration.startTimer();
+
+    Gen->Initialize(Ctx);
+
+    if (FrontendTimesIsEnabled)
+      LLVMIRGeneration.stopTimer();
+  }
+
+  bool HandleTopLevelDecl(DeclGroupRef D) override {
+    PrettyStackTraceDecl CrashInfo(*D.begin(), SourceLocation(),
+                                   Context->getSourceManager(),
+                                   "LLVM IR generation of declaration");
+
+    // Recurse.
+    if (FrontendTimesIsEnabled) {
+      LLVMIRGenerationRefCount += 1;
+      if (LLVMIRGenerationRefCount == 1)
         LLVMIRGeneration.startTimer();
+    }
 
-      Gen->Initialize(Ctx);
+    Gen->HandleTopLevelDecl(D);
 
-      if (FrontendTimesIsEnabled)
+    if (FrontendTimesIsEnabled) {
+      LLVMIRGenerationRefCount -= 1;
+      if (LLVMIRGenerationRefCount == 0)
         LLVMIRGeneration.stopTimer();
     }
 
-    bool HandleTopLevelDecl(DeclGroupRef D) override {
-      PrettyStackTraceDecl CrashInfo(*D.begin(), SourceLocation(),
-                                     Context->getSourceManager(),
-                                     "LLVM IR generation of declaration");
+    return true;
+  }
 
-      // Recurse.
+  void HandleInlineFunctionDefinition(FunctionDecl *D) override {
+    PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
+                                   Context->getSourceManager(),
+                                   "LLVM IR generation of inline function");
+    if (FrontendTimesIsEnabled)
+      LLVMIRGeneration.startTimer();
+
+    Gen->HandleInlineFunctionDefinition(D);
+
+    if (FrontendTimesIsEnabled)
+      LLVMIRGeneration.stopTimer();
+  }
+
+  void HandleInterestingDecl(DeclGroupRef D) override {
+    // Ignore interesting decls from the AST reader after IRGen is finished.
+    if (!IRGenFinished)
+      HandleTopLevelDecl(D);
+  }
+
+  // Links each entry in LinkModules into our module.  Returns true on error.
+  bool LinkInModules() {
+    for (auto &LM : LinkModules) {
+      if (LM.PropagateAttrs)
+        for (Function &F : *LM.Module)
+          Gen->CGM().AddDefaultFnAttrs(F);
+
+      CurLinkModule = LM.Module.get();
+
+      bool Err;
+      if (LM.Internalize) {
+        Err = Linker::linkModules(
+            *getModule(), std::move(LM.Module), LM.LinkFlags,
+            [](llvm::Module &M, const llvm::StringSet<> &GVS) {
+              internalizeModule(M, [&GVS](const llvm::GlobalValue &GV) {
+                return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+              });
+            });
+      } else {
+        Err = Linker::linkModules(*getModule(), std::move(LM.Module),
+                                  LM.LinkFlags);
+      }
+
+      if (Err)
+        return true;
+    }
+    return false; // success
+  }
+
+  void FinalizeForJIT(ASTContext &C) {
+    if (!LangOpts.isJITEnabled())
+      return;
+
+    // Now that we have access to both objects, move the AST buffer from the
+    // ASTContext to CodeGenOpts (from where it will be accessed later).
+    C.ASTBufferForJIT.swap(CodeGenOpts.ASTBufferForJIT);
+
+    // If we're compiling for a CUDA device, skip the rest (there's no way to
+    // share locals between kernels anyway).
+    if (LangOpts.CUDAIsDevice)
+      return;
+
+    SmallVector<llvm::CallBase *, 10> JCalls;
+    for (auto &F : getModule()->functions())
+      for (auto &BB : F)
+        for (auto &I : BB)
+          if (auto CS = dyn_cast<llvm::CallBase>(&I))
+            if (auto *Callee = dyn_cast<llvm::Function>(
+                    CS->getCalledValue()->stripPointerCasts()))
+              if (Callee->getName() == "__clang_jit")
+                JCalls.push_back(CS);
+
+    if (JCalls.empty())
+      return;
+
+    llvm::IRBuilder<> Builder(JCalls[0]->getParent());
+
+    // Collect the local variables and functions here to pass to the JIT.
+    // Sadly, we need to take their addresses here, instead of after
+    // optimization, because otherwise argument promotion, global-variable
+    // mutations, and other transformations might render them incompatible
+    // with JIT-generated modules later.
+
+    llvm::SetVector<GlobalValue *> Locals;
+    JITLocalCollector(Locals, Gen->CGM()).TraverseAST(C);
+
+    // We also need to include local symbols generated internally (e.g.,
+    // __clang_call_terminate).
+    for (auto &GV : getModule()->global_values()) {
+      // Get all of the symbols that start with __clang (except those that
+      // start with __clang_jit).
+      if (!GV.hasName())
+        continue;
+      if (!GV.getName().startswith("__clang") ||
+          GV.getName().startswith("__clang_jit"))
+        continue;
+      if (!GV.hasLocalLinkage() && !GV.hasHiddenVisibility())
+        continue;
+
+      Locals.insert(&GV);
+    }
+
+    llvm::SmallVector<llvm::Constant *, 32> LocalPtrs;
+    for (auto &Local : Locals) {
+      llvm::Constant *Name =
+          Builder.CreateGlobalStringPtr(Local->getName(), ".cjl.str");
+      LocalPtrs.push_back(Name);
+      LocalPtrs.push_back(llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+          Local, Gen->CGM().VoidPtrTy));
+    }
+
+    auto *LNAType =
+        llvm::ArrayType::get(Gen->CGM().VoidPtrTy, LocalPtrs.size());
+    auto *LNAValue = ConstantArray::get(LNAType, LocalPtrs);
+
+    auto *PtrsGbl = new llvm::GlobalVariable(*getModule(), LNAType, true,
+                                             llvm::GlobalValue::PrivateLinkage,
+                                             LNAValue, "__clang_jit_locals");
+    PtrsGbl->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+    llvm::Value *PtrsCnt =
+        llvm::ConstantInt::get(Gen->CGM().Int32Ty, LocalPtrs.size() / 2);
+
+    for (auto &JCS : JCalls) {
+      JCS->setArgOperand(6,
+                         llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+                             PtrsGbl, Gen->CGM().VoidPtrPtrTy));
+      JCS->setArgOperand(7, PtrsCnt);
+    }
+  }
+
+  void HandleTranslationUnit(ASTContext &C) override {
+    {
+      llvm::TimeTraceScope TimeScope("Frontend");
+      PrettyStackTraceString CrashInfo("Per-file LLVM IR generation");
       if (FrontendTimesIsEnabled) {
         LLVMIRGenerationRefCount += 1;
         if (LLVMIRGenerationRefCount == 1)
           LLVMIRGeneration.startTimer();
       }
 
-      Gen->HandleTopLevelDecl(D);
+      Gen->HandleTranslationUnit(C);
 
       if (FrontendTimesIsEnabled) {
         LLVMIRGenerationRefCount -= 1;
@@ -250,286 +443,135 @@ namespace clang {
           LLVMIRGeneration.stopTimer();
       }
 
-      return true;
+      IRGenFinished = true;
     }
 
-    void HandleInlineFunctionDefinition(FunctionDecl *D) override {
-      PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
-                                     Context->getSourceManager(),
-                                     "LLVM IR generation of inline function");
-      if (FrontendTimesIsEnabled)
-        LLVMIRGeneration.startTimer();
+    // Silently ignore if we weren't initialized for some reason.
+    if (!getModule())
+      return;
 
-      Gen->HandleInlineFunctionDefinition(D);
-
-      if (FrontendTimesIsEnabled)
-        LLVMIRGeneration.stopTimer();
-    }
-
-    void HandleInterestingDecl(DeclGroupRef D) override {
-      // Ignore interesting decls from the AST reader after IRGen is finished.
-      if (!IRGenFinished)
-        HandleTopLevelDecl(D);
-    }
-
-    // Links each entry in LinkModules into our module.  Returns true on error.
-    bool LinkInModules() {
-      for (auto &LM : LinkModules) {
-        if (LM.PropagateAttrs)
-          for (Function &F : *LM.Module)
-            Gen->CGM().AddDefaultFnAttrs(F);
-
-        CurLinkModule = LM.Module.get();
-
-        bool Err;
-        if (LM.Internalize) {
-          Err = Linker::linkModules(
-              *getModule(), std::move(LM.Module), LM.LinkFlags,
-              [](llvm::Module &M, const llvm::StringSet<> &GVS) {
-                internalizeModule(M, [&GVS](const llvm::GlobalValue &GV) {
-                  return !GV.hasName() || (GVS.count(GV.getName()) == 0);
-                });
-              });
-        } else {
-          Err = Linker::linkModules(*getModule(), std::move(LM.Module),
-                                    LM.LinkFlags);
-        }
-
-        if (Err)
-          return true;
-      }
-      return false; // success
-    }
-
-    void FinalizeForJIT(ASTContext &C) {
-      if (!LangOpts.isJITEnabled())
-        return;
-
-      // Now that we have access to both objects, move the AST buffer from the
-      // ASTContext to CodeGenOpts (from where it will be accessed later).
-      C.ASTBufferForJIT.swap(CodeGenOpts.ASTBufferForJIT);
-
-      // If we're compiling for a CUDA device, skip the rest (there's no way to
-      // share locals between kernels anyway).
-      if (LangOpts.CUDAIsDevice)
-        return;
-
-      SmallVector<llvm::CallSite, 10> JCalls;
-      for (auto &F : getModule()->functions())
-      for (auto &BB : F)
-      for (auto &I : BB)
-        if (auto CS = CallSite(&I))
-          if (auto *Callee =
-                dyn_cast<llvm::Function>(
-                  CS.getCalledValue()->stripPointerCasts()))
-            if (Callee->getName() == "__clang_jit")
-              JCalls.push_back(CS);
-
-      if (JCalls.empty())
-        return;
-
-      llvm::IRBuilder<> Builder(JCalls[0].getParent());
-
-      // Collect the local variables and functions here to pass to the JIT.
-      // Sadly, we need to take their addresses here, instead of after
-      // optimization, because otherwise argument promotion, global-variable
-      // mutations, and other transformations might render them incompatible
-      // with JIT-generated modules later.
-
-      llvm::SetVector<GlobalValue *> Locals;
-      JITLocalCollector(Locals, Gen->CGM()).TraverseAST(C);
-
-      // We also need to include local symbols generated internally (e.g.,
-      // __clang_call_terminate).
-      for (auto &GV : getModule()->global_values()) {
-	// Get all of the symbols that start with __clang (except those that
-	// start with __clang_jit).
-        if (!GV.hasName())
-          continue;
-        if (!GV.getName().startswith("__clang") ||
-            GV.getName().startswith("__clang_jit"))
-          continue;
-        if (!GV.hasLocalLinkage() && !GV.hasHiddenVisibility())
-          continue;
-
-        Locals.insert(&GV);
-      }
-
-      llvm::SmallVector<llvm::Constant *, 32> LocalPtrs;
-      for (auto &Local : Locals) {
-        llvm::Constant *Name =
-          Builder.CreateGlobalStringPtr(Local->getName(), ".cjl.str");
-        LocalPtrs.push_back(Name);
-        LocalPtrs.push_back(
-          llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-                                Local, Gen->CGM().VoidPtrTy));
-      }
-
-      auto *LNAType = llvm::ArrayType::get(Gen->CGM().VoidPtrTy, LocalPtrs.size());
-      auto *LNAValue = ConstantArray::get(LNAType, LocalPtrs);
-
-      auto *PtrsGbl = new llvm::GlobalVariable(
-        *getModule(), LNAType, true, llvm::GlobalValue::PrivateLinkage, LNAValue,
-        "__clang_jit_locals");
-      PtrsGbl->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-
-      llvm::Value *PtrsCnt =
-        llvm::ConstantInt::get(Gen->CGM().Int32Ty, LocalPtrs.size()/2);
-
-      for (auto &JCS : JCalls) {
-        JCS.setArgument(6,
-          llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-            PtrsGbl, Gen->CGM().VoidPtrPtrTy));
-        JCS.setArgument(7, PtrsCnt);
-      }
-    }
-
-    void HandleTranslationUnit(ASTContext &C) override {
-      {
-        PrettyStackTraceString CrashInfo("Per-file LLVM IR generation");
-        if (FrontendTimesIsEnabled) {
-          LLVMIRGenerationRefCount += 1;
-          if (LLVMIRGenerationRefCount == 1)
-            LLVMIRGeneration.startTimer();
-        }
-
-        Gen->HandleTranslationUnit(C);
-
-        if (FrontendTimesIsEnabled) {
-          LLVMIRGenerationRefCount -= 1;
-          if (LLVMIRGenerationRefCount == 0)
-            LLVMIRGeneration.stopTimer();
-        }
-
-        IRGenFinished = true;
-      }
-
-      // Silently ignore if we weren't initialized for some reason.
-      if (!getModule())
-        return;
-
-      // Install an inline asm handler so that diagnostics get printed through
-      // our diagnostics hooks.
-      LLVMContext &Ctx = getModule()->getContext();
-      LLVMContext::InlineAsmDiagHandlerTy OldHandler =
+    // Install an inline asm handler so that diagnostics get printed through
+    // our diagnostics hooks.
+    LLVMContext &Ctx = getModule()->getContext();
+    LLVMContext::InlineAsmDiagHandlerTy OldHandler =
         Ctx.getInlineAsmDiagnosticHandler();
-      void *OldContext = Ctx.getInlineAsmDiagnosticContext();
-      Ctx.setInlineAsmDiagnosticHandler(InlineAsmDiagHandler, this);
+    void *OldContext = Ctx.getInlineAsmDiagnosticContext();
+    Ctx.setInlineAsmDiagnosticHandler(InlineAsmDiagHandler, this);
 
-      std::unique_ptr<DiagnosticHandler> OldDiagnosticHandler =
-          Ctx.getDiagnosticHandler();
-      Ctx.setDiagnosticHandler(llvm::make_unique<ClangDiagnosticHandler>(
-        CodeGenOpts, this));
-      Ctx.setDiagnosticsHotnessRequested(CodeGenOpts.DiagnosticsWithHotness);
-      if (CodeGenOpts.DiagnosticsHotnessThreshold != 0)
-        Ctx.setDiagnosticsHotnessThreshold(
+    std::unique_ptr<DiagnosticHandler> OldDiagnosticHandler =
+        Ctx.getDiagnosticHandler();
+    Ctx.setDiagnosticHandler(
+        std::make_unique<ClangDiagnosticHandler>(CodeGenOpts, this));
+
+    Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
+        setupOptimizationRemarks(
+            Ctx, CodeGenOpts.OptRecordFile, CodeGenOpts.OptRecordPasses,
+            CodeGenOpts.OptRecordFormat, CodeGenOpts.DiagnosticsWithHotness,
             CodeGenOpts.DiagnosticsHotnessThreshold);
 
-      std::unique_ptr<llvm::ToolOutputFile> OptRecordFile;
-      if (!CodeGenOpts.OptRecordFile.empty()) {
-        std::error_code EC;
-        OptRecordFile = llvm::make_unique<llvm::ToolOutputFile>(
-            CodeGenOpts.OptRecordFile, EC, sys::fs::F_None);
-        if (EC) {
-          Diags.Report(diag::err_cannot_open_file) <<
-            CodeGenOpts.OptRecordFile << EC.message();
-          return;
-        }
-
-        Ctx.setDiagnosticsOutputFile(
-            llvm::make_unique<yaml::Output>(OptRecordFile->os()));
-
-        if (CodeGenOpts.getProfileUse() != CodeGenOptions::ProfileNone)
-          Ctx.setDiagnosticsHotnessRequested(true);
-      }
-
-      // Link each LinkModule into our module.
-      if (LinkInModules())
-        return;
-
-      EmbedBitcode(getModule(), CodeGenOpts, llvm::MemoryBufferRef());
-
-      FinalizeForJIT(C);
-
-      EmitBackendOutput(Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts,
-                        LangOpts, C.getTargetInfo().getDataLayout(),
-                        getModule(), Action, std::move(AsmOutStream));
-
-      Ctx.setInlineAsmDiagnosticHandler(OldHandler, OldContext);
-
-      Ctx.setDiagnosticHandler(std::move(OldDiagnosticHandler));
-
-      if (OptRecordFile)
-        OptRecordFile->keep();
+    if (Error E = OptRecordFileOrErr.takeError()) {
+      reportOptRecordError(std::move(E), Diags, CodeGenOpts);
+      return;
     }
 
-    void HandleTagDeclDefinition(TagDecl *D) override {
-      PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
-                                     Context->getSourceManager(),
-                                     "LLVM IR generation of declaration");
-      Gen->HandleTagDeclDefinition(D);
-    }
+    std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
+        std::move(*OptRecordFileOrErr);
 
-    void HandleTagDeclRequiredDefinition(const TagDecl *D) override {
-      Gen->HandleTagDeclRequiredDefinition(D);
-    }
+    if (OptRecordFile &&
+        CodeGenOpts.getProfileUse() != CodeGenOptions::ProfileNone)
+      Ctx.setDiagnosticsHotnessRequested(true);
 
-    void CompleteTentativeDefinition(VarDecl *D) override {
-      Gen->CompleteTentativeDefinition(D);
-    }
+    // Link each LinkModule into our module.
+    if (LinkInModules())
+      return;
 
-    void AssignInheritanceModel(CXXRecordDecl *RD) override {
-      Gen->AssignInheritanceModel(RD);
-    }
+    EmbedBitcode(getModule(), CodeGenOpts, llvm::MemoryBufferRef());
 
-    void HandleVTable(CXXRecordDecl *RD) override {
-      Gen->HandleVTable(RD);
-    }
+    FinalizeForJIT(C);
 
-    static void InlineAsmDiagHandler(const llvm::SMDiagnostic &SM,void *Context,
-                                     unsigned LocCookie) {
-      SourceLocation Loc = SourceLocation::getFromRawEncoding(LocCookie);
-      ((BackendConsumer*)Context)->InlineAsmDiagHandler2(SM, Loc);
-    }
+    EmitBackendOutput(Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts,
+                      LangOpts, C.getTargetInfo().getDataLayout(), getModule(),
+                      Action, std::move(AsmOutStream));
 
-    /// Get the best possible source location to represent a diagnostic that
-    /// may have associated debug info.
-    const FullSourceLoc
-    getBestLocationFromDebugLoc(const llvm::DiagnosticInfoWithLocationBase &D,
-                                bool &BadDebugInfo, StringRef &Filename,
-                                unsigned &Line, unsigned &Column) const;
+    Ctx.setInlineAsmDiagnosticHandler(OldHandler, OldContext);
 
-    void InlineAsmDiagHandler2(const llvm::SMDiagnostic &,
-                               SourceLocation LocCookie);
+    Ctx.setDiagnosticHandler(std::move(OldDiagnosticHandler));
 
-    void DiagnosticHandlerImpl(const llvm::DiagnosticInfo &DI);
-    /// Specialized handler for InlineAsm diagnostic.
-    /// \return True if the diagnostic has been successfully reported, false
-    /// otherwise.
-    bool InlineAsmDiagHandler(const llvm::DiagnosticInfoInlineAsm &D);
-    /// Specialized handler for StackSize diagnostic.
-    /// \return True if the diagnostic has been successfully reported, false
-    /// otherwise.
-    bool StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D);
-    /// Specialized handler for unsupported backend feature diagnostic.
-    void UnsupportedDiagHandler(const llvm::DiagnosticInfoUnsupported &D);
-    /// Specialized handlers for optimization remarks.
-    /// Note that these handlers only accept remarks and they always handle
-    /// them.
-    void EmitOptimizationMessage(const llvm::DiagnosticInfoOptimizationBase &D,
-                                 unsigned DiagID);
-    void
-    OptimizationRemarkHandler(const llvm::DiagnosticInfoOptimizationBase &D);
-    void OptimizationRemarkHandler(
-        const llvm::OptimizationRemarkAnalysisFPCommute &D);
-    void OptimizationRemarkHandler(
-        const llvm::OptimizationRemarkAnalysisAliasing &D);
-    void OptimizationFailureHandler(
-        const llvm::DiagnosticInfoOptimizationFailure &D);
-  };
+    if (OptRecordFile)
+      OptRecordFile->keep();
+  }
 
-  void BackendConsumer::anchor() {}
-}
+  void HandleTagDeclDefinition(TagDecl *D) override {
+    PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
+                                   Context->getSourceManager(),
+                                   "LLVM IR generation of declaration");
+    Gen->HandleTagDeclDefinition(D);
+  }
+
+  void HandleTagDeclRequiredDefinition(const TagDecl *D) override {
+    Gen->HandleTagDeclRequiredDefinition(D);
+  }
+
+  void CompleteTentativeDefinition(VarDecl *D) override {
+    Gen->CompleteTentativeDefinition(D);
+  }
+
+  void CompleteExternalDeclaration(VarDecl *D) override {
+    Gen->CompleteExternalDeclaration(D);
+  }
+
+  void AssignInheritanceModel(CXXRecordDecl *RD) override {
+    Gen->AssignInheritanceModel(RD);
+  }
+
+  void HandleVTable(CXXRecordDecl *RD) override { Gen->HandleVTable(RD); }
+
+  static void InlineAsmDiagHandler(const llvm::SMDiagnostic &SM, void *Context,
+                                   unsigned LocCookie) {
+    SourceLocation Loc = SourceLocation::getFromRawEncoding(LocCookie);
+    ((BackendConsumer *)Context)->InlineAsmDiagHandler2(SM, Loc);
+  }
+
+  /// Get the best possible source location to represent a diagnostic that
+  /// may have associated debug info.
+  const FullSourceLoc
+  getBestLocationFromDebugLoc(const llvm::DiagnosticInfoWithLocationBase &D,
+                              bool &BadDebugInfo, StringRef &Filename,
+                              unsigned &Line, unsigned &Column) const;
+
+  void InlineAsmDiagHandler2(const llvm::SMDiagnostic &,
+                             SourceLocation LocCookie);
+
+  void DiagnosticHandlerImpl(const llvm::DiagnosticInfo &DI);
+  /// Specialized handler for InlineAsm diagnostic.
+  /// \return True if the diagnostic has been successfully reported, false
+  /// otherwise.
+  bool InlineAsmDiagHandler(const llvm::DiagnosticInfoInlineAsm &D);
+  /// Specialized handler for StackSize diagnostic.
+  /// \return True if the diagnostic has been successfully reported, false
+  /// otherwise.
+  bool StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D);
+  /// Specialized handler for unsupported backend feature diagnostic.
+  void UnsupportedDiagHandler(const llvm::DiagnosticInfoUnsupported &D);
+  /// Specialized handler for misexpect warnings.
+  /// Note that misexpect remarks are emitted through ORE
+  void MisExpectDiagHandler(const llvm::DiagnosticInfoMisExpect &D);
+  /// Specialized handlers for optimization remarks.
+  /// Note that these handlers only accept remarks and they always handle
+  /// them.
+  void EmitOptimizationMessage(const llvm::DiagnosticInfoOptimizationBase &D,
+                               unsigned DiagID);
+  void OptimizationRemarkHandler(const llvm::DiagnosticInfoOptimizationBase &D);
+  void
+  OptimizationRemarkHandler(const llvm::OptimizationRemarkAnalysisFPCommute &D);
+  void
+  OptimizationRemarkHandler(const llvm::OptimizationRemarkAnalysisAliasing &D);
+  void
+  OptimizationFailureHandler(const llvm::DiagnosticInfoOptimizationFailure &D);
+};
+
+void BackendConsumer::anchor() {}
+} // namespace clang
 
 bool ClangDiagnosticHandler::handleDiagnostics(const DiagnosticInfo &DI) {
   BackendCon->DiagnosticHandlerImpl(DI);
@@ -548,7 +590,7 @@ static FullSourceLoc ConvertBackendLocation(const llvm::SMDiagnostic &D,
   // We need to copy the underlying LLVM memory buffer because llvm::SourceMgr
   // already owns its one and clang::SourceManager wants to own its one.
   const MemoryBuffer *LBuf =
-  LSM.getMemoryBuffer(LSM.FindBufferContainingLoc(D.getLoc()));
+      LSM.getMemoryBuffer(LSM.FindBufferContainingLoc(D.getLoc()));
 
   // Create the copy and transfer ownership to clang::SourceManager.
   // TODO: Avoid copying files into memory.
@@ -561,10 +603,9 @@ static FullSourceLoc ConvertBackendLocation(const llvm::SMDiagnostic &D,
   // Translate the offset into the file.
   unsigned Offset = D.getLoc().getPointer() - LBuf->getBufferStart();
   SourceLocation NewLoc =
-  CSM.getLocForStartOfFile(FID).getLocWithOffset(Offset);
+      CSM.getLocForStartOfFile(FID).getLocWithOffset(Offset);
   return FullSourceLoc(NewLoc, CSM);
 }
-
 
 /// InlineAsmDiagHandler2 - This function is invoked when the backend hits an
 /// error parsing inline asm.  The SMDiagnostic indicates the error relative to
@@ -659,8 +700,8 @@ void BackendConsumer::InlineAsmDiagHandler2(const llvm::SMDiagnostic &D,
     }                                                                          \
   } while (false)
 
-bool
-BackendConsumer::InlineAsmDiagHandler(const llvm::DiagnosticInfoInlineAsm &D) {
+bool BackendConsumer::InlineAsmDiagHandler(
+    const llvm::DiagnosticInfoInlineAsm &D) {
   unsigned DiagID;
   ComputeDiagID(D.getSeverity(), inline_asm, DiagID);
   std::string Message = D.getMsgStr().str();
@@ -684,8 +725,8 @@ BackendConsumer::InlineAsmDiagHandler(const llvm::DiagnosticInfoInlineAsm &D) {
   return true;
 }
 
-bool
-BackendConsumer::StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D) {
+bool BackendConsumer::StackSizeDiagHandler(
+    const llvm::DiagnosticInfoStackSize &D) {
   if (D.getSeverity() != llvm::DS_Warning)
     // For now, the only support we have for StackSize diagnostic is warning.
     // We do not know how to format other severities.
@@ -695,7 +736,8 @@ BackendConsumer::StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D) {
     // FIXME: Shouldn't need to truncate to uint32_t
     Diags.Report(ND->getASTContext().getFullLoc(ND->getLocation()),
                  diag::warn_fe_frame_larger_than)
-      << static_cast<uint32_t>(D.getStackSize()) << Decl::castToDeclContext(ND);
+        << static_cast<uint32_t>(D.getStackSize())
+        << Decl::castToDeclContext(ND);
     return true;
   }
 
@@ -712,13 +754,13 @@ const FullSourceLoc BackendConsumer::getBestLocationFromDebugLoc(
   if (D.isLocationAvailable()) {
     D.getLocation(Filename, Line, Column);
     if (Line > 0) {
-      const FileEntry *FE = FileMgr.getFile(Filename);
+      auto FE = FileMgr.getFile(Filename);
       if (!FE)
         FE = FileMgr.getFile(D.getAbsolutePath());
       if (FE) {
         // If -gcolumn-info was not used, Column will be 0. This upsets the
         // source manager, so pass 1 if Column is not set.
-        DILoc = SourceMgr.translateFileLineCol(FE, Line, Column ? Column : 1);
+        DILoc = SourceMgr.translateFileLineCol(*FE, Line, Column ? Column : 1);
       }
     }
     BadDebugInfo = DILoc.isInvalid();
@@ -751,10 +793,50 @@ void BackendConsumer::UnsupportedDiagHandler(
   StringRef Filename;
   unsigned Line, Column;
   bool BadDebugInfo = false;
-  FullSourceLoc Loc =
-      getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
+  FullSourceLoc Loc;
+  std::string Msg;
+  raw_string_ostream MsgStream(Msg);
 
-  Diags.Report(Loc, diag::err_fe_backend_unsupported) << D.getMessage().str();
+  // Context will be nullptr for IR input files, we will construct the diag
+  // message from llvm::DiagnosticInfoUnsupported.
+  if (Context != nullptr) {
+    Loc = getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
+    MsgStream << D.getMessage();
+  } else {
+    DiagnosticPrinterRawOStream DP(MsgStream);
+    D.print(DP);
+  }
+  Diags.Report(Loc, diag::err_fe_backend_unsupported) << MsgStream.str();
+
+  if (BadDebugInfo)
+    // If we were not able to translate the file:line:col information
+    // back to a SourceLocation, at least emit a note stating that
+    // we could not translate this location. This can happen in the
+    // case of #line directives.
+    Diags.Report(Loc, diag::note_fe_backend_invalid_loc)
+        << Filename << Line << Column;
+}
+
+void BackendConsumer::MisExpectDiagHandler(
+    const llvm::DiagnosticInfoMisExpect &D) {
+  StringRef Filename;
+  unsigned Line, Column;
+  bool BadDebugInfo = false;
+  FullSourceLoc Loc;
+  std::string Msg;
+  raw_string_ostream MsgStream(Msg);
+  DiagnosticPrinterRawOStream DP(MsgStream);
+
+  // Context will be nullptr for IR input files, we will construct the diag
+  // message from llvm::DiagnosticInfoMisExpect.
+  if (Context != nullptr) {
+    Loc = getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
+    MsgStream << D.getMsg();
+  } else {
+    DiagnosticPrinterRawOStream DP(MsgStream);
+    D.print(DP);
+  }
+  Diags.Report(Loc, diag::warn_profile_data_misexpect) << MsgStream.str();
 
   if (BadDebugInfo)
     // If we were not able to translate the file:line:col information
@@ -774,19 +856,24 @@ void BackendConsumer::EmitOptimizationMessage(
   StringRef Filename;
   unsigned Line, Column;
   bool BadDebugInfo = false;
-  FullSourceLoc Loc =
-      getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
-
+  FullSourceLoc Loc;
   std::string Msg;
   raw_string_ostream MsgStream(Msg);
-  MsgStream << D.getMsg();
+
+  // Context will be nullptr for IR input files, we will construct the remark
+  // message from llvm::DiagnosticInfoOptimizationBase.
+  if (Context != nullptr) {
+    Loc = getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
+    MsgStream << D.getMsg();
+  } else {
+    DiagnosticPrinterRawOStream DP(MsgStream);
+    D.print(DP);
+  }
 
   if (D.getHotness())
     MsgStream << " (hotness: " << *D.getHotness() << ")";
 
-  Diags.Report(Loc, DiagID)
-      << AddFlagValue(D.getPassName())
-      << MsgStream.str();
+  Diags.Report(Loc, DiagID) << AddFlagValue(D.getPassName()) << MsgStream.str();
 
   if (BadDebugInfo)
     // If we were not able to translate the file:line:col information
@@ -935,6 +1022,9 @@ void BackendConsumer::DiagnosticHandlerImpl(const DiagnosticInfo &DI) {
   case llvm::DK_Unsupported:
     UnsupportedDiagHandler(cast<DiagnosticInfoUnsupported>(DI));
     return;
+  case llvm::DK_MisExpect:
+    MisExpectDiagHandler(cast<DiagnosticInfoMisExpect>(DI));
+    return;
   default:
     // Plugin IDs are not bound to any value as they are set dynamically.
     ComputeDiagRemarkID(Severity, backend_plugin, DiagID);
@@ -1050,7 +1140,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   if (CI.getCodeGenOpts().CoverageMapping) {
     CoverageInfo = new CoverageSourceInfo;
     CI.getPreprocessor().addPPCallbacks(
-                                    std::unique_ptr<PPCallbacks>(CoverageInfo));
+        std::unique_ptr<PPCallbacks>(CoverageInfo));
   }
 
   std::unique_ptr<BackendConsumer> Result(new BackendConsumer(
@@ -1064,9 +1154,8 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   // also macro debug info is enabled.
   if (CI.getCodeGenOpts().getDebugInfo() != codegenoptions::NoDebugInfo &&
       CI.getCodeGenOpts().MacroDebugInfo) {
-    std::unique_ptr<PPCallbacks> Callbacks =
-        llvm::make_unique<MacroPPCallbacks>(BEConsumer->getCodeGenerator(),
-                                            CI.getPreprocessor());
+    std::unique_ptr<PPCallbacks> Callbacks = std::make_unique<MacroPPCallbacks>(
+        BEConsumer->getCodeGenerator(), CI.getPreprocessor());
     CI.getPreprocessor().addPPCallbacks(std::move(Callbacks));
   }
 
@@ -1074,8 +1163,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
 }
 
 static void BitcodeInlineAsmDiagHandler(const llvm::SMDiagnostic &SM,
-                                         void *Context,
-                                         unsigned LocCookie) {
+                                        void *Context, unsigned LocCookie) {
   SM.print(nullptr, llvm::errs());
 
   auto Diags = static_cast<DiagnosticsEngine *>(Context);
@@ -1125,7 +1213,7 @@ std::unique_ptr<llvm::Module> CodeGenAction::loadModule(MemoryBufferRef MBRef) {
     // the file was already processed by indexing and will be passed to the
     // linker using merged object file.
     if (!Bm) {
-      auto M = llvm::make_unique<llvm::Module>("empty", *VMContext);
+      auto M = std::make_unique<llvm::Module>("empty", *VMContext);
       M->setTargetTriple(CI.getTargetOpts().Triple);
       return M;
     }
@@ -1164,9 +1252,11 @@ std::unique_ptr<llvm::Module> CodeGenAction::loadModule(MemoryBufferRef MBRef) {
 
 void CodeGenAction::ExecuteAction() {
   // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == InputKind::LLVM_IR) {
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR) {
     BackendAction BA = static_cast<BackendAction>(Act);
     CompilerInstance &CI = getCompilerInstance();
+    auto &CodeGenOpts = CI.getCodeGenOpts();
+    auto &Diagnostics = CI.getDiagnostics();
     std::unique_ptr<raw_pwrite_stream> OS =
         GetOutputStream(CI, getCurrentFile(), BA);
     if (BA != Backend_EmitNothing && !OS)
@@ -1175,7 +1265,7 @@ void CodeGenAction::ExecuteAction() {
     bool Invalid;
     SourceManager &SM = CI.getSourceManager();
     FileID FID = SM.getMainFileID();
-    llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
+    const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
     if (Invalid)
       return;
 
@@ -1185,23 +1275,50 @@ void CodeGenAction::ExecuteAction() {
 
     const TargetOptions &TargetOpts = CI.getTargetOpts();
     if (TheModule->getTargetTriple() != TargetOpts.Triple) {
-      CI.getDiagnostics().Report(SourceLocation(),
-                                 diag::warn_fe_override_module)
+      Diagnostics.Report(SourceLocation(), diag::warn_fe_override_module)
           << TargetOpts.Triple;
       TheModule->setTargetTriple(TargetOpts.Triple);
     }
 
-    EmbedBitcode(TheModule.get(), CI.getCodeGenOpts(),
-                 MainFile->getMemBufferRef());
+    EmbedBitcode(TheModule.get(), CodeGenOpts, MainFile->getMemBufferRef());
 
     LLVMContext &Ctx = TheModule->getContext();
     Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
-                                      &CI.getDiagnostics());
+                                      &Diagnostics);
 
-    EmitBackendOutput(CI.getDiagnostics(), CI.getHeaderSearchOpts(),
-                      CI.getCodeGenOpts(), TargetOpts, CI.getLangOpts(),
+    // Set clang diagnostic handler. To do this we need to create a fake
+    // BackendConsumer.
+    BackendConsumer Result(BA, CI.getDiagnostics(), CI.getHeaderSearchOpts(),
+                           CI.getPreprocessorOpts(), CI.getCodeGenOpts(),
+                           CI.getTargetOpts(), CI.getLangOpts(),
+                           CI.getFrontendOpts().ShowTimers,
+                           std::move(LinkModules), *VMContext, nullptr);
+    // PR44896: Force DiscardValueNames as false. DiscardValueNames cannot be
+    // true here because the valued names are needed for reading textual IR.
+    Ctx.setDiscardValueNames(false);
+    Ctx.setDiagnosticHandler(
+        std::make_unique<ClangDiagnosticHandler>(CodeGenOpts, &Result));
+
+    Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
+        setupOptimizationRemarks(
+            Ctx, CodeGenOpts.OptRecordFile, CodeGenOpts.OptRecordPasses,
+            CodeGenOpts.OptRecordFormat, CodeGenOpts.DiagnosticsWithHotness,
+            CodeGenOpts.DiagnosticsHotnessThreshold);
+
+    if (Error E = OptRecordFileOrErr.takeError()) {
+      reportOptRecordError(std::move(E), Diagnostics, CodeGenOpts);
+      return;
+    }
+    std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
+        std::move(*OptRecordFileOrErr);
+
+    EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(), CodeGenOpts,
+                      TargetOpts, CI.getLangOpts(),
                       CI.getTarget().getDataLayout(), TheModule.get(), BA,
                       std::move(OS));
+
+    if (OptRecordFile)
+      OptRecordFile->keep();
     return;
   }
 
@@ -1211,26 +1328,26 @@ void CodeGenAction::ExecuteAction() {
 
 //
 
-void EmitAssemblyAction::anchor() { }
+void EmitAssemblyAction::anchor() {}
 EmitAssemblyAction::EmitAssemblyAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitAssembly, _VMContext) {}
+    : CodeGenAction(Backend_EmitAssembly, _VMContext) {}
 
-void EmitBCAction::anchor() { }
+void EmitBCAction::anchor() {}
 EmitBCAction::EmitBCAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitBC, _VMContext) {}
+    : CodeGenAction(Backend_EmitBC, _VMContext) {}
 
-void EmitLLVMAction::anchor() { }
+void EmitLLVMAction::anchor() {}
 EmitLLVMAction::EmitLLVMAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitLL, _VMContext) {}
+    : CodeGenAction(Backend_EmitLL, _VMContext) {}
 
-void EmitLLVMOnlyAction::anchor() { }
+void EmitLLVMOnlyAction::anchor() {}
 EmitLLVMOnlyAction::EmitLLVMOnlyAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitNothing, _VMContext) {}
+    : CodeGenAction(Backend_EmitNothing, _VMContext) {}
 
-void EmitCodeGenOnlyAction::anchor() { }
+void EmitCodeGenOnlyAction::anchor() {}
 EmitCodeGenOnlyAction::EmitCodeGenOnlyAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitMCNull, _VMContext) {}
+    : CodeGenAction(Backend_EmitMCNull, _VMContext) {}
 
-void EmitObjAction::anchor() { }
+void EmitObjAction::anchor() {}
 EmitObjAction::EmitObjAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitObj, _VMContext) {}
+    : CodeGenAction(Backend_EmitObj, _VMContext) {}

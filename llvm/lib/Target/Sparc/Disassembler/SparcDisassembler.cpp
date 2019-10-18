@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/SparcMCTargetDesc.h"
+#include "TargetInfo/SparcTargetInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -35,15 +36,8 @@ public:
 
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
-                              raw_ostream &VStream,
                               raw_ostream &CStream) const override;
 };
-}
-
-namespace llvm {
-Target &getTheSparcTarget();
-Target &getTheSparcV9Target();
-Target &getTheSparcelTarget();
 }
 
 static MCDisassembler *createSparcDisassembler(const Target &T,
@@ -53,7 +47,7 @@ static MCDisassembler *createSparcDisassembler(const Target &T,
 }
 
 
-extern "C" void LLVMInitializeSparcDisassembler() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeSparcDisassembler() {
   // Register the disassembler.
   TargetRegistry::RegisterMCDisassembler(getTheSparcTarget(),
                                          createSparcDisassembler);
@@ -337,7 +331,6 @@ static DecodeStatus readInstruction32(ArrayRef<uint8_t> Bytes, uint64_t Address,
 DecodeStatus SparcDisassembler::getInstruction(MCInst &Instr, uint64_t &Size,
                                                ArrayRef<uint8_t> Bytes,
                                                uint64_t Address,
-                                               raw_ostream &VStream,
                                                raw_ostream &CStream) const {
   uint32_t Insn;
   bool isLittleEndian = getContext().getAsmInfo()->isLittleEndian();

@@ -57,11 +57,13 @@ class PassManagerBase;
 ///   ...
 class PassManagerBuilder {
 public:
-  /// Extensions are passed the builder itself (so they can see how it is
+  /// Extensions are passed to the builder itself (so they can see how it is
   /// configured) as well as the pass manager to add stuff to.
   typedef std::function<void(const PassManagerBuilder &Builder,
                              legacy::PassManagerBase &PM)>
       ExtensionFn;
+  typedef int GlobalExtensionID;
+
   enum ExtensionPointTy {
     /// EP_EarlyAsPossible - This extension point allows adding passes before
     /// any other transformations, allowing them to see the code as it is coming
@@ -112,6 +114,16 @@ public:
     /// passes at the end of the main CallGraphSCC passes and before any
     /// function simplification passes run by CGPassManager.
     EP_CGSCCOptimizerLate,
+
+    /// EP_FullLinkTimeOptimizationEarly - This extensions point allow adding
+    /// passes that
+    /// run at Link Time, before Full Link Time Optimization.
+    EP_FullLinkTimeOptimizationEarly,
+
+    /// EP_FullLinkTimeOptimizationLast - This extensions point allow adding
+    /// passes that
+    /// run at Link Time, after Full Link Time Optimization.
+    EP_FullLinkTimeOptimizationLast,
   };
 
   /// The Optimization Level - Specify the basic optimization level.
@@ -142,13 +154,14 @@ public:
   const ModuleSummaryIndex *ImportSummary = nullptr;
 
   bool DisableTailCalls;
-  bool DisableUnitAtATime;
   bool DisableUnrollLoops;
   bool SLPVectorize;
   bool LoopVectorize;
+  bool LoopsInterleaved;
   bool RerollLoops;
   bool NewGVN;
   bool DisableGVNLoadPRE;
+  bool ForgetAllSCEVInLoopUnroll;
   bool VerifyInput;
   bool VerifyOutput;
   bool MergeFunctions;
@@ -156,9 +169,15 @@ public:
   bool PrepareForThinLTO;
   bool PerformThinLTO;
   bool DivergentTarget;
+  unsigned LicmMssaOptCap;
+  unsigned LicmMssaNoAccForPromotionCap;
 
   /// Enable profile instrumentation pass.
   bool EnablePGOInstrGen;
+  /// Enable profile context sensitive instrumentation pass.
+  bool EnablePGOCSInstrGen;
+  /// Enable profile context sensitive profile use pass.
+  bool EnablePGOCSInstrUse;
   /// Profile data file name that the instrumentation will be written to.
   std::string PGOInstrGen;
   /// Path of the profile data file.
@@ -176,7 +195,17 @@ public:
   /// Adds an extension that will be used by all PassManagerBuilder instances.
   /// This is intended to be used by plugins, to register a set of
   /// optimisations to run automatically.
-  static void addGlobalExtension(ExtensionPointTy Ty, ExtensionFn Fn);
+  ///
+  /// \returns A global extension identifier that can be used to remove the
+  /// extension.
+  static GlobalExtensionID addGlobalExtension(ExtensionPointTy Ty,
+                                              ExtensionFn Fn);
+  /// Removes an extension that was previously added using addGlobalExtension.
+  /// This is also intended to be used by plugins, to remove any extension that
+  /// was previously registered before being unloaded.
+  ///
+  /// \param ExtensionID Identifier of the extension to be removed.
+  static void removeGlobalExtension(GlobalExtensionID ExtensionID);
   void addExtension(ExtensionPointTy Ty, ExtensionFn Fn);
 
 private:
@@ -185,7 +214,7 @@ private:
   void addInitialAliasAnalysisPasses(legacy::PassManagerBase &PM) const;
   void addLTOOptimizationPasses(legacy::PassManagerBase &PM);
   void addLateLTOOptimizationPasses(legacy::PassManagerBase &PM);
-  void addPGOInstrPasses(legacy::PassManagerBase &MPM);
+  void addPGOInstrPasses(legacy::PassManagerBase &MPM, bool IsCS);
   void addFunctionSimplificationPasses(legacy::PassManagerBase &MPM);
   void addInstructionCombiningPass(legacy::PassManagerBase &MPM) const;
 
@@ -205,10 +234,20 @@ public:
 /// used by optimizer plugins to allow all front ends to transparently use
 /// them.  Create a static instance of this class in your plugin, providing a
 /// private function that the PassManagerBuilder can use to add your passes.
-struct RegisterStandardPasses {
+class RegisterStandardPasses {
+  PassManagerBuilder::GlobalExtensionID ExtensionID;
+
+public:
   RegisterStandardPasses(PassManagerBuilder::ExtensionPointTy Ty,
                          PassManagerBuilder::ExtensionFn Fn) {
-    PassManagerBuilder::addGlobalExtension(Ty, std::move(Fn));
+    ExtensionID = PassManagerBuilder::addGlobalExtension(Ty, std::move(Fn));
+  }
+
+  ~RegisterStandardPasses() {
+    // If the collection holding the global extensions is destroyed after the
+    // plugin is unloaded, the extension has to be removed here. Indeed, the
+    // destructor of the ExtensionFn may reference code in the plugin.
+    PassManagerBuilder::removeGlobalExtension(ExtensionID);
   }
 };
 

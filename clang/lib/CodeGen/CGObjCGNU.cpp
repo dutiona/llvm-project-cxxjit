@@ -13,19 +13,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CGObjCRuntime.h"
+#include "CGCXXABI.h"
 #include "CGCleanup.h"
+#include "CGObjCRuntime.h"
 #include "CodeGenFunction.h"
 #include "CodeGenModule.h"
-#include "CGCXXABI.h"
-#include "clang/CodeGen/ConstantInitBuilder.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/CodeGen/ConstantInitBuilder.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/IR/DataLayout.h"
@@ -185,12 +186,16 @@ protected:
       (R.getVersion() >= VersionTuple(major, minor));
   }
 
-  std::string SymbolForProtocol(StringRef Name) {
-    return (StringRef("._OBJC_PROTOCOL_") + Name).str();
+  std::string ManglePublicSymbol(StringRef Name) {
+    return (StringRef(CGM.getTriple().isOSBinFormatCOFF() ? "$_" : "._") + Name).str();
+  }
+
+  std::string SymbolForProtocol(Twine Name) {
+    return (ManglePublicSymbol("OBJC_PROTOCOL_") + Name).str();
   }
 
   std::string SymbolForProtocolRef(StringRef Name) {
-    return (StringRef("._OBJC_REF_PROTOCOL_") + Name).str();
+    return (ManglePublicSymbol("OBJC_REF_PROTOCOL_") + Name).str();
   }
 
 
@@ -602,6 +607,9 @@ public:
 
   llvm::Function *GenerateMethod(const ObjCMethodDecl *OMD,
                                  const ObjCContainerDecl *CD) override;
+  void GenerateDirectMethodPrologue(CodeGenFunction &CGF, llvm::Function *Fn,
+                                    const ObjCMethodDecl *OMD,
+                                    const ObjCContainerDecl *CD) override;
   void GenerateCategory(const ObjCCategoryImplDecl *CMD) override;
   void GenerateClass(const ObjCImplementationDecl *ClassDecl) override;
   void RegisterAlias(const ObjCCompatibleAliasDecl *OAD) override;
@@ -906,12 +914,15 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     ConstantStringSection
   };
   static const char *const SectionsBaseNames[8];
+  static const char *const PECOFFSectionsBaseNames[8];
   template<SectionKind K>
   std::string sectionName() {
-    std::string name(SectionsBaseNames[K]);
-    if (CGM.getTriple().isOSBinFormatCOFF())
+    if (CGM.getTriple().isOSBinFormatCOFF()) {
+      std::string name(PECOFFSectionsBaseNames[K]);
       name += "$m";
-    return name;
+      return name;
+    }
+    return SectionsBaseNames[K];
   }
   /// The GCC ABI superclass message lookup function.  Takes a pointer to a
   /// structure describing the receiver and the class, and a selector as
@@ -932,15 +943,19 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
   bool EmittedClass = false;
   /// Generate the name of a symbol for a reference to a class.  Accesses to
   /// classes should be indirected via this.
+
+  typedef std::pair<std::string, std::pair<llvm::Constant*, int>> EarlyInitPair;
+  std::vector<EarlyInitPair> EarlyInitList;
+
   std::string SymbolForClassRef(StringRef Name, bool isWeak) {
     if (isWeak)
-      return (StringRef("._OBJC_WEAK_REF_CLASS_") + Name).str();
+      return (ManglePublicSymbol("OBJC_WEAK_REF_CLASS_") + Name).str();
     else
-      return (StringRef("._OBJC_REF_CLASS_") + Name).str();
+      return (ManglePublicSymbol("OBJC_REF_CLASS_") + Name).str();
   }
   /// Generate the name of a class symbol.
   std::string SymbolForClass(StringRef Name) {
-    return (StringRef("._OBJC_CLASS_") + Name).str();
+    return (ManglePublicSymbol("OBJC_CLASS_") + Name).str();
   }
   void CallRuntimeFunction(CGBuilderTy &B, StringRef FunctionName,
       ArrayRef<llvm::Value*> Args) {
@@ -994,10 +1009,13 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
 
     llvm::Constant *isa = TheModule.getNamedGlobal(Sym);
 
-    if (!isa)
+    if (!isa) {
       isa = new llvm::GlobalVariable(TheModule, IdTy, /* isConstant */false,
               llvm::GlobalValue::ExternalLinkage, nullptr, Sym);
-    else if (isa->getType() != PtrToIdTy)
+      if (CGM.getTriple().isOSBinFormatCOFF()) {
+        cast<llvm::GlobalValue>(isa)->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+      }
+    } else if (isa->getType() != PtrToIdTy)
       isa = llvm::ConstantExpr::getBitCast(isa, PtrToIdTy);
 
     //  struct
@@ -1012,7 +1030,11 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
 
     ConstantInitBuilder Builder(CGM);
     auto Fields = Builder.beginStruct();
-    Fields.add(isa);
+    if (!CGM.getTriple().isOSBinFormatCOFF()) {
+      Fields.add(isa);
+    } else {
+      Fields.addNullPointer(PtrTy);
+    }
     // For now, all non-ASCII strings are represented as UTF-16.  As such, the
     // number of bytes is simply double the number of UTF-16 codepoints.  In
     // ASCII strings, the number of bytes is equal to the number of non-ASCII
@@ -1082,6 +1104,10 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     if (isNamed) {
       ObjCStrGV->setComdat(TheModule.getOrInsertComdat(StringName));
       ObjCStrGV->setVisibility(llvm::GlobalValue::HiddenVisibility);
+    }
+    if (CGM.getTriple().isOSBinFormatCOFF()) {
+      std::pair<llvm::Constant*, int> v{ObjCStrGV, 0};
+      EarlyInitList.emplace_back(Sym, v);
     }
     llvm::Constant *ObjCStr = llvm::ConstantExpr::getBitCast(ObjCStrGV, IdTy);
     ObjCStrings[Str] = ObjCStr;
@@ -1196,6 +1222,34 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
       ClassSymbol->setInitializer(new llvm::GlobalVariable(TheModule,
           Int8Ty, false, llvm::GlobalValue::ExternalWeakLinkage,
           nullptr, SymbolForClass(Name)));
+    else {
+      if (CGM.getTriple().isOSBinFormatCOFF()) {
+        IdentifierInfo &II = CGM.getContext().Idents.get(Name);
+        TranslationUnitDecl *TUDecl = CGM.getContext().getTranslationUnitDecl();
+        DeclContext *DC = TranslationUnitDecl::castToDeclContext(TUDecl);
+
+        const ObjCInterfaceDecl *OID = nullptr;
+        for (const auto &Result : DC->lookup(&II))
+          if ((OID = dyn_cast<ObjCInterfaceDecl>(Result)))
+            break;
+
+        // The first Interface we find may be a @class,
+        // which should only be treated as the source of
+        // truth in the absence of a true declaration.
+        assert(OID && "Failed to find ObjCInterfaceDecl");
+        const ObjCInterfaceDecl *OIDDef = OID->getDefinition();
+        if (OIDDef != nullptr)
+          OID = OIDDef;
+
+        auto Storage = llvm::GlobalValue::DefaultStorageClass;
+        if (OID->hasAttr<DLLImportAttr>())
+          Storage = llvm::GlobalValue::DLLImportStorageClass;
+        else if (OID->hasAttr<DLLExportAttr>())
+          Storage = llvm::GlobalValue::DLLExportStorageClass;
+
+        cast<llvm::GlobalValue>(ClassSymbol)->setDLLStorageClass(Storage);
+      }
+    }
     assert(ClassSymbol->getName() == SymbolName);
     return ClassSymbol;
   }
@@ -1245,7 +1299,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
       // Emit a placeholder symbol.
       GV = new llvm::GlobalVariable(TheModule, ProtocolTy, false,
           llvm::GlobalValue::ExternalLinkage, nullptr, Name);
-      GV->setAlignment(CGM.getPointerAlign().getQuantity());
+      GV->setAlignment(CGM.getPointerAlign().getAsAlign());
     }
     return llvm::ConstantExpr::getBitCast(GV, ProtocolPtrTy);
   }
@@ -1269,7 +1323,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
           llvm::ConstantExpr::getBitCast(Protocol, ProtocolPtrTy), RefName);
       GV->setComdat(TheModule.getOrInsertComdat(RefName));
       GV->setSection(sectionName<ProtocolReferenceSection>());
-      GV->setAlignment(CGM.getPointerAlign().getQuantity());
+      GV->setAlignment(CGM.getPointerAlign().getAsAlign());
       Ref = GV;
     }
     EmittedProtocolRef = true;
@@ -1448,7 +1502,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
         Sym->setSection((Section + SecSuffix).str());
         Sym->setComdat(TheModule.getOrInsertComdat((Prefix +
             Section).str()));
-        Sym->setAlignment(1);
+        Sym->setAlignment(CGM.getPointerAlign().getAsAlign());
         return Sym;
       };
       return { Sym("__start_", "$a"), Sym("__stop", "$z") };
@@ -1483,11 +1537,12 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     ConstantInitBuilder builder(CGM);
     auto InitStructBuilder = builder.beginStruct();
     InitStructBuilder.addInt(Int64Ty, 0);
-    for (auto *s : SectionsBaseNames) {
+    auto &sectionVec = CGM.getTriple().isOSBinFormatCOFF() ? PECOFFSectionsBaseNames : SectionsBaseNames;
+    for (auto *s : sectionVec) {
       auto bounds = GetSectionBounds(s);
       InitStructBuilder.add(bounds.first);
       InitStructBuilder.add(bounds.second);
-    };
+    }
     auto *InitStruct = InitStructBuilder.finishAndCreateGlobal(".objc_init",
         CGM.getPointerAlign(), false, llvm::GlobalValue::LinkOnceODRLinkage);
     InitStruct->setVisibility(llvm::GlobalValue::HiddenVisibility);
@@ -1514,7 +1569,12 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     if (CGM.getTriple().isOSBinFormatCOFF())
         InitVar->setSection(".CRT$XCLz");
     else
-      InitVar->setSection(".ctors");
+    {
+      if (CGM.getCodeGenOpts().UseInitArray)
+        InitVar->setSection(".init_array");
+      else
+        InitVar->setSection(".ctors");
+    }
     InitVar->setVisibility(llvm::GlobalValue::HiddenVisibility);
     InitVar->setComdat(TheModule.getOrInsertComdat(".objc_ctor"));
     CGM.addUsedGlobal(InitVar);
@@ -1577,6 +1637,29 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     ConstantStrings.clear();
     Categories.clear();
     Classes.clear();
+
+    if (EarlyInitList.size() > 0) {
+      auto *Init = llvm::Function::Create(llvm::FunctionType::get(CGM.VoidTy,
+            {}), llvm::GlobalValue::InternalLinkage, ".objc_early_init",
+          &CGM.getModule());
+      llvm::IRBuilder<> b(llvm::BasicBlock::Create(CGM.getLLVMContext(), "entry",
+            Init));
+      for (const auto &lateInit : EarlyInitList) {
+        auto *global = TheModule.getGlobalVariable(lateInit.first);
+        if (global) {
+          b.CreateAlignedStore(global,
+              b.CreateStructGEP(lateInit.second.first, lateInit.second.second), CGM.getPointerAlign().getQuantity());
+        }
+      }
+      b.CreateRetVoid();
+      // We can't use the normal LLVM global initialisation array, because we
+      // need to specify that this runs early in library initialisation.
+      auto *InitVar = new llvm::GlobalVariable(CGM.getModule(), Init->getType(), 
+          /*isConstant*/true, llvm::GlobalValue::InternalLinkage,
+          Init, ".objc_early_init_ptr");
+      InitVar->setSection(".CRT$XCLb");
+      CGM.addUsedGlobal(InitVar);
+    }
     return nullptr;
   }
   /// In the v2 ABI, ivar offset variables use the type encoding in their name
@@ -1608,6 +1691,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
   }
   void GenerateClass(const ObjCImplementationDecl *OID) override {
     ASTContext &Context = CGM.getContext();
+    bool IsCOFF = CGM.getTriple().isOSBinFormatCOFF();
 
     // Get the class name
     ObjCInterfaceDecl *classDecl =
@@ -1666,8 +1750,9 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     // struct objc_property_list *properties
     metaclassFields.add(GeneratePropertyList(OID, classDecl, /*isClassProperty*/true));
 
-    auto *metaclass = metaclassFields.finishAndCreateGlobal("._OBJC_METACLASS_"
-        + className, CGM.getPointerAlign());
+    auto *metaclass = metaclassFields.finishAndCreateGlobal(
+        ManglePublicSymbol("OBJC_METACLASS_") + className,
+        CGM.getPointerAlign());
 
     auto classFields = builder.beginStruct();
     // struct objc_class *isa;
@@ -1676,15 +1761,28 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     // Get the superclass name.
     const ObjCInterfaceDecl * SuperClassDecl =
       OID->getClassInterface()->getSuperClass();
+    llvm::Constant *SuperClass = nullptr;
     if (SuperClassDecl) {
       auto SuperClassName = SymbolForClass(SuperClassDecl->getNameAsString());
-      llvm::Constant *SuperClass = TheModule.getNamedGlobal(SuperClassName);
+      SuperClass = TheModule.getNamedGlobal(SuperClassName);
       if (!SuperClass)
       {
         SuperClass = new llvm::GlobalVariable(TheModule, PtrTy, false,
             llvm::GlobalValue::ExternalLinkage, nullptr, SuperClassName);
+        if (IsCOFF) {
+          auto Storage = llvm::GlobalValue::DefaultStorageClass;
+          if (SuperClassDecl->hasAttr<DLLImportAttr>())
+            Storage = llvm::GlobalValue::DLLImportStorageClass;
+          else if (SuperClassDecl->hasAttr<DLLExportAttr>())
+            Storage = llvm::GlobalValue::DLLExportStorageClass;
+
+          cast<llvm::GlobalValue>(SuperClass)->setDLLStorageClass(Storage);
+        }
       }
-      classFields.add(llvm::ConstantExpr::getBitCast(SuperClass, PtrTy));
+      if (!IsCOFF)
+        classFields.add(llvm::ConstantExpr::getBitCast(SuperClass, PtrTy));
+      else
+        classFields.addNullPointer(PtrTy);
     } else
       classFields.addNullPointer(PtrTy);
     // const char *name;
@@ -1761,7 +1859,8 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
         ivarBuilder.addInt(Int32Ty,
             CGM.getContext().getTypeSizeInChars(ivarTy).getQuantity());
         // Alignment will be stored as a base-2 log of the alignment.
-        int align = llvm::Log2_32(Context.getTypeAlignInChars(ivarTy).getQuantity());
+        unsigned align =
+            llvm::Log2_32(Context.getTypeAlignInChars(ivarTy).getQuantity());
         // Objects that require more than 2^64-byte alignment should be impossible!
         assert(align < 64);
         // uint32_t flags;
@@ -1786,13 +1885,12 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
     for (auto *propImpl : OID->property_impls())
       if (propImpl->getPropertyImplementation() ==
           ObjCPropertyImplDecl::Synthesize) {
-        ObjCPropertyDecl *prop = propImpl->getPropertyDecl();
-        auto addIfExists = [&](const ObjCMethodDecl* OMD) {
-          if (OMD)
+        auto addIfExists = [&](const ObjCMethodDecl *OMD) {
+          if (OMD && OMD->hasBody())
             InstanceMethods.push_back(OMD);
         };
-        addIfExists(prop->getGetterMethodDecl());
-        addIfExists(prop->getSetterMethodDecl());
+        addIfExists(propImpl->getGetterMethodDecl());
+        addIfExists(propImpl->getSetterMethodDecl());
       }
 
     if (InstanceMethods.size() == 0)
@@ -1832,18 +1930,23 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
       classFields.finishAndCreateGlobal(SymbolForClass(className),
         CGM.getPointerAlign(), false, llvm::GlobalValue::ExternalLinkage);
 
-    if (CGM.getTriple().isOSBinFormatCOFF()) {
-      auto Storage = llvm::GlobalValue::DefaultStorageClass;
-      if (OID->getClassInterface()->hasAttr<DLLImportAttr>())
-        Storage = llvm::GlobalValue::DLLImportStorageClass;
-      else if (OID->getClassInterface()->hasAttr<DLLExportAttr>())
-        Storage = llvm::GlobalValue::DLLExportStorageClass;
-      cast<llvm::GlobalValue>(classStruct)->setDLLStorageClass(Storage);
-    }
-
     auto *classRefSymbol = GetClassVar(className);
     classRefSymbol->setSection(sectionName<ClassReferenceSection>());
     classRefSymbol->setInitializer(llvm::ConstantExpr::getBitCast(classStruct, IdTy));
+
+    if (IsCOFF) {
+      // we can't import a class struct.
+      if (OID->getClassInterface()->hasAttr<DLLExportAttr>()) {
+        cast<llvm::GlobalValue>(classStruct)->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+        cast<llvm::GlobalValue>(classRefSymbol)->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+      }
+
+      if (SuperClass) {
+        std::pair<llvm::Constant*, int> v{classStruct, 1};
+        EarlyInitList.emplace_back(SuperClass->getName(), std::move(v));
+      }
+
+    }
 
 
     // Resolve the class aliases, if they exist.
@@ -1872,7 +1975,7 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
 
     auto classInitRef = new llvm::GlobalVariable(TheModule,
         classStruct->getType(), false, llvm::GlobalValue::ExternalLinkage,
-        classStruct, "._OBJC_INIT_CLASS_" + className);
+        classStruct, ManglePublicSymbol("OBJC_INIT_CLASS_") + className);
     classInitRef->setSection(sectionName<ClassSection>());
     CGM.addUsedGlobal(classInitRef);
 
@@ -1907,6 +2010,18 @@ const char *const CGObjCGNUstep2::SectionsBaseNames[8] =
 "__objc_protocol_refs",
 "__objc_class_aliases",
 "__objc_constant_string"
+};
+
+const char *const CGObjCGNUstep2::PECOFFSectionsBaseNames[8] =
+{
+".objcrt$SEL",
+".objcrt$CLS",
+".objcrt$CLR",
+".objcrt$CAT",
+".objcrt$PCL",
+".objcrt$PCR",
+".objcrt$CAL",
+".objcrt$STR"
 };
 
 /// Support for the ObjFW runtime.
@@ -2922,6 +3037,7 @@ llvm::Value *CGObjCGNU::GenerateProtocolRef(CodeGenFunction &CGF,
   llvm::Constant *&protocol = ExistingProtocols[PD->getNameAsString()];
   if (!protocol)
     GenerateProtocol(PD);
+  assert(protocol && "Unknown protocol");
   llvm::Type *T =
     CGM.getTypes().ConvertType(CGM.getContext().getObjCProtoType());
   return CGF.Builder.CreateBitCast(protocol, llvm::PointerType::getUnqual(T));
@@ -3383,13 +3499,12 @@ void CGObjCGNU::GenerateClass(const ObjCImplementationDecl *OID) {
   for (auto *propertyImpl : OID->property_impls())
     if (propertyImpl->getPropertyImplementation() ==
         ObjCPropertyImplDecl::Synthesize) {
-      ObjCPropertyDecl *property = propertyImpl->getPropertyDecl();
       auto addPropertyMethod = [&](const ObjCMethodDecl *accessor) {
         if (accessor)
           InstanceMethods.push_back(accessor);
       };
-      addPropertyMethod(property->getGetterMethodDecl());
-      addPropertyMethod(property->getSetterMethodDecl());
+      addPropertyMethod(propertyImpl->getGetterMethodDecl());
+      addPropertyMethod(propertyImpl->getSetterMethodDecl());
     }
 
   llvm::Constant *Properties = GeneratePropertyList(OID, ClassDecl);
@@ -3762,6 +3877,13 @@ llvm::Function *CGObjCGNU::GenerateMethod(const ObjCMethodDecl *OMD,
   return Method;
 }
 
+void CGObjCGNU::GenerateDirectMethodPrologue(CodeGenFunction &CGF,
+                                             llvm::Function *Fn,
+                                             const ObjCMethodDecl *OMD,
+                                             const ObjCContainerDecl *CD) {
+  // GNU runtime doesn't support direct calls at this time
+}
+
 llvm::FunctionCallee CGObjCGNU::GetPropertyGetFunction() {
   return GetPropertyFn;
 }
@@ -3929,7 +4051,7 @@ LValue CGObjCGNU::EmitObjCValueForIvar(CodeGenFunction &CGF,
                                        const ObjCIvarDecl *Ivar,
                                        unsigned CVRQualifiers) {
   const ObjCInterfaceDecl *ID =
-    ObjectTy->getAs<ObjCObjectType>()->getInterface();
+    ObjectTy->castAs<ObjCObjectType>()->getInterface();
   return EmitValueForIvarAtOffset(CGF, ID, BaseValue, Ivar, CVRQualifiers,
                                   EmitIvarOffset(CGF, ID, Ivar));
 }
@@ -3976,7 +4098,7 @@ llvm::Value *CGObjCGNU::EmitIvarOffset(CodeGenFunction &CGF,
       auto GV = new llvm::GlobalVariable(TheModule, IntTy,
           false, llvm::GlobalValue::LinkOnceAnyLinkage,
           llvm::Constant::getNullValue(IntTy), name);
-      GV->setAlignment(Align.getQuantity());
+      GV->setAlignment(Align.getAsAlign());
       Offset = GV;
     }
     Offset = CGF.Builder.CreateAlignedLoad(Offset, Align);

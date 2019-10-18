@@ -11,8 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "MSP430MCTargetDesc.h"
-#include "InstPrinter/MSP430InstPrinter.h"
+#include "MSP430InstPrinter.h"
 #include "MSP430MCAsmInfo.h"
+#include "TargetInfo/MSP430TargetInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -56,7 +57,7 @@ static MCInstPrinter *createMSP430MCInstPrinter(const Triple &T,
   return nullptr;
 }
 
-extern "C" void LLVMInitializeMSP430TargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMSP430TargetMC() {
   Target &T = getTheMSP430Target();
 
   RegisterMCAsmInfo<MSP430MCAsmInfo> X(T);

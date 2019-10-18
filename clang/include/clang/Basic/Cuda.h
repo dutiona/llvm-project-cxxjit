@@ -11,6 +11,7 @@
 
 namespace llvm {
 class StringRef;
+class Twine;
 class VersionTuple;
 } // namespace llvm
 
@@ -30,7 +31,7 @@ enum class CudaVersion {
 };
 const char *CudaVersionToString(CudaVersion V);
 // Input is "Major.Minor"
-CudaVersion CudaStringToVersion(llvm::StringRef S);
+CudaVersion CudaStringToVersion(const llvm::Twine &S);
 
 enum class CudaArch {
   UNKNOWN,
@@ -64,7 +65,11 @@ enum class CudaArch {
   GFX902,
   GFX904,
   GFX906,
+  GFX908,
   GFX909,
+  GFX1010,
+  GFX1011,
+  GFX1012,
   LAST,
 };
 const char *CudaArchToString(CudaArch A);

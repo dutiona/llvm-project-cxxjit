@@ -15,7 +15,6 @@
 #ifndef LLVM_CLANG_CODEGEN_CGFUNCTIONINFO_H
 #define LLVM_CLANG_CODEGEN_CGFUNCTIONINFO_H
 
-#include "clang/AST/Attr.h"
 #include "clang/AST/CanonicalType.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Decl.h"
@@ -95,7 +94,6 @@ private:
   bool InReg : 1;           // isDirect() || isExtend() || isIndirect()
   bool CanBeFlattened: 1;   // isDirect()
   bool SignExt : 1;         // isExtend()
-  bool SuppressSRet : 1;    // isIndirect()
 
   bool canHavePaddingType() const {
     return isDirect() || isExtend() || isIndirect() || isExpand();
@@ -110,15 +108,12 @@ private:
     UnpaddedCoerceAndExpandType = T;
   }
 
-  ABIArgInfo(Kind K)
-      : TheKind(K), PaddingInReg(false), InReg(false), SuppressSRet(false) {
-  }
-
 public:
-  ABIArgInfo()
+  ABIArgInfo(Kind K = Direct)
       : TypeData(nullptr), PaddingType(nullptr), DirectOffset(0),
-        TheKind(Direct), PaddingInReg(false), InReg(false),
-        SuppressSRet(false) {}
+        TheKind(K), PaddingInReg(false), InAllocaSRet(false),
+        IndirectByVal(false), IndirectRealign(false), SRetAfterThis(false),
+        InReg(false), CanBeFlattened(false), SignExt(false) {}
 
   static ABIArgInfo getDirect(llvm::Type *T = nullptr, unsigned Offset = 0,
                               llvm::Type *Padding = nullptr,
@@ -407,16 +402,6 @@ public:
     CanBeFlattened = Flatten;
   }
 
-  bool getSuppressSRet() const {
-    assert(isIndirect() && "Invalid kind!");
-    return SuppressSRet;
-  }
-
-  void setSuppressSRet(bool Suppress) {
-    assert(isIndirect() && "Invalid kind!");
-    SuppressSRet = Suppress;
-  }
-
   void dump() const;
 };
 
@@ -578,12 +563,11 @@ public:
   typedef const ArgInfo *const_arg_iterator;
   typedef ArgInfo *arg_iterator;
 
-  typedef llvm::iterator_range<arg_iterator> arg_range;
-  typedef llvm::iterator_range<const_arg_iterator> const_arg_range;
-
-  arg_range arguments() { return arg_range(arg_begin(), arg_end()); }
-  const_arg_range arguments() const {
-    return const_arg_range(arg_begin(), arg_end());
+  MutableArrayRef<ArgInfo> arguments() {
+    return MutableArrayRef<ArgInfo>(arg_begin(), NumArgs);
+  }
+  ArrayRef<ArgInfo> arguments() const {
+    return ArrayRef<ArgInfo>(arg_begin(), NumArgs);
   }
 
   const_arg_iterator arg_begin() const { return getArgsBuffer() + 1; }

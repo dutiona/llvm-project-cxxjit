@@ -12,6 +12,7 @@
 #include "clang/Driver/Options.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/TargetParser.h"
+#include "llvm/Support/Host.h"
 
 using namespace clang::driver;
 using namespace clang::driver::tools;
@@ -42,10 +43,11 @@ std::string aarch64::getAArch64TargetCPU(const ArgList &Args,
   else if (CPU.size())
     return CPU;
 
-  // Make sure we pick "cyclone" if -arch is used or when targetting a Darwin
-  // OS.
+  // Make sure we pick the appropriate Apple CPU if -arch is used or when
+  // targetting a Darwin OS.
   if (Args.getLastArg(options::OPT_arch) || Triple.isOSDarwin())
-    return "cyclone";
+    return Triple.getArch() == llvm::Triple::aarch64_32 ? "apple-s4"
+                                                        : "apple-a7";
 
   return "generic";
 }
@@ -138,7 +140,7 @@ getAArch64MicroArchFeaturesFromMtune(const Driver &D, StringRef Mtune,
   // Handle CPU name is 'native'.
   if (MtuneLowerCase == "native")
     MtuneLowerCase = llvm::sys::getHostCPUName();
-  if (MtuneLowerCase == "cyclone") {
+  if (MtuneLowerCase == "cyclone" || MtuneLowerCase.find("apple") == 0) {
     Features.push_back("+zcm");
     Features.push_back("+zcz");
   }
@@ -192,6 +194,18 @@ void aarch64::getAArch64TargetFeatures(const Driver &D,
     Features.push_back("-fp-armv8");
     Features.push_back("-crypto");
     Features.push_back("-neon");
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_mtp_mode_EQ)) {
+    StringRef Mtp = A->getValue();
+    if (Mtp == "el3")
+      Features.push_back("+tpidr-el3");
+    else if (Mtp == "el2")
+      Features.push_back("+tpidr-el2");
+    else if (Mtp == "el1")
+      Features.push_back("+tpidr-el1");
+    else if (Mtp != "el0")
+      D.Diag(diag::err_drv_invalid_mtp) << A->getAsString(Args);
   }
 
   // En/disable crc

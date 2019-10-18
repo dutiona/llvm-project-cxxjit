@@ -37,7 +37,7 @@ class Property {
 public:
   Property(const PropertyDefinition &definition);
 
-  Property(const ConstString &name, const ConstString &desc, bool is_global,
+  Property(ConstString name, ConstString desc, bool is_global,
            const lldb::OptionValueSP &value_sp);
 
   llvm::StringRef GetName() const { return m_name.GetStringRef(); }
@@ -64,8 +64,7 @@ public:
                        uint32_t output_width,
                        bool display_qualified_name) const;
 
-  void SetValueChangedCallback(OptionValueChangedCallback callback,
-                               void *baton);
+  void SetValueChangedCallback(std::function<void()> callback);
 
 protected:
   ConstString m_name;

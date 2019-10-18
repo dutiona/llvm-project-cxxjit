@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/ARMMCTargetDesc.h"
+#include "TargetInfo/ARMTargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
@@ -27,7 +27,7 @@ Target &llvm::getTheThumbBETarget() {
   return TheThumbBETarget;
 }
 
-extern "C" void LLVMInitializeARMTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeARMTargetInfo() {
   RegisterTarget<Triple::arm, /*HasJIT=*/true> X(getTheARMLETarget(), "arm",
                                                  "ARM", "ARM");
   RegisterTarget<Triple::armeb, /*HasJIT=*/true> Y(getTheARMBETarget(), "armeb",

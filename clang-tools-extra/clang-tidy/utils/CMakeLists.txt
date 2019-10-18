@@ -13,6 +13,7 @@ add_clang_library(clangTidyUtils
   LexerUtils.cpp
   NamespaceAliaser.cpp
   OptionsUtils.cpp
+  TransformerClangTidyCheck.cpp
   TypeTraits.cpp
   UsingInserter.cpp
 
@@ -21,5 +22,7 @@ add_clang_library(clangTidyUtils
   clangASTMatchers
   clangBasic
   clangLex
+  clangSema
   clangTidy
+  clangTransformer
   )

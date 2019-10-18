@@ -194,6 +194,7 @@ TEST(QualTypeNameTest, getFullyQualifiedName) {
   GlobalNsPrefix.ExpectedQualTypeNames["ZVal"] = "::A::B::Y::Z";
   GlobalNsPrefix.ExpectedQualTypeNames["GlobalZVal"] = "::Z";
   GlobalNsPrefix.ExpectedQualTypeNames["CheckK"] = "D::aStruct";
+  GlobalNsPrefix.ExpectedQualTypeNames["YZMPtr"] = "::A::B::X ::A::B::Y::Z::*";
   GlobalNsPrefix.runOver(
       "namespace A {\n"
       "  namespace B {\n"
@@ -205,8 +206,9 @@ TEST(QualTypeNameTest, getFullyQualifiedName) {
       "    template <typename T>\n"
       "    using Alias = CCC<T>;\n"
       "    Alias<int> IntAliasVal;\n"
-      "    struct Y { struct Z {}; };\n"
+      "    struct Y { struct Z { X YZIPtr; }; };\n"
       "    Y::Z ZVal;\n"
+      "    X Y::Z::*YZMPtr;\n"
       "  }\n"
       "}\n"
       "struct Z {};\n"
@@ -220,6 +222,17 @@ TEST(QualTypeNameTest, getFullyQualifiedName) {
       "  }\n"
       "}\n"
   );
+
+  TypeNameVisitor InlineNamespace;
+  InlineNamespace.ExpectedQualTypeNames["c"] = "B::C";
+  InlineNamespace.runOver("inline namespace A {\n"
+                          "  namespace B {\n"
+                          "    class C {};\n"
+                          "  }\n"
+                          "}\n"
+                          "using namespace A::B;\n"
+                          "C c;\n",
+                          TypeNameVisitor::Lang_CXX11);
 
   TypeNameVisitor AnonStrucs;
   AnonStrucs.ExpectedQualTypeNames["a"] = "short";

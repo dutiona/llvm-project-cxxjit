@@ -381,6 +381,22 @@ void Module::debug_compile_units_iterator::SkipNoDebugCUs() {
     ++Idx;
 }
 
+iterator_range<Module::global_object_iterator> Module::global_objects() {
+  return concat<GlobalObject>(functions(), globals());
+}
+iterator_range<Module::const_global_object_iterator>
+Module::global_objects() const {
+  return concat<const GlobalObject>(functions(), globals());
+}
+
+iterator_range<Module::global_value_iterator> Module::global_values() {
+  return concat<GlobalValue>(functions(), globals(), aliases(), ifuncs());
+}
+iterator_range<Module::const_global_value_iterator>
+Module::global_values() const {
+  return concat<const GlobalValue>(functions(), globals(), aliases(), ifuncs());
+}
+
 //===----------------------------------------------------------------------===//
 // Methods to control the materialization of GlobalValues in the Module.
 //
@@ -531,12 +547,16 @@ void Module::setCodeModel(CodeModel::Model CL) {
   addModuleFlag(ModFlagBehavior::Error, "Code Model", CL);
 }
 
-void Module::setProfileSummary(Metadata *M) {
-  addModuleFlag(ModFlagBehavior::Error, "ProfileSummary", M);
+void Module::setProfileSummary(Metadata *M, ProfileSummary::Kind Kind) {
+  if (Kind == ProfileSummary::PSK_CSInstr)
+    addModuleFlag(ModFlagBehavior::Error, "CSProfileSummary", M);
+  else
+    addModuleFlag(ModFlagBehavior::Error, "ProfileSummary", M);
 }
 
-Metadata *Module::getProfileSummary() {
-  return getModuleFlag("ProfileSummary");
+Metadata *Module::getProfileSummary(bool IsCS) {
+  return (IsCS ? getModuleFlag("CSProfileSummary")
+               : getModuleFlag("ProfileSummary"));
 }
 
 void Module::setOwnedMemoryBuffer(std::unique_ptr<MemoryBuffer> MB) {
@@ -600,7 +620,7 @@ GlobalVariable *llvm::collectUsedGlobalVariables(
 
   const ConstantArray *Init = cast<ConstantArray>(GV->getInitializer());
   for (Value *Op : Init->operands()) {
-    GlobalValue *G = cast<GlobalValue>(Op->stripPointerCastsNoFollowAliases());
+    GlobalValue *G = cast<GlobalValue>(Op->stripPointerCasts());
     Set.insert(G);
   }
   return GV;

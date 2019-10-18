@@ -17,15 +17,17 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/StackProtector.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/StackProtector.h"
 #include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "reset-machine-function"
 
 STATISTIC(NumFunctionsReset, "Number of functions reset");
+STATISTIC(NumFunctionsVisited, "Number of functions visited");
 
 namespace {
   class ResetMachineFunction : public MachineFunctionPass {
@@ -50,6 +52,7 @@ namespace {
     }
 
     bool runOnMachineFunction(MachineFunction &MF) override {
+      ++NumFunctionsVisited;
       // No matter what happened, whether we successfully selected the function
       // or not, nothing is going to use the vreg types after us. Make sure they
       // disappear.

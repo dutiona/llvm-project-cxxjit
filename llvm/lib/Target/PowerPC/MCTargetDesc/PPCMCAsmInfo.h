@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of the MCAsmInfoDarwin class.
+// This file contains the declarations of the PowerPC MCAsmInfo classes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,22 +15,23 @@
 
 #include "llvm/MC/MCAsmInfoDarwin.h"
 #include "llvm/MC/MCAsmInfoELF.h"
+#include "llvm/MC/MCAsmInfoXCOFF.h"
 
 namespace llvm {
 class Triple;
-
-class PPCMCAsmInfoDarwin : public MCAsmInfoDarwin {
-  virtual void anchor();
-
-public:
-  explicit PPCMCAsmInfoDarwin(bool is64Bit, const Triple &);
-};
 
 class PPCELFMCAsmInfo : public MCAsmInfoELF {
   void anchor() override;
 
 public:
   explicit PPCELFMCAsmInfo(bool is64Bit, const Triple &);
+};
+
+class PPCXCOFFMCAsmInfo : public MCAsmInfoXCOFF {
+  virtual void anchor();
+
+public:
+  explicit PPCXCOFFMCAsmInfo(bool is64Bit, const Triple &);
 };
 
 } // namespace llvm

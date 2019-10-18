@@ -16,6 +16,7 @@
 #include "clang/Basic/DebugInfoOptions.h"
 #include "clang/Basic/Sanitizers.h"
 #include "clang/Basic/XRayInstr.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Regex.h"
@@ -46,23 +47,19 @@ protected:
 class CodeGenOptions : public CodeGenOptionsBase {
 public:
   enum InliningMethod {
-    NormalInlining,     // Use the standard function inlining pass.
-    OnlyHintInlining,   // Inline only (implicitly) hinted functions.
-    OnlyAlwaysInlining  // Only run the always inlining pass.
+    NormalInlining,    // Use the standard function inlining pass.
+    OnlyHintInlining,  // Inline only (implicitly) hinted functions.
+    OnlyAlwaysInlining // Only run the always inlining pass.
   };
 
   enum VectorLibrary {
     NoLibrary,  // Don't use any vector library.
     Accelerate, // Use the Accelerate framework.
+    MASSV,      // IBM MASS vector library.
     SVML        // Intel short vector math library.
   };
 
-
-  enum ObjCDispatchMethodKind {
-    Legacy = 0,
-    NonLegacy = 1,
-    Mixed = 2
-  };
+  enum ObjCDispatchMethodKind { Legacy = 0, NonLegacy = 1, Mixed = 2 };
 
   enum TLSModel {
     GeneralDynamicTLSModel,
@@ -70,8 +67,6 @@ public:
     InitialExecTLSModel,
     LocalExecTLSModel
   };
-
-  enum DwarfFissionKind { NoFission, SplitFileFission, SingleFileFission };
 
   /// Clang versions with different platform ABI conformance.
   enum class ClangABI {
@@ -91,9 +86,9 @@ public:
   };
 
   enum StructReturnConventionKind {
-    SRCK_Default,  // No special option was passed.
-    SRCK_OnStack,  // Small structs on the stack (-fpcc-struct-return).
-    SRCK_InRegs    // Small structs in registers (-freg-struct-return).
+    SRCK_Default, // No special option was passed.
+    SRCK_OnStack, // Small structs on the stack (-fpcc-struct-return).
+    SRCK_InRegs   // Small structs in registers (-freg-struct-return).
   };
 
   enum ProfileInstrKind {
@@ -101,22 +96,29 @@ public:
     ProfileClangInstr, // Clang instrumentation to generate execution counts
                        // to use with PGO.
     ProfileIRInstr,    // IR level PGO instrumentation in LLVM.
+    ProfileCSIRInstr, // IR level PGO context sensitive instrumentation in LLVM.
   };
 
   enum EmbedBitcodeKind {
-    Embed_Off,      // No embedded bitcode.
-    Embed_All,      // Embed both bitcode and commandline in the output.
-    Embed_Bitcode,  // Embed just the bitcode in the output.
-    Embed_Marker    // Embed a marker as a placeholder for bitcode.
+    Embed_Off,     // No embedded bitcode.
+    Embed_All,     // Embed both bitcode and commandline in the output.
+    Embed_Bitcode, // Embed just the bitcode in the output.
+    Embed_Marker   // Embed a marker as a placeholder for bitcode.
   };
 
-  enum SignReturnAddressScope {
+  enum class SignReturnAddressScope {
     None,    // No signing for any function
     NonLeaf, // Sign the return address of functions that spill LR
     All      // Sign the return address of all functions
   };
 
-  enum SignReturnAddressKeyValue { AKey, BKey };
+  enum class SignReturnAddressKeyValue { AKey, BKey };
+
+  enum class FramePointerKind {
+    None,    // Omit all frame pointers.
+    NonLeaf, // Keep non-leaf frame pointers.
+    All,     // Keep all frame pointers.
+  };
 
   /// The code model to use (-mcmodel).
   std::string CodeModel;
@@ -158,7 +160,7 @@ public:
   std::string FloatABI;
 
   /// The floating-point denormal mode to use.
-  std::string FPDenormalMode;
+  llvm::DenormalMode FPDenormalMode = llvm::DenormalMode::Invalid;
 
   /// The float precision limit to use, if non-empty.
   std::string LimitFloatPrecision;
@@ -184,9 +186,12 @@ public:
   /// file, for example with -save-temps.
   std::string MainFileName;
 
-  /// The name for the split debug info file that we'll break out. This is used
-  /// in the backend for setting the name in the skeleton cu.
+  /// The name for the split debug info file used for the DW_AT_[GNU_]dwo_name
+  /// attribute in the skeleton CU.
   std::string SplitDwarfFile;
+
+  /// Output filename for the split debug info, not used in the skeleton CU.
+  std::string SplitDwarfOutput;
 
   /// The name of the relocation model to use.
   llvm::Reloc::Model RelocationModel;
@@ -204,8 +209,8 @@ public:
   /// A list of linker options to embed in the object file.
   std::vector<std::string> LinkerOptions;
 
-  /// Name of the profile file to use as output for -fprofile-instr-generate
-  /// and -fprofile-generate.
+  /// Name of the profile file to use as output for -fprofile-instr-generate,
+  /// -fprofile-generate, and -fcs-profile-generate.
   std::string InstrProfileOutput;
 
   /// Name of the profile file to use with -fprofile-sample-use.
@@ -237,6 +242,17 @@ public:
   /// The name of the file to which the backend should save YAML optimization
   /// records.
   std::string OptRecordFile;
+
+  /// The regex that filters the passes that should be saved to the optimization
+  /// records.
+  std::string OptRecordPasses;
+
+  /// The format used for serializing remarks (default: YAML)
+  std::string OptRecordFormat;
+
+  /// The name of the partition that symbols are assigned to, specified with
+  /// -fsymbol-partition (see https://lld.llvm.org/Partitions.html).
+  std::string SymbolPartition;
 
   /// Regular expression to select optimizations for which we should enable
   /// optimization remarks. Transformation passes whose name matches this
@@ -310,8 +326,8 @@ public:
 public:
   // Define accessors/mutators for code generation options of enumeration type.
 #define CODEGENOPT(Name, Bits, Default)
-#define ENUM_CODEGENOPT(Name, Type, Bits, Default) \
-  Type get##Name() const { return static_cast<Type>(Name); } \
+#define ENUM_CODEGENOPT(Name, Type, Bits, Default)                             \
+  Type get##Name() const { return static_cast<Type>(Name); }                   \
   void set##Name(Type Value) { Name = static_cast<unsigned>(Value); }
 #include "clang/Basic/CodeGenOptions.def"
 
@@ -331,8 +347,11 @@ public:
   }
 
   /// Check if IR level profile instrumentation is on.
-  bool hasProfileIRInstr() const {
-    return getProfileInstr() == ProfileIRInstr;
+  bool hasProfileIRInstr() const { return getProfileInstr() == ProfileIRInstr; }
+
+  /// Check if CS IR level profile instrumentation is on.
+  bool hasProfileCSIRInstr() const {
+    return getProfileInstr() == ProfileCSIRInstr;
   }
 
   /// Check if Clang profile use is on.
@@ -342,11 +361,19 @@ public:
 
   /// Check if IR level profile use is on.
   bool hasProfileIRUse() const {
-    return getProfileUse() == ProfileIRInstr;
+    return getProfileUse() == ProfileIRInstr ||
+           getProfileUse() == ProfileCSIRInstr;
   }
 
+  /// Check if CSIR profile use is on.
+  bool hasProfileCSIRUse() const { return getProfileUse() == ProfileCSIRInstr; }
+
+  /// Check if type and variable info should be emitted.
+  bool hasReducedDebugInfo() const {
+    return getDebugInfo() >= codegenoptions::DebugInfoConstructor;
+  }
 };
 
-}  // end namespace clang
+} // end namespace clang
 
 #endif

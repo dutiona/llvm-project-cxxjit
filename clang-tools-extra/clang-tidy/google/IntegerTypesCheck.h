@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_GOOGLE_INTEGERTYPESCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_GOOGLE_INTEGERTYPESCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
 #include <memory>
 
@@ -24,7 +24,7 @@ namespace runtime {
 /// Finds uses of `short`, `long` and `long long` and suggest replacing them
 /// with `u?intXX(_t)?`.
 ///
-/// Correspondig cpplint.py check: 'runtime/int'.
+/// Corresponding cpplint.py check: 'runtime/int'.
 class IntegerTypesCheck : public ClangTidyCheck {
 public:
   IntegerTypesCheck(StringRef Name, ClangTidyContext *Context);

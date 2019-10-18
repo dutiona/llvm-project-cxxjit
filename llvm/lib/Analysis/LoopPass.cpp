@@ -20,7 +20,9 @@
 #include "llvm/IR/OptBisect.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/PassTimingInfo.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
@@ -209,6 +211,8 @@ bool LPPassManager::runOnFunction(Function &F) {
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
       LoopPass *P = getContainedPass(Index);
 
+      llvm::TimeTraceScope LoopPassScope("RunLoopPass", P->getPassName());
+
       dumpPassInfo(P, EXECUTION_MSG, ON_LOOP_MSG,
                    CurrentLoop->getHeader()->getName());
       dumpRequiredSet(P);
@@ -383,16 +387,20 @@ void LoopPass::assignPassManager(PMStack &PMS,
   LPPM->add(this);
 }
 
+static std::string getDescription(const Loop &L) {
+  return "loop";
+}
+
 bool LoopPass::skipLoop(const Loop *L) const {
   const Function *F = L->getHeader()->getParent();
   if (!F)
     return false;
   // Check the opt bisect limit.
-  LLVMContext &Context = F->getContext();
-  if (!Context.getOptPassGate().shouldRunPass(this, *L))
+  OptPassGate &Gate = F->getContext().getOptPassGate();
+  if (Gate.isEnabled() && !Gate.shouldRunPass(this, getDescription(*L)))
     return true;
   // Check for the OptimizeNone attribute.
-  if (F->hasFnAttribute(Attribute::OptimizeNone)) {
+  if (F->hasOptNone()) {
     // FIXME: Report this to dbgs() only once per function.
     LLVM_DEBUG(dbgs() << "Skipping pass '" << getPassName() << "' in function "
                       << F->getName() << "\n");
@@ -400,6 +408,10 @@ bool LoopPass::skipLoop(const Loop *L) const {
     return true;
   }
   return false;
+}
+
+LCSSAVerificationPass::LCSSAVerificationPass() : FunctionPass(ID) {
+  initializeLCSSAVerificationPassPass(*PassRegistry::getPassRegistry());
 }
 
 char LCSSAVerificationPass::ID = 0;

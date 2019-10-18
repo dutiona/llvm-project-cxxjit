@@ -24,6 +24,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SpecialCaseList.h"
+#include "llvm/Support/VirtualFileSystem.h"
 
 #include <cstdlib>
 
@@ -130,8 +131,8 @@ void printIndirectCFInstructions(FileAnalysis &Analysis,
 
   std::map<unsigned, uint64_t> BlameCounter;
 
-  for (uint64_t Address : Analysis.getIndirectInstructions()) {
-    const auto &InstrMeta = Analysis.getInstructionOrDie(Address);
+  for (object::SectionedAddress Address : Analysis.getIndirectInstructions()) {
+    const auto &InstrMeta = Analysis.getInstructionOrDie(Address.Address);
     GraphResult Graph = GraphBuilder::buildFlowGraph(Analysis, Address);
 
     CFIProtectionStatus ProtectionStatus =
@@ -153,7 +154,7 @@ void printIndirectCFInstructions(FileAnalysis &Analysis,
 
     auto InliningInfo = Analysis.symbolizeInlinedCode(Address);
     if (!InliningInfo || InliningInfo->getNumberOfFrames() == 0) {
-      errs() << "Failed to symbolise " << format_hex(Address, 2)
+      errs() << "Failed to symbolise " << format_hex(Address.Address, 2)
              << " with line tables from " << InputFilename << "\n";
       exit(EXIT_FAILURE);
     }
@@ -164,9 +165,9 @@ void printIndirectCFInstructions(FileAnalysis &Analysis,
     if (!Summarize) {
       for (uint32_t i = 0; i < InliningInfo->getNumberOfFrames(); ++i) {
         const auto &Line = InliningInfo->getFrame(i);
-        outs() << "  " << format_hex(Address, 2) << " = " << Line.FileName
-               << ":" << Line.Line << ":" << Line.Column << " ("
-               << Line.FunctionName << ")\n";
+        outs() << "  " << format_hex(Address.Address, 2) << " = "
+               << Line.FileName << ":" << Line.Line << ":" << Line.Column
+               << " (" << Line.FunctionName << ")\n";
       }
     }
 
@@ -261,7 +262,8 @@ int main(int argc, char **argv) {
   std::unique_ptr<SpecialCaseList> SpecialCaseList;
   if (BlacklistFilename != "-") {
     std::string Error;
-    SpecialCaseList = SpecialCaseList::create({BlacklistFilename}, Error);
+    SpecialCaseList = SpecialCaseList::create({BlacklistFilename},
+                                              *vfs::getRealFileSystem(), Error);
     if (!SpecialCaseList) {
       errs() << "Failed to get blacklist: " << Error << "\n";
       exit(EXIT_FAILURE);

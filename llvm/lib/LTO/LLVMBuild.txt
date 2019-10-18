@@ -25,6 +25,7 @@ required_libraries =
  BitWriter
  CodeGen
  Core
+ Extensions
  IPO
  InstCombine
  Linker
@@ -32,6 +33,7 @@ required_libraries =
  ObjCARC
  Object
  Passes
+ Remarks
  Scalar
  Support
  Target

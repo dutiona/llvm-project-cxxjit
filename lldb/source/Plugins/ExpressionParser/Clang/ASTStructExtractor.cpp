@@ -29,8 +29,8 @@ using namespace lldb_private;
 ASTStructExtractor::ASTStructExtractor(ASTConsumer *passthrough,
                                        const char *struct_name,
                                        ClangFunctionCaller &function)
-    : m_ast_context(NULL), m_passthrough(passthrough), m_passthrough_sema(NULL),
-      m_sema(NULL), m_action(NULL), m_function(function),
+    : m_ast_context(nullptr), m_passthrough(passthrough),
+      m_passthrough_sema(nullptr), m_sema(nullptr), m_function(function),
       m_struct_name(struct_name) {
   if (!m_passthrough)
     return;
@@ -57,7 +57,7 @@ void ASTStructExtractor::ExtractFromFunctionDecl(FunctionDecl *F) {
   if (!body_compound_stmt)
     return; // do we have to handle this?
 
-  RecordDecl *struct_decl = NULL;
+  RecordDecl *struct_decl = nullptr;
 
   StringRef desired_name(m_struct_name);
 
@@ -170,15 +170,13 @@ void ASTStructExtractor::PrintStats() {
 
 void ASTStructExtractor::InitializeSema(Sema &S) {
   m_sema = &S;
-  m_action = reinterpret_cast<Action *>(m_sema);
 
   if (m_passthrough_sema)
     m_passthrough_sema->InitializeSema(S);
 }
 
 void ASTStructExtractor::ForgetSema() {
-  m_sema = NULL;
-  m_action = NULL;
+  m_sema = nullptr;
 
   if (m_passthrough_sema)
     m_passthrough_sema->ForgetSema();

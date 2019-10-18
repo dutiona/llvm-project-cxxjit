@@ -39,6 +39,7 @@ void llvm::initializeTransformUtils(PassRegistry &Registry) {
   initializeMetaRenamerPass(Registry);
   initializeStripGCRelocatesPass(Registry);
   initializePredicateInfoPrinterLegacyPassPass(Registry);
+  initializeInjectTLIMappingsLegacyPass(Registry);
 }
 
 /// LLVMInitializeTransformUtils - C binding for initializeTransformUtilsPasses.
@@ -54,3 +55,6 @@ void LLVMAddPromoteMemoryToRegisterPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createPromoteMemoryToRegisterPass());
 }
 
+void LLVMAddAddDiscriminatorsPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createAddDiscriminatorsPass());
+}

@@ -587,7 +587,8 @@ void Util::layoutSectionsInTextSegment(size_t hlcSize, SegmentInfo *seg,
 
 void Util::assignAddressesToSections(const NormalizedFile &file) {
   // NOTE!: Keep this in sync with organizeSections.
-  size_t hlcSize = headerAndLoadCommandsSize(file);
+  size_t hlcSize = headerAndLoadCommandsSize(file,
+                                      _ctx.generateFunctionStartsLoadCommand());
   uint64_t address = 0;
   for (SegmentInfo *seg : _segmentInfos) {
     if (seg->name.equals("__PAGEZERO")) {
@@ -1490,7 +1491,7 @@ void Util::addRebaseAndBindingInfo(const lld::File &atomFile,
 
 void Util::fixLazyReferenceImm(const DefinedAtom *atom, uint32_t offset,
                                NormalizedFile &file) {
-  for (const auto &ref : *atom) {
+  for (const Reference *ref : *atom) {
     const DefinedAtom *da = dyn_cast<DefinedAtom>(ref->target());
     if (da == nullptr)
       return;

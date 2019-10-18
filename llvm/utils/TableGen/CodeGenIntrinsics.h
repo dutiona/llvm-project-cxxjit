@@ -123,6 +123,9 @@ struct CodeGenIntrinsic {
   /// True if the intrinsic is no-return.
   bool isNoReturn;
 
+  /// True if the intrinsic is will-return.
+  bool isWillReturn;
+
   /// True if the intrinsic is cold.
   bool isCold;
 
@@ -136,12 +139,30 @@ struct CodeGenIntrinsic {
   // True if the intrinsic is marked as speculatable.
   bool isSpeculatable;
 
-  enum ArgAttribute { NoCapture, Returned, ReadOnly, WriteOnly, ReadNone };
+  enum ArgAttribute {
+    NoCapture,
+    NoAlias,
+    Returned,
+    ReadOnly,
+    WriteOnly,
+    ReadNone,
+    ImmArg
+  };
+
   std::vector<std::pair<unsigned, ArgAttribute>> ArgumentAttributes;
 
   bool hasProperty(enum SDNP Prop) const {
     return Properties & (1 << Prop);
   }
+
+  /// Returns true if the parameter at \p ParamIdx is a pointer type. Returns
+  /// false if the parameter is not a pointer, or \p ParamIdx is greater than
+  /// the size of \p IS.ParamVTs.
+  ///
+  /// Note that this requires that \p IS.ParamVTs is available.
+  bool isParamAPointer(unsigned ParamIdx) const;
+
+  bool isParamImmArg(unsigned ParamIdx) const;
 
   CodeGenIntrinsic(Record *R);
 };
@@ -157,7 +178,7 @@ public:
   };
   std::vector<TargetSet> Targets;
 
-  explicit CodeGenIntrinsicTable(const RecordKeeper &RC, bool TargetOnly);
+  explicit CodeGenIntrinsicTable(const RecordKeeper &RC);
   CodeGenIntrinsicTable() = default;
 
   bool empty() const { return Intrinsics.empty(); }

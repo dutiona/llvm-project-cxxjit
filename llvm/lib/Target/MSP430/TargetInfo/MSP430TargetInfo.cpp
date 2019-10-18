@@ -6,8 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MSP430.h"
-#include "llvm/IR/Module.h"
+#include "TargetInfo/MSP430TargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
@@ -16,7 +15,7 @@ Target &llvm::getTheMSP430Target() {
   return TheMSP430Target;
 }
 
-extern "C" void LLVMInitializeMSP430TargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMSP430TargetInfo() {
   RegisterTarget<Triple::msp430> X(getTheMSP430Target(), "msp430",
                                    "MSP430 [experimental]", "MSP430");
 }

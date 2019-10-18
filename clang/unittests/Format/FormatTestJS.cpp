@@ -1479,6 +1479,9 @@ TEST_F(FormatTestJS, TypeAnnotations) {
       "                    .someFunction(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);");
   verifyFormat("const xIsALongIdent:\n""    YJustBarelyFitsLinex[];",
       getGoogleJSStyleWithColumns(20));
+  verifyFormat("const x = {\n"
+               "  y: 1\n"
+               "} as const;");
 }
 
 TEST_F(FormatTestJS, UnionIntersectionTypes) {
@@ -1962,6 +1965,12 @@ TEST_F(FormatTestJS, NestedTemplateStrings) {
 TEST_F(FormatTestJS, TaggedTemplateStrings) {
   verifyFormat("var x = html`<ul>`;");
   verifyFormat("yield `hello`;");
+  verifyFormat("var f = {\n"
+               "  param: longTagName`This is a ${\n"
+               "                    'really'} long line`\n"
+               "};",
+               "var f = {param: longTagName`This is a ${'really'} long line`};",
+               getGoogleJSStyleWithColumns(40));
 }
 
 TEST_F(FormatTestJS, CastSyntax) {
@@ -2213,6 +2222,16 @@ TEST_F(FormatTestJS, NonNullAssertionOperator) {
   verifyFormat("return !!x;\n");
 }
 
+TEST_F(FormatTestJS, NullPropagatingOperator) {
+  verifyFormat("let x = foo?.bar?.baz();\n");
+  verifyFormat("let x = foo?.(foo);\n");
+  verifyFormat("let x = foo?.['arr'];\n");
+}
+
+TEST_F(FormatTestJS, NullishCoalescingOperator) {
+  verifyFormat("const val = something ?? 'some other default';\n");
+}
+
 TEST_F(FormatTestJS, Conditional) {
   verifyFormat("y = x ? 1 : 2;");
   verifyFormat("x ? 1 : 2;");
@@ -2328,5 +2347,34 @@ TEST_F(FormatTestJS, ConditionalTypes) {
       "                     never) extends((k: infer I) => void) ? I : never;");
 }
 
-} // end namespace tooling
+TEST_F(FormatTestJS, SupportPrivateFieldsAndMethods) {
+  verifyFormat("class Example {\n"
+               "  pub = 1;\n"
+               "  #priv = 2;\n"
+               "  static pub2 = 'foo';\n"
+               "  static #priv2 = 'bar';\n"
+               "  method() {\n"
+               "    this.#priv = 5;\n"
+               "  }\n"
+               "  static staticMethod() {\n"
+               "    switch (this.#priv) {\n"
+               "      case '1':\n"
+               "        #priv = 3;\n"
+               "        break;\n"
+               "    }\n"
+               "  }\n"
+               "  #privateMethod() {\n"
+               "    this.#privateMethod();  // infinite loop\n"
+               "  }\n"
+               "  static #staticPrivateMethod() {}\n");
+}
+
+TEST_F(FormatTestJS, DeclaredFields) {
+  verifyFormat("class Example {\n"
+               "  declare pub: string;\n"
+               "  declare private priv: string;\n"
+               "}\n");
+}
+
+} // namespace format
 } // end namespace clang

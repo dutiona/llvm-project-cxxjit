@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstring>
 #include <errno.h>
+#include <io.h>
 #include <iomanip>
 #include <signal.h>
 #include <stdio.h>
@@ -85,11 +86,11 @@ void CALLBACK AlarmHandler(PVOID, BOOLEAN) {
 class TimerQ {
   HANDLE TimerQueue;
  public:
-  TimerQ() : TimerQueue(NULL) {};
+  TimerQ() : TimerQueue(NULL) {}
   ~TimerQ() {
     if (TimerQueue)
       DeleteTimerQueueEx(TimerQueue, NULL);
-  };
+  }
   void SetTimer(int Seconds) {
     if (!TimerQueue) {
       TimerQueue = CreateTimerQueue();
@@ -104,16 +105,12 @@ class TimerQ {
       Printf("libFuzzer: CreateTimerQueueTimer failed.\n");
       exit(1);
     }
-  };
+  }
 };
 
 static TimerQ Timer;
 
 static void CrashHandler(int) { Fuzzer::StaticCrashSignalCallback(); }
-
-bool Mprotect(void *Ptr, size_t Size, bool AllowReadWrite) {
-  return false;  // UNIMPLEMENTED
-}
 
 void SetSignalHandler(const FuzzingOptions& Options) {
   HandlerOpt = &Options;
@@ -192,6 +189,14 @@ std::string DisassembleCmd(const std::string &FileName) {
 
 std::string SearchRegexCmd(const std::string &Regex) {
   return "findstr /r \"" + Regex + "\"";
+}
+
+void DiscardOutput(int Fd) {
+  FILE* Temp = fopen("nul", "w");
+  if (!Temp)
+    return;
+  _dup2(_fileno(Temp), Fd);
+  fclose(Temp);
 }
 
 } // namespace fuzzer

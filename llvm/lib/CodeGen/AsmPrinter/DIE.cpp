@@ -211,7 +211,7 @@ const DIE *DIE::getUnitDie() const {
   return nullptr;
 }
 
-const DIEUnit *DIE::getUnit() const {
+DIEUnit *DIE::getUnit() const {
   const DIE *UnitDie = getUnitDie();
   if (UnitDie)
     return UnitDie->Owner.dyn_cast<DIEUnit*>();
@@ -319,8 +319,10 @@ DIEUnit::DIEUnit(uint16_t V, uint8_t A, dwarf::Tag UnitTag)
 {
   Die.Owner = this;
   assert((UnitTag == dwarf::DW_TAG_compile_unit ||
+          UnitTag == dwarf::DW_TAG_skeleton_unit ||
           UnitTag == dwarf::DW_TAG_type_unit ||
-          UnitTag == dwarf::DW_TAG_partial_unit) && "expected a unit TAG");
+          UnitTag == dwarf::DW_TAG_partial_unit) &&
+         "expected a unit TAG");
 }
 
 void DIEValue::EmitValue(const AsmPrinter *AP) const {
@@ -504,6 +506,23 @@ unsigned DIELabel::SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
 
 LLVM_DUMP_METHOD
 void DIELabel::print(raw_ostream &O) const { O << "Lbl: " << Label->getName(); }
+
+//===----------------------------------------------------------------------===//
+// DIEBaseTypeRef Implementation
+//===----------------------------------------------------------------------===//
+
+void DIEBaseTypeRef::EmitValue(const AsmPrinter *AP, dwarf::Form Form) const {
+  uint64_t Offset = CU->ExprRefedBaseTypes[Index].Die->getOffset();
+  assert(Offset < (1ULL << (ULEB128PadSize * 7)) && "Offset wont fit");
+  AP->EmitULEB128(Offset, nullptr, ULEB128PadSize);
+}
+
+unsigned DIEBaseTypeRef::SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
+  return ULEB128PadSize;
+}
+
+LLVM_DUMP_METHOD
+void DIEBaseTypeRef::print(raw_ostream &O) const { O << "BaseTypeRef: " << Index; }
 
 //===----------------------------------------------------------------------===//
 // DIEDelta Implementation
@@ -781,6 +800,8 @@ void DIEBlock::print(raw_ostream &O) const {
 //===----------------------------------------------------------------------===//
 
 unsigned DIELocList::SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
+  if (Form == dwarf::DW_FORM_loclistx)
+    return getULEB128Size(Index);
   if (Form == dwarf::DW_FORM_data4)
     return 4;
   if (Form == dwarf::DW_FORM_sec_offset)
@@ -791,6 +812,10 @@ unsigned DIELocList::SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
 /// EmitValue - Emit label value.
 ///
 void DIELocList::EmitValue(const AsmPrinter *AP, dwarf::Form Form) const {
+  if (Form == dwarf::DW_FORM_loclistx) {
+    AP->EmitULEB128(Index);
+    return;
+  }
   DwarfDebug *DD = AP->getDwarfDebug();
   MCSymbol *Label = DD->getDebugLocs().getList(Index).Label;
   AP->emitDwarfSymbolReference(Label, /*ForceOffset*/ DD->useSplitDwarf());

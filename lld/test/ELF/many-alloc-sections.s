@@ -2,11 +2,11 @@
 // RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux-gnu %s -o %t.o
 // RUN: echo "SECTIONS { . = SIZEOF_HEADERS; .text : { *(.text) } }" > %t.script
 // RUN: ld.lld -T %t.script %t.o -o %t
-// RUN: llvm-readobj -t %t | FileCheck %s
+// RUN: llvm-readobj --symbols %t | FileCheck %s
 
 // Test that _start is in the correct section.
 // CHECK:      Name: _start
-// CHECK-NEXT: Value: 0x120
+// CHECK-NEXT: Value:
 // CHECK-NEXT: Size: 0
 // CHECK-NEXT: Binding: Global
 // CHECK-NEXT: Type: None

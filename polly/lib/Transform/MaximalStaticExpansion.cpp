@@ -15,12 +15,11 @@
 #include "polly/LinkAllPasses.h"
 #include "polly/ScopInfo.h"
 #include "polly/ScopPass.h"
-#include "polly/Support/GICHelper.h"
 #include "polly/Support/ISLTools.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
-#include "llvm/Pass.h"
+#include "llvm/InitializePasses.h"
 #include "isl/isl-noexceptions.h"
 #include "isl/union_map.h"
 #include <cassert>

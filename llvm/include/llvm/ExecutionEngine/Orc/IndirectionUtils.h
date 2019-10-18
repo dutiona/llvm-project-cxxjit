@@ -84,7 +84,7 @@ public:
     return std::move(LTP);
   }
 
-  /// Get a free trampoline. Returns an error if one can not be provide (e.g.
+  /// Get a free trampoline. Returns an error if one can not be provided (e.g.
   /// because the pool is empty and can not be grown).
   Expected<JITTargetAddress> getTrampoline() override {
     std::lock_guard<std::mutex> Lock(LTPMutex);
@@ -146,13 +146,13 @@ private:
     std::error_code EC;
     auto TrampolineBlock =
         sys::OwningMemoryBlock(sys::Memory::allocateMappedMemory(
-            sys::Process::getPageSize(), nullptr,
+            sys::Process::getPageSizeEstimate(), nullptr,
             sys::Memory::MF_READ | sys::Memory::MF_WRITE, EC));
     if (EC)
       return errorCodeToError(EC);
 
     unsigned NumTrampolines =
-        (sys::Process::getPageSize() - ORCABI::PointerSize) /
+        (sys::Process::getPageSizeEstimate() - ORCABI::PointerSize) /
         ORCABI::TrampolineSize;
 
     uint8_t *TrampolineMem = static_cast<uint8_t *>(TrampolineBlock.base());

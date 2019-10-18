@@ -6,8 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Hexagon.h"
-#include "llvm/IR/Module.h"
+#include "TargetInfo/HexagonTargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
@@ -16,7 +15,7 @@ Target &llvm::getTheHexagonTarget() {
   return TheHexagonTarget;
 }
 
-extern "C" void LLVMInitializeHexagonTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeHexagonTargetInfo() {
   RegisterTarget<Triple::hexagon, /*HasJIT=*/true> X(
       getTheHexagonTarget(), "hexagon", "Hexagon", "Hexagon");
 }

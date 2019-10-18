@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_MAGICNUMBERSCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_MAGICNUMBERSCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/SmallVector.h>
 #include <vector>
@@ -40,9 +40,16 @@ private:
                         const FloatingLiteral *) const {
     return false;
   }
-
   bool isSyntheticValue(const clang::SourceManager *SourceManager,
                         const IntegerLiteral *Literal) const;
+
+  bool isBitFieldWidth(const clang::ast_matchers::MatchFinder::MatchResult &,
+                       const FloatingLiteral &) const {
+     return false;
+  }
+
+  bool isBitFieldWidth(const clang::ast_matchers::MatchFinder::MatchResult &Result,
+                       const IntegerLiteral &Literal) const;
 
   template <typename L>
   void checkBoundMatch(const ast_matchers::MatchFinder::MatchResult &Result,
@@ -64,6 +71,9 @@ private:
     if (isSyntheticValue(Result.SourceManager, MatchedLiteral))
       return;
 
+    if (isBitFieldWidth(Result, *MatchedLiteral))
+      return;
+
     const StringRef LiteralSourceText = Lexer::getSourceText(
         CharSourceRange::getTokenRange(MatchedLiteral->getSourceRange()),
         *Result.SourceManager, getLangOpts());
@@ -74,6 +84,7 @@ private:
   }
 
   const bool IgnoreAllFloatingPointValues;
+  const bool IgnoreBitFieldsWidths;
   const bool IgnorePowersOf2IntegerValues;
 
   constexpr static unsigned SensibleNumberOfMagicValueExceptions = 16;

@@ -43,8 +43,10 @@ class LLVM_LIBRARY_VISIBILITY PPCTargetInfo : public TargetInfo {
     ArchDefinePwr7 = 1 << 11,
     ArchDefinePwr8 = 1 << 12,
     ArchDefinePwr9 = 1 << 13,
-    ArchDefineA2 = 1 << 14,
-    ArchDefineA2q = 1 << 15
+    ArchDefineFuture = 1 << 14,
+    ArchDefineA2 = 1 << 15,
+    ArchDefineA2q = 1 << 16,
+    ArchDefineE500 = 1 << 17
   } ArchDefineTypes;
 
 
@@ -53,6 +55,7 @@ class LLVM_LIBRARY_VISIBILITY PPCTargetInfo : public TargetInfo {
   static const char *const GCCRegNames[];
   static const TargetInfo::GCCRegAlias GCCRegAliases[];
   std::string CPU;
+  enum PPCFloatABI { HardFloat, SoftFloat } FloatABI;
 
   // Target cpu features.
   bool HasAltivec = false;
@@ -65,6 +68,7 @@ class LLVM_LIBRARY_VISIBILITY PPCTargetInfo : public TargetInfo {
   bool HasBPERMD = false;
   bool HasExtDiv = false;
   bool HasP9Vector = false;
+  bool HasSPE = false;
 
 protected:
   std::string ABI;
@@ -83,8 +87,7 @@ public:
 
   // Note: GCC recognizes the following additional cpus:
   //  401, 403, 405, 405fp, 440fp, 464, 464fp, 476, 476fp, 505, 740, 801,
-  //  821, 823, 8540, 8548, e300c2, e300c3, e500mc64, e6500, 860, cell,
-  //  titan, rs64.
+  //  821, 823, 8540, e300c2, e300c3, e500mc64, e6500, 860, cell, titan, rs64.
   bool isValidCPUName(StringRef Name) const override;
   void fillValidCPUList(SmallVectorImpl<StringRef> &Values) const override;
 
@@ -143,6 +146,12 @@ public:
                      ArchDefinePwr9 | ArchDefinePwr8 | ArchDefinePwr7 |
                          ArchDefinePwr6 | ArchDefinePwr5x | ArchDefinePwr5 |
                          ArchDefinePwr4 | ArchDefinePpcgr | ArchDefinePpcsq)
+              .Case("future",
+                    ArchDefineFuture | ArchDefinePwr9 | ArchDefinePwr8 |
+                        ArchDefinePwr7 | ArchDefinePwr6 | ArchDefinePwr5x |
+                        ArchDefinePwr5 | ArchDefinePwr4 | ArchDefinePpcgr |
+                        ArchDefinePpcsq)
+              .Cases("8548", "e500", ArchDefineE500)
               .Default(ArchDefineNone);
     }
     return CPUKnown;
@@ -161,6 +170,8 @@ public:
   initFeatureMap(llvm::StringMap<bool> &Features, DiagnosticsEngine &Diags,
                  StringRef CPU,
                  const std::vector<std::string> &FeaturesVec) const override;
+
+  void addFutureSpecificFeatures(llvm::StringMap<bool> &Features) const;
 
   bool handleTargetFeatures(std::vector<std::string> &Features,
                             DiagnosticsEngine &Diags) override;
@@ -183,8 +194,12 @@ public:
       return false;
     case 'O': // Zero
       break;
-    case 'b': // Base register
     case 'f': // Floating point register
+      // Don't use floating point registers on soft float ABI.
+      if (FloatABI == SoftFloat)
+        return false;
+      LLVM_FALLTHROUGH;
+    case 'b': // Base register
       Info.setAllowsRegister();
       break;
     // FIXME: The following are added to allow parsing.
@@ -192,13 +207,18 @@ public:
     // Also, is more specific checking needed?  I.e. specific registers?
     case 'd': // Floating point register (containing 64-bit value)
     case 'v': // Altivec vector register
+      // Don't use floating point and altivec vector registers
+      // on soft float ABI
+      if (FloatABI == SoftFloat)
+        return false;
       Info.setAllowsRegister();
       break;
     case 'w':
       switch (Name[1]) {
       case 'd': // VSX vector register to hold vector double data
       case 'f': // VSX vector register to hold vector float data
-      case 's': // VSX vector register to hold scalar float data
+      case 's': // VSX vector register to hold scalar double data
+      case 'w': // VSX vector register to hold scalar double data
       case 'a': // Any VSX register
       case 'c': // An individual CR bit
       case 'i': // FP or VSX register to hold 64-bit integers data
@@ -256,11 +276,12 @@ public:
       break;
     case 'Q': // Memory operand that is an offset from a register (it is
               // usually better to use `m' or `es' in asm statements)
+      Info.setAllowsRegister();
+      LLVM_FALLTHROUGH;
     case 'Z': // Memory operand that is an indexed or indirect from a
               // register (it is usually better to use `m' or `es' in
               // asm statements)
       Info.setAllowsMemory();
-      Info.setAllowsRegister();
       break;
     case 'R': // AIX TOC entry
     case 'a': // Address operand that is an indexed or indirect from a
@@ -304,11 +325,14 @@ public:
 
   bool hasSjLjLowering() const override { return true; }
 
-  bool useFloat128ManglingForLongDouble() const override {
-    return LongDoubleWidth == 128 &&
-           LongDoubleFormat == &llvm::APFloat::PPCDoubleDouble() &&
-           getTriple().isOSBinFormatELF();
+  const char *getLongDoubleMangling() const override {
+    if (LongDoubleWidth == 64)
+      return "e";
+    return LongDoubleFormat == &llvm::APFloat::PPCDoubleDouble()
+               ? "g"
+               : "u9__ieee128";
   }
+  const char *getFloat128Mangling() const override { return "u9__ieee128"; }
 };
 
 class LLVM_LIBRARY_VISIBILITY PPC32TargetInfo : public PPCTargetInfo {
@@ -325,19 +349,20 @@ public:
       PtrDiffType = SignedInt;
       IntPtrType = SignedInt;
       break;
+    case llvm::Triple::AIX:
+      SizeType = UnsignedLong;
+      PtrDiffType = SignedLong;
+      IntPtrType = SignedLong;
+      SuitableAlign = 64;
+      break;
     default:
       break;
     }
 
-    switch (getTriple().getOS()) {
-    case llvm::Triple::FreeBSD:
-    case llvm::Triple::NetBSD:
-    case llvm::Triple::OpenBSD:
+    if (Triple.isOSFreeBSD() || Triple.isOSNetBSD() || Triple.isOSOpenBSD() ||
+        Triple.getOS() == llvm::Triple::AIX || Triple.isMusl()) {
       LongDoubleWidth = LongDoubleAlign = 64;
       LongDoubleFormat = &llvm::APFloat::IEEEdouble();
-      break;
-    default:
-      break;
     }
 
     // PPC32 supports atomics up to 4 bytes.
@@ -368,13 +393,13 @@ public:
       ABI = "elfv1";
     }
 
-    switch (getTriple().getOS()) {
-    case llvm::Triple::FreeBSD:
+    if (Triple.getOS() == llvm::Triple::AIX)
+      SuitableAlign = 64;
+
+    if (Triple.isOSFreeBSD() || Triple.getOS() == llvm::Triple::AIX ||
+        Triple.isMusl()) {
       LongDoubleWidth = LongDoubleAlign = 64;
       LongDoubleFormat = &llvm::APFloat::IEEEdouble();
-      break;
-    default:
-      break;
     }
 
     // PPC64 supports atomics up to 8 bytes.
@@ -429,6 +454,21 @@ public:
     HasAlignMac68kSupport = true;
     resetDataLayout("E-m:o-i64:64-n32:64");
   }
+};
+
+class LLVM_LIBRARY_VISIBILITY AIXPPC32TargetInfo :
+  public AIXTargetInfo<PPC32TargetInfo> {
+public:
+  using AIXTargetInfo::AIXTargetInfo;
+  BuiltinVaListKind getBuiltinVaListKind() const override {
+    return TargetInfo::CharPtrBuiltinVaList;
+  }
+};
+
+class LLVM_LIBRARY_VISIBILITY AIXPPC64TargetInfo :
+  public AIXTargetInfo<PPC64TargetInfo> {
+public:
+  using AIXTargetInfo::AIXTargetInfo;
 };
 
 } // namespace targets

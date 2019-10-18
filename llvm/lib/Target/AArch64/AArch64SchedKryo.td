@@ -27,8 +27,8 @@ def KryoModel : SchedMachineModel {
   let LoopMicroOpBufferSize = 16;
   let CompleteModel = 1;
 
-  list<Predicate> UnsupportedFeatures = [HasSVE];
-
+  list<Predicate> UnsupportedFeatures = !listconcat(SVEUnsupported.F,
+                                                    PAUnsupported.F);
   // FIXME: Remove when all errors have been fixed.
   let FullInstRWOverlapCheck = 0;
 }

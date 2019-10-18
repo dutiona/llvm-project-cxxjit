@@ -10,13 +10,16 @@
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
 #include "../readability/NamespaceCommentCheck.h"
+#include "../readability/QualifiedAutoCheck.h"
 #include "HeaderGuardCheck.h"
 #include "IncludeOrderCheck.h"
+#include "PreferIsaOrDynCastInConditionalsCheck.h"
+#include "PreferRegisterOverUnsignedCheck.h"
 #include "TwineLocalCheck.h"
 
 namespace clang {
 namespace tidy {
-namespace llvm {
+namespace llvm_check {
 
 class LLVMModule : public ClangTidyModule {
 public:
@@ -25,6 +28,12 @@ public:
     CheckFactories.registerCheck<IncludeOrderCheck>("llvm-include-order");
     CheckFactories.registerCheck<readability::NamespaceCommentCheck>(
         "llvm-namespace-comment");
+    CheckFactories.registerCheck<PreferIsaOrDynCastInConditionalsCheck>(
+        "llvm-prefer-isa-or-dyn-cast-in-conditionals");
+    CheckFactories.registerCheck<PreferRegisterOverUnsignedCheck>(
+        "llvm-prefer-register-over-unsigned");
+    CheckFactories.registerCheck<readability::QualifiedAutoCheck>(
+        "llvm-qualified-auto");
     CheckFactories.registerCheck<TwineLocalCheck>("llvm-twine-local");
   }
 };
@@ -33,7 +42,7 @@ public:
 static ClangTidyModuleRegistry::Add<LLVMModule> X("llvm-module",
                                                   "Adds LLVM lint checks.");
 
-} // namespace llvm
+} // namespace llvm_check
 
 // This anchor is used to force the linker to link in the generated object file
 // and thus register the LLVMModule.

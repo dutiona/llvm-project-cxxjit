@@ -19,10 +19,14 @@ subdirectories =
  Analysis
  AsmParser
  Bitcode
+ Bitstream
  CodeGen
  DebugInfo
  Demangle
+ DWARFLinker
  ExecutionEngine
+ Extensions
+ Frontend
  FuzzMutate
  LineEditor
  Linker
@@ -35,7 +39,7 @@ subdirectories =
  BinaryFormat
  ObjectYAML
  Option
- OptRemarks
+ Remarks
  Passes
  ProfileData
  Support

@@ -55,6 +55,9 @@ typedef LanguageRuntime *(*LanguageRuntimeCreateInstance)(
     Process *process, lldb::LanguageType language);
 typedef lldb::CommandObjectSP (*LanguageRuntimeGetCommandObject)(
     CommandInterpreter &interpreter);
+typedef lldb::BreakpointPreconditionSP (
+    *LanguageRuntimeGetExceptionPrecondition)(lldb::LanguageType language,
+                                              bool throw_bp);
 typedef lldb::StructuredDataPluginSP (*StructuredDataPluginCreateInstance)(
     Process &process);
 typedef Status (*StructuredDataFilterLaunchInfo)(ProcessLaunchInfo &launch_info,
@@ -66,8 +69,8 @@ typedef lldb::ProcessSP (*ProcessCreateInstance)(
     lldb::TargetSP target_sp, lldb::ListenerSP listener_sp,
     const FileSpec *crash_file_path);
 typedef lldb::ScriptInterpreterSP (*ScriptInterpreterCreateInstance)(
-    CommandInterpreter &interpreter);
-typedef SymbolFile *(*SymbolFileCreateInstance)(ObjectFile *obj_file);
+    Debugger &debugger);
+typedef SymbolFile *(*SymbolFileCreateInstance)(lldb::ObjectFileSP objfile_sp);
 typedef SymbolVendor *(*SymbolVendorCreateInstance)(
     const lldb::ModuleSP &module_sp,
     lldb_private::Stream
@@ -79,8 +82,6 @@ typedef bool (*BreakpointHitCallback)(void *baton,
 typedef bool (*WatchpointHitCallback)(void *baton,
                                       StoppointCallbackContext *context,
                                       lldb::user_id_t watch_id);
-typedef void (*OptionValueChangedCallback)(void *baton,
-                                           OptionValue *option_value);
 typedef bool (*ThreadPlanShouldStopHereCallback)(
     ThreadPlan *current_plan, Flags &flags, lldb::FrameComparison operation,
     Status &status, void *baton);
@@ -99,11 +100,6 @@ typedef lldb::REPLSP (*REPLCreateInstance)(Status &error,
                                            lldb::LanguageType language,
                                            Debugger *debugger, Target *target,
                                            const char *repl_options);
-typedef void (*TypeSystemEnumerateSupportedLanguages)(
-    std::set<lldb::LanguageType> &languages_for_types,
-    std::set<lldb::LanguageType> &languages_for_expressions);
-typedef void (*REPLEnumerateSupportedLanguages)(
-    std::set<lldb::LanguageType> &languages);
 typedef int (*ComparisonFunction)(const void *, const void *);
 typedef void (*DebuggerInitializeCallback)(Debugger &debugger);
 

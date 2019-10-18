@@ -18,6 +18,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/SourceMgr.h"
 #include "gtest/gtest.h"
 
@@ -85,7 +86,8 @@ struct TestCustomAAResult : AAResultBase<TestCustomAAResult> {
 
   bool invalidate(Function &, const PreservedAnalyses &) { return false; }
 
-  AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB) {
+  AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB,
+                    AAQueryInfo &AAQI) {
     CB();
     return MayAlias;
   }

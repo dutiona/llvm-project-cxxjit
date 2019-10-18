@@ -546,7 +546,6 @@ static std::string generateFilename(char const *prototype,
 // of __kmp_stats_global_output
 void kmp_stats_output_module::init() {
 
-  fprintf(stderr, "*** Stats enabled OpenMP* runtime ***\n");
   char *statsFileName = getenv("KMP_STATS_FILE");
   eventsFileName = getenv("KMP_STATS_EVENTS_FILE");
   plotFileName = getenv("KMP_STATS_PLOT_FILE");
@@ -669,16 +668,18 @@ void kmp_stats_output_module::printEvents(FILE *eventsOut,
   for (int i = 0; i < theEvents->size(); i++) {
     kmp_stats_event ev = theEvents->at(i);
     rgb_color color = getEventColor(ev.getTimerName());
-    fprintf(eventsOut, "%d %lu %lu %1.1f rgb(%1.1f,%1.1f,%1.1f) %s\n", gtid,
-            ev.getStart(), ev.getStop(), 1.2 - (ev.getNestLevel() * 0.2),
-            color.r, color.g, color.b, timeStat::name(ev.getTimerName()));
+    fprintf(eventsOut, "%d %llu %llu %1.1f rgb(%1.1f,%1.1f,%1.1f) %s\n", gtid,
+            static_cast<unsigned long long>(ev.getStart()),
+            static_cast<unsigned long long>(ev.getStop()),
+            1.2 - (ev.getNestLevel() * 0.2), color.r, color.g, color.b,
+            timeStat::name(ev.getTimerName()));
   }
   return;
 }
 
 void kmp_stats_output_module::windupExplicitTimers() {
   // Wind up any explicit timers. We assume that it's fair at this point to just
-  // walk all the explcit timers in all threads and say "it's over".
+  // walk all the explicit timers in all threads and say "it's over".
   // If the timer wasn't running, this won't record anything anyway.
   kmp_stats_list::iterator it;
   for (it = __kmp_stats_list->begin(); it != __kmp_stats_list->end(); it++) {

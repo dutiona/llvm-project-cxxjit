@@ -1,5 +1,6 @@
 #include "Threading.h"
 #include "Trace.h"
+#include "clang/Basic/Stack.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
@@ -7,6 +8,10 @@
 #include <thread>
 #ifdef __USE_POSIX
 #include <pthread.h>
+#elif defined(__APPLE__)
+#include <sys/resource.h>
+#elif defined (_WIN32)
+#include <windows.h>
 #endif
 
 namespace clang {
@@ -80,16 +85,16 @@ void AsyncTaskRunner::runAsync(const llvm::Twine &Name,
     }
   });
 
-  std::thread(
-      [](std::string Name, decltype(Action) Action, decltype(CleanupTask)) {
-        llvm::set_thread_name(Name);
-        Action();
-        // Make sure function stored by Action is destroyed before CleanupTask
-        // is run.
-        Action = nullptr;
-      },
-      Name.str(), std::move(Action), std::move(CleanupTask))
-      .detach();
+  auto Task = [Name = Name.str(), Action = std::move(Action),
+               Cleanup = std::move(CleanupTask)]() mutable {
+    llvm::set_thread_name(Name);
+    Action();
+    // Make sure function stored by ThreadFunc is destroyed before Cleanup runs.
+    Action = nullptr;
+  };
+
+  // Ensure our worker threads have big enough stacks to run clang.
+  llvm::llvm_execute_on_thread_async(std::move(Task), clang::DesiredStackSize);
 }
 
 Deadline timeoutSeconds(llvm::Optional<double> Seconds) {
@@ -108,23 +113,6 @@ void wait(std::unique_lock<std::mutex> &Lock, std::condition_variable &CV,
     return CV.wait(Lock);
   CV.wait_until(Lock, D.time());
 }
-
-static std::atomic<bool> AvoidThreadStarvation = {false};
-
-void setCurrentThreadPriority(ThreadPriority Priority) {
-  // Some *really* old glibcs are missing SCHED_IDLE.
-#if defined(__linux__) && defined(SCHED_IDLE)
-  sched_param priority;
-  priority.sched_priority = 0;
-  pthread_setschedparam(
-      pthread_self(),
-      Priority == ThreadPriority::Low && !AvoidThreadStarvation ? SCHED_IDLE
-                                                                : SCHED_OTHER,
-      &priority);
-#endif
-}
-
-void preventThreadStarvationInTests() { AvoidThreadStarvation = true; }
 
 } // namespace clangd
 } // namespace clang

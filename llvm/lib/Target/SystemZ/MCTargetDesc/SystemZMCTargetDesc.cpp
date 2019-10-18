@@ -7,8 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "SystemZMCTargetDesc.h"
-#include "InstPrinter/SystemZInstPrinter.h"
+#include "SystemZInstPrinter.h"
 #include "SystemZMCAsmInfo.h"
+#include "TargetInfo/SystemZTargetInfo.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
@@ -145,7 +147,8 @@ unsigned SystemZMC::getFirstReg(unsigned Reg) {
 }
 
 static MCAsmInfo *createSystemZMCAsmInfo(const MCRegisterInfo &MRI,
-                                         const Triple &TT) {
+                                         const Triple &TT,
+                                         const MCTargetOptions &Options) {
   MCAsmInfo *MAI = new SystemZMCAsmInfo(TT);
   MCCFIInstruction Inst =
       MCCFIInstruction::createDefCfa(nullptr,
@@ -180,7 +183,7 @@ static MCInstPrinter *createSystemZMCInstPrinter(const Triple &T,
   return new SystemZInstPrinter(MAI, MII, MRI);
 }
 
-extern "C" void LLVMInitializeSystemZTargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeSystemZTargetMC() {
   // Register the MCAsmInfo.
   TargetRegistry::RegisterMCAsmInfo(getTheSystemZTarget(),
                                     createSystemZMCAsmInfo);

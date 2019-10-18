@@ -18,13 +18,14 @@ namespace llvm {
 
   // Relocation model types.
   namespace Reloc {
-  enum Model { Static, PIC_, DynamicNoPIC, ROPI, RWPI, ROPI_RWPI };
+    // Cannot be named PIC due to collision with -DPIC
+    enum Model { Static, PIC_, DynamicNoPIC, ROPI, RWPI, ROPI_RWPI };
   }
 
   // Code model types.
   namespace CodeModel {
     // Sync changes with CodeGenCWrappers.h.
-  enum Model { Tiny, Small, Kernel, Medium, Large };
+    enum Model { Tiny, Small, Kernel, Medium, Large };
   }
 
   namespace PICLevel {
@@ -55,6 +56,15 @@ namespace llvm {
       Aggressive = 3 // -O3
     };
   }
+
+  /// These enums are meant to be passed into addPassesToEmitFile to indicate
+  /// what type of file to emit, and returned by it to indicate what type of
+  /// file could actually be made.
+  enum CodeGenFileType {
+    CGFT_AssemblyFile,
+    CGFT_ObjectFile,
+    CGFT_Null         // Do not emit any output.
+  };
 
   // Specify effect of frame pointer elimination optimization.
   namespace FramePointer {

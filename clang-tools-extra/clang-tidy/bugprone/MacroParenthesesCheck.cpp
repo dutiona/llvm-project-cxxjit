@@ -54,7 +54,7 @@ static bool isSurroundedRight(const Token &T) {
 /// Is given TokenKind a keyword?
 static bool isKeyword(const Token &T) {
   // FIXME: better matching of keywords to avoid false positives.
-  return T.isOneOf(tok::kw_case, tok::kw_const, tok::kw_struct);
+  return T.isOneOf(tok::kw_if, tok::kw_case, tok::kw_const, tok::kw_struct);
 }
 
 /// Warning is written when one of these operators are not within parentheses.
@@ -248,10 +248,9 @@ void MacroParenthesesPPCallbacks::argument(const Token &MacroNameTok,
   }
 }
 
-void MacroParenthesesCheck::registerPPCallbacks(CompilerInstance &Compiler) {
-  Compiler.getPreprocessor().addPPCallbacks(
-      llvm::make_unique<MacroParenthesesPPCallbacks>(
-          &Compiler.getPreprocessor(), this));
+void MacroParenthesesCheck::registerPPCallbacks(
+    const SourceManager &SM, Preprocessor *PP, Preprocessor *ModuleExpanderPP) {
+  PP->addPPCallbacks(std::make_unique<MacroParenthesesPPCallbacks>(PP, this));
 }
 
 } // namespace bugprone

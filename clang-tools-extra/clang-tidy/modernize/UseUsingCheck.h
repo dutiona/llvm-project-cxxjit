@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USE_USING_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USE_USING_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
 namespace clang {
 namespace tidy {
@@ -22,6 +22,10 @@ namespace modernize {
 class UseUsingCheck : public ClangTidyCheck {
 
   const bool IgnoreMacros;
+  SourceLocation LastReplacementEnd;
+  SourceRange LastCxxDeclRange;
+  std::string FirstTypedefType;
+  std::string FirstTypedefName;
 
 public:
   UseUsingCheck(StringRef Name, ClangTidyContext *Context);

@@ -16,10 +16,11 @@ using namespace clang;
 
 std::unique_ptr<SanitizerSpecialCaseList>
 SanitizerSpecialCaseList::create(const std::vector<std::string> &Paths,
+                                 llvm::vfs::FileSystem &VFS,
                                  std::string &Error) {
   std::unique_ptr<clang::SanitizerSpecialCaseList> SSCL(
       new SanitizerSpecialCaseList());
-  if (SSCL->createInternal(Paths, Error)) {
+  if (SSCL->createInternal(Paths, VFS, Error)) {
     SSCL->createSanitizerSections();
     return SSCL;
   }
@@ -27,16 +28,17 @@ SanitizerSpecialCaseList::create(const std::vector<std::string> &Paths,
 }
 
 std::unique_ptr<SanitizerSpecialCaseList>
-SanitizerSpecialCaseList::createOrDie(const std::vector<std::string> &Paths) {
+SanitizerSpecialCaseList::createOrDie(const std::vector<std::string> &Paths,
+                                      llvm::vfs::FileSystem &VFS) {
   std::string Error;
-  if (auto SSCL = create(Paths, Error))
+  if (auto SSCL = create(Paths, VFS, Error))
     return SSCL;
   llvm::report_fatal_error(Error);
 }
 
 void SanitizerSpecialCaseList::createSanitizerSections() {
   for (auto &S : Sections) {
-    SanitizerMask Mask = 0;
+    SanitizerMask Mask;
 
 #define SANITIZER(NAME, ID)                                                    \
   if (S.SectionMatcher->match(NAME))                                           \

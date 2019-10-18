@@ -11,6 +11,7 @@
 
 #include "InputInfo.h"
 #include "clang/Driver/Driver.h"
+#include "clang/Driver/Multilib.h"
 #include "clang/Driver/Tool.h"
 #include "clang/Driver/ToolChain.h"
 #include "llvm/Support/CodeGen.h"
@@ -31,10 +32,6 @@ void claimNoWarnArgs(const llvm::opt::ArgList &Args);
 bool addSanitizerRuntimes(const ToolChain &TC, const llvm::opt::ArgList &Args,
                           llvm::opt::ArgStringList &CmdArgs);
 
-void addSanitizerPathLibArgs(const ToolChain &TC,
-                             const llvm::opt::ArgList &Args,
-                             llvm::opt::ArgStringList &CmdArgs);
-
 void linkSanitizerRuntimeDeps(const ToolChain &TC,
                               llvm::opt::ArgStringList &CmdArgs);
 
@@ -52,13 +49,6 @@ void AddRunTimeLibs(const ToolChain &TC, const Driver &D,
                     llvm::opt::ArgStringList &CmdArgs,
                     const llvm::opt::ArgList &Args);
 
-void AddOpenMPLinkerScript(const ToolChain &TC, Compilation &C,
-                           const InputInfo &Output,
-                           const InputInfoList &Inputs,
-                           const llvm::opt::ArgList &Args,
-                           llvm::opt::ArgStringList &CmdArgs,
-                           const JobAction &JA);
-
 void AddHIPLinkerScript(const ToolChain &TC, Compilation &C,
                         const InputInfo &Output, const InputInfoList &Inputs,
                         const llvm::opt::ArgList &Args,
@@ -66,7 +56,7 @@ void AddHIPLinkerScript(const ToolChain &TC, Compilation &C,
                         const Tool &T);
 
 const char *SplitDebugName(const llvm::opt::ArgList &Args,
-                           const InputInfo &Output);
+                           const InputInfo &Input, const InputInfo &Output);
 
 void SplitDebugInfo(const ToolChain &TC, Compilation &C, const Tool &T,
                     const JobAction &JA, const llvm::opt::ArgList &Args,
@@ -82,6 +72,9 @@ ParsePICArgs(const ToolChain &ToolChain, const llvm::opt::ArgList &Args);
 unsigned ParseFunctionAlignment(const ToolChain &TC,
                                 const llvm::opt::ArgList &Args);
 
+unsigned ParseDebugDefaultVersion(const ToolChain &TC,
+                                  const llvm::opt::ArgList &Args);
+
 void AddAssemblerKPIC(const ToolChain &ToolChain,
                       const llvm::opt::ArgList &Args,
                       llvm::opt::ArgStringList &CmdArgs);
@@ -91,6 +84,7 @@ void addArchSpecificRPath(const ToolChain &TC, const llvm::opt::ArgList &Args,
 /// Returns true, if an OpenMP runtime has been added.
 bool addOpenMPRuntime(llvm::opt::ArgStringList &CmdArgs, const ToolChain &TC,
                       const llvm::opt::ArgList &Args,
+                      bool ForceStaticHostRuntime = false,
                       bool IsOffloadingHost = false, bool GompNeedsRT = false);
 
 llvm::opt::Arg *getLastProfileUseArg(const llvm::opt::ArgList &Args);
@@ -125,6 +119,12 @@ void handleTargetFeaturesGroup(const llvm::opt::ArgList &Args,
 SmallString<128> getStatsFileName(const llvm::opt::ArgList &Args,
                                   const InputInfo &Output,
                                   const InputInfo &Input, const Driver &D);
+
+/// \p Flag must be a flag accepted by the driver with its leading '-' removed,
+//     otherwise '-print-multi-lib' will not emit them correctly.
+void addMultilibFlag(bool Enabled, const char *const Flag,
+                     Multilib::flags_list &Flags);
+
 } // end namespace tools
 } // end namespace driver
 } // end namespace clang

@@ -192,7 +192,7 @@ static NestedNameSpecifier *createOuterNNS(const ASTContext &Ctx, const Decl *D,
       // Ignore inline namespace;
       NS = dyn_cast<NamespaceDecl>(NS->getDeclContext());
     }
-    if (NS->getDeclName()) {
+    if (NS && NS->getDeclName()) {
       return createNestedNameSpecifier(Ctx, NS, WithGlobalNsPrefix);
     }
     return nullptr;  // no starting '::', no anonymous
@@ -374,6 +374,19 @@ QualType getFullyQualifiedType(QualType QT, const ASTContext &Ctx,
     Qualifiers Quals = QT.getQualifiers();
     QT = getFullyQualifiedType(QT->getPointeeType(), Ctx, WithGlobalNsPrefix);
     QT = Ctx.getPointerType(QT);
+    // Add back the qualifiers.
+    QT = Ctx.getQualifiedType(QT, Quals);
+    return QT;
+  }
+
+  if (auto *MPT = dyn_cast<MemberPointerType>(QT.getTypePtr())) {
+    // Get the qualifiers.
+    Qualifiers Quals = QT.getQualifiers();
+    // Fully qualify the pointee and class types.
+    QT = getFullyQualifiedType(QT->getPointeeType(), Ctx, WithGlobalNsPrefix);
+    QualType Class = getFullyQualifiedType(QualType(MPT->getClass(), 0), Ctx,
+                                           WithGlobalNsPrefix);
+    QT = Ctx.getMemberPointerType(QT, Class.getTypePtr());
     // Add back the qualifiers.
     QT = Ctx.getQualifiedType(QT, Quals);
     return QT;

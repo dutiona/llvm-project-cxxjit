@@ -218,7 +218,7 @@ Property::Property(const PropertyDefinition &definition)
   }
 }
 
-Property::Property(const ConstString &name, const ConstString &desc,
+Property::Property(ConstString name, ConstString desc,
                    bool is_global, const lldb::OptionValueSP &value_sp)
     : m_name(name), m_description(desc), m_value_sp(value_sp),
       m_is_global(is_global) {}
@@ -292,8 +292,7 @@ void Property::DumpDescription(CommandInterpreter &interpreter, Stream &strm,
   }
 }
 
-void Property::SetValueChangedCallback(OptionValueChangedCallback callback,
-                                       void *baton) {
+void Property::SetValueChangedCallback(std::function<void()> callback) {
   if (m_value_sp)
-    m_value_sp->SetValueChangedCallback(callback, baton);
+    m_value_sp->SetValueChangedCallback(std::move(callback));
 }

@@ -393,8 +393,8 @@ define i32 @zextbool_sub_uses(i1 %c, i32 %x) {
 
 define <4 x i32> @zextbool_sub_vector(<4 x i1> %c, <4 x i32> %x) {
 ; CHECK-LABEL: @zextbool_sub_vector(
-; CHECK-NEXT:    [[B:%.*]] = zext <4 x i1> [[C:%.*]] to <4 x i32>
-; CHECK-NEXT:    [[S:%.*]] = sub <4 x i32> [[X:%.*]], [[B]]
+; CHECK-NEXT:    [[TMP1:%.*]] = sext <4 x i1> [[C:%.*]] to <4 x i32>
+; CHECK-NEXT:    [[S:%.*]] = add <4 x i32> [[TMP1]], [[X:%.*]]
 ; CHECK-NEXT:    ret <4 x i32> [[S]]
 ;
   %b = zext <4 x i1> %c to <4 x i32>

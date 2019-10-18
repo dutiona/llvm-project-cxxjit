@@ -11,11 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "AVRELFStreamer.h"
+#include "AVRInstPrinter.h"
 #include "AVRMCAsmInfo.h"
 #include "AVRMCELFStreamer.h"
 #include "AVRMCTargetDesc.h"
 #include "AVRTargetStreamer.h"
-#include "InstPrinter/AVRInstPrinter.h"
+#include "TargetInfo/AVRTargetInfo.h"
 
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCELFStreamer.h"
@@ -88,7 +89,7 @@ static MCTargetStreamer *createMCAsmTargetStreamer(MCStreamer &S,
   return new AVRTargetAsmStreamer(S);
 }
 
-extern "C" void LLVMInitializeAVRTargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAVRTargetMC() {
   // Register the MC asm info.
   RegisterMCAsmInfo<AVRMCAsmInfo> X(getTheAVRTarget());
 

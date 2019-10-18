@@ -8,6 +8,7 @@
 
 #include "MCTargetDesc/SystemZMCTargetDesc.h"
 #include "SystemZ.h"
+#include "TargetInfo/SystemZTargetInfo.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCFixedLenDisassembler.h"
 #include "llvm/MC/MCInst.h"
@@ -33,7 +34,6 @@ public:
 
   DecodeStatus getInstruction(MCInst &instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
-                              raw_ostream &VStream,
                               raw_ostream &CStream) const override;
 };
 
@@ -45,7 +45,7 @@ static MCDisassembler *createSystemZDisassembler(const Target &T,
   return new SystemZDisassembler(STI, Ctx);
 }
 
-extern "C" void LLVMInitializeSystemZDisassembler() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeSystemZDisassembler() {
   // Register the disassembler.
   TargetRegistry::RegisterMCDisassembler(getTheSystemZTarget(),
                                          createSystemZDisassembler);
@@ -448,7 +448,6 @@ static DecodeStatus decodeBDVAddr64Disp12Operand(MCInst &Inst, uint64_t Field,
 DecodeStatus SystemZDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
                                                  ArrayRef<uint8_t> Bytes,
                                                  uint64_t Address,
-                                                 raw_ostream &OS,
                                                  raw_ostream &CS) const {
   // Get the first two bytes of the instruction.
   Size = 0;
