@@ -139,9 +139,11 @@ private:
   BogusSubtarget ST;
 };
 
-std::unique_ptr<MCContext> createMCContext(MCAsmInfo *AsmInfo) {
+static MCAsmInfo AsmInfo = MCAsmInfo();
+
+std::unique_ptr<MCContext> createMCContext() {
   return std::make_unique<MCContext>(
-      AsmInfo, nullptr, nullptr, nullptr, nullptr, false);
+      &AsmInfo, nullptr, nullptr, nullptr, nullptr, false);
 }
 
 std::unique_ptr<BogusTargetMachine> createTargetMachine() {
@@ -376,8 +378,7 @@ TEST(MachineInstrExtraInfo, AddExtraInfo) {
                       0, nullptr, nullptr, nullptr, 0, nullptr};
 
   auto MI = MF->CreateMachineInstr(MCID, DebugLoc());
-  auto MAI = MCAsmInfo();
-  auto MC = createMCContext(&MAI);
+  auto MC = createMCContext();
   auto MMO = MF->getMachineMemOperand(MachinePointerInfo(),
                                       MachineMemOperand::MOLoad, 8, 8);
   SmallVector<MachineMemOperand *, 2> MMOs;
@@ -423,8 +424,7 @@ TEST(MachineInstrExtraInfo, ChangeExtraInfo) {
                       0, nullptr, nullptr, nullptr, 0, nullptr};
 
   auto MI = MF->CreateMachineInstr(MCID, DebugLoc());
-  auto MAI = MCAsmInfo();
-  auto MC = createMCContext(&MAI);
+  auto MC = createMCContext();
   auto MMO = MF->getMachineMemOperand(MachinePointerInfo(),
                                       MachineMemOperand::MOLoad, 8, 8);
   SmallVector<MachineMemOperand *, 2> MMOs;
@@ -460,8 +460,7 @@ TEST(MachineInstrExtraInfo, RemoveExtraInfo) {
                       0, nullptr, nullptr, nullptr, 0, nullptr};
 
   auto MI = MF->CreateMachineInstr(MCID, DebugLoc());
-  auto MAI = MCAsmInfo();
-  auto MC = createMCContext(&MAI);
+  auto MC = createMCContext();
   auto MMO = MF->getMachineMemOperand(MachinePointerInfo(),
                                       MachineMemOperand::MOLoad, 8, 8);
   SmallVector<MachineMemOperand *, 2> MMOs;

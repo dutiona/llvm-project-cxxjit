@@ -1706,8 +1706,7 @@ void MachineInstr::print(raw_ostream &OS, ModuleSlotTracker &MST,
       FirstOp = false;
       OS << ',';
     }
-    OS << " heap-alloc-marker ";
-    HeapAllocMarker->printAsOperand(OS, MST);
+    OS << " heap-alloc-marker";
   }
 
   if (!SkipDebugLoc) {
