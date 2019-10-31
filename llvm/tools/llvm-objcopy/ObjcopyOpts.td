@@ -86,9 +86,17 @@ defm set_section_flags
          "rom, share, contents, merge, strings.">,
       MetaVarName<"section=flag1[,flag2,...]">;
 
-def S : Flag<["-"], "S">,
-        Alias<strip_all>,
-        HelpText<"Alias for --strip-all">;
+def strip_all : Flag<["--"], "strip-all">,
+                HelpText<"Remove non-allocated sections outside segments. "
+                         ".gnu.warning* and .ARM.attribute sections are not "
+                         "removed">;
+def S : Flag<["-"], "S">, Alias<strip_all>;
+def strip_all_gnu : Flag<["--"], "strip-all-gnu">,
+                    HelpText<"Compatible with GNU objcopy's --strip-all">;
+def strip_debug : Flag<["--"], "strip-debug">,
+                  HelpText<"Remove all debug information">;
+def g : Flag<["-"], "g">, Alias<strip_debug>,
+        HelpText<"Alias for --strip-debug">;
 def strip_dwo : Flag<["--"], "strip-dwo">,
                 HelpText<"Remove all DWARF .dwo sections from file">;
 def strip_non_alloc
