@@ -950,14 +950,6 @@ public:
     return CodeViewAnnotations;
   }
 
-  /// Record heapallocsites
-  void addCodeViewHeapAllocSite(MachineInstr *I, MDNode *MD);
-
-  ArrayRef<std::tuple<MCSymbol*, MCSymbol*, DIType*>>
-      getCodeViewHeapAllocSites() const {
-    return CodeViewHeapAllocSites;
-  }
-
   /// Return a reference to the C++ typeinfo for the current function.
   const std::vector<const GlobalValue *> &getTypeInfos() const {
     return TypeInfos;

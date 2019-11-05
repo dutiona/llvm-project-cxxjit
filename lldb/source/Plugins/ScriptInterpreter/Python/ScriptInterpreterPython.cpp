@@ -14,6 +14,7 @@
 #include "lldb-python.h"
 
 #include "PythonDataObjects.h"
+#include "PythonExceptionState.h"
 #include "PythonReadline.h"
 #include "ScriptInterpreterPythonImpl.h"
 

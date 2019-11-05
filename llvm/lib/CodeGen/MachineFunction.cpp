@@ -907,16 +907,6 @@ void MachineFunction::copyCallSiteInfo(const MachineInstr *Old,
   CallSitesInfo[New] = CSInfo;
 }
 
-void MachineFunction::addCodeViewHeapAllocSite(MachineInstr *I, MDNode *MD) {
-  MCSymbol *BeginLabel = Ctx.createTempSymbol("heapallocsite", true);
-  MCSymbol *EndLabel = Ctx.createTempSymbol("heapallocsite", true);
-  I->setPreInstrSymbol(*this, BeginLabel);
-  I->setPostInstrSymbol(*this, EndLabel);
-
-  DIType *DI = dyn_cast<DIType>(MD);
-  CodeViewHeapAllocSites.push_back(std::make_tuple(BeginLabel, EndLabel, DI));
-}
-
 void MachineFunction::updateCallSiteInfo(const MachineInstr *Old,
                                          const MachineInstr *New) {
   if (!Target.Options.EnableDebugEntryValues || Old == New)
