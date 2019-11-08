@@ -1051,6 +1051,32 @@ multiclass XOForm_1rx<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
   }
 }
 
+// Multiclass for instructions which have a record overflow form as well
+// as a record form but no carry (i.e. mulld, mulldo, subf, subfo, etc.)
+multiclass XOForm_1rx<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
+                      string asmbase, string asmstr, InstrItinClass itin,
+                      list<dag> pattern> {
+  let BaseName = asmbase in {
+    def NAME : XOForm_1<opcode, xo, 0, OOL, IOL,
+                        !strconcat(asmbase, !strconcat(" ", asmstr)), itin,
+                        pattern>, RecFormRel;
+    let Defs = [CR0] in
+    def o    : XOForm_1<opcode, xo, 0, OOL, IOL,
+                        !strconcat(asmbase, !strconcat(". ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [XER] in
+    def O    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [XER, CR0] in
+    def Oo    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                         !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                         []>, isDOT, RecFormRel;
+  }
+}
+
 // Multiclass for instructions for which the non record form is not cracked
 // and the record form is cracked (i.e. divw, mullw, etc.)
 multiclass XOForm_1rcr<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
@@ -1101,6 +1127,16 @@ multiclass XOForm_1rc<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
                         !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
                         []>, isRecordForm, RecFormRel;
   }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [CARRY, XER] in
+    def O    : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [CARRY, XER, CR0] in
+    def Oo   : XOForm_1<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
+  }
 }
 
 multiclass XOForm_3r<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
@@ -1124,6 +1160,16 @@ multiclass XOForm_3r<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
     def O_rec   : XOForm_3<opcode, xo, 1, OOL, IOL,
                         !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
                         []>, isRecordForm, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [XER] in
+    def O    : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [XER, CR0] in
+    def Oo   : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
   }
 }
 
@@ -1149,6 +1195,16 @@ multiclass XOForm_3rc<bits<6> opcode, bits<9> xo, bit oe, dag OOL, dag IOL,
     def O_rec   : XOForm_3<opcode, xo, 1, OOL, IOL,
                         !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
                         []>, isRecordForm, RecFormRel;
+  }
+  let BaseName = !strconcat(asmbase, "O") in {
+    let Defs = [CARRY, XER] in
+    def O    : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o ", asmstr)), itin,
+                        []>, RecFormRel;
+    let Defs = [CARRY, XER, CR0] in
+    def Oo   : XOForm_3<opcode, xo, 1, OOL, IOL,
+                        !strconcat(asmbase, !strconcat("o. ", asmstr)), itin,
+                        []>, isDOT, RecFormRel;
   }
 }
 
