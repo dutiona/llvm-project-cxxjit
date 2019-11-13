@@ -899,6 +899,21 @@ void MachineFunction::copyCallSiteInfo(const MachineInstr *Old,
   CallSitesInfo[New] = CSInfo;
 }
 
+void MachineFunction::updateCallSiteInfo(const MachineInstr *Old,
+                                         const MachineInstr *New) {
+  if (!Target.Options.EnableDebugEntryValues || Old == New)
+    return;
+
+  assert(Old->isCall() && (!New || New->isCall()) &&
+         "Call site info referes only to call instructions!");
+  CallSiteInfoMap::iterator CSIt = CallSitesInfo.find(Old);
+  if (CSIt == CallSitesInfo.end())
+    return;
+
+  CallSiteInfo CSInfo = CSIt->second;
+  CallSitesInfo[New] = CSInfo;
+}
+
 /// \}
 
 //===----------------------------------------------------------------------===//
