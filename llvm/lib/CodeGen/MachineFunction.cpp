@@ -470,7 +470,15 @@ MachineFunction::getMachineMemOperand(const MachineMemOperand *MMO,
       MMO->getOrdering(), MMO->getFailureOrdering());
 }
 
-MachineInstr::ExtraInfo *MachineFunction::createMIExtraInfo(
+MachineInstr::ExtraInfo *
+MachineFunction::createMIExtraInfo(ArrayRef<MachineMemOperand *> MMOs,
+                                   MCSymbol *PreInstrSymbol,
+                                   MCSymbol *PostInstrSymbol) {
+  return MachineInstr::ExtraInfo::create(Allocator, MMOs, PreInstrSymbol,
+                                         PostInstrSymbol, nullptr);
+}
+
+MachineInstr::ExtraInfo *MachineFunction::createMIExtraInfoWithMarker(
     ArrayRef<MachineMemOperand *> MMOs, MCSymbol *PreInstrSymbol,
     MCSymbol *PostInstrSymbol, MDNode *HeapAllocMarker) {
   return MachineInstr::ExtraInfo::create(Allocator, MMOs, PreInstrSymbol,
@@ -897,6 +905,16 @@ void MachineFunction::copyCallSiteInfo(const MachineInstr *Old,
 
   CallSiteInfo CSInfo = CSIt->second;
   CallSitesInfo[New] = CSInfo;
+}
+
+void MachineFunction::addCodeViewHeapAllocSite(MachineInstr *I, MDNode *MD) {
+  MCSymbol *BeginLabel = Ctx.createTempSymbol("heapallocsite", true);
+  MCSymbol *EndLabel = Ctx.createTempSymbol("heapallocsite", true);
+  I->setPreInstrSymbol(*this, BeginLabel);
+  I->setPostInstrSymbol(*this, EndLabel);
+
+  DIType *DI = dyn_cast<DIType>(MD);
+  CodeViewHeapAllocSites.push_back(std::make_tuple(BeginLabel, EndLabel, DI));
 }
 
 void MachineFunction::updateCallSiteInfo(const MachineInstr *Old,
