@@ -15,13 +15,16 @@
 
 #include "llvm/Demangle/DemangleConfig.h"
 #include "llvm/Demangle/StringView.h"
+
 #include <array>
+#include <cinttypes>
+#include <string>
 
 namespace llvm {
 namespace itanium_demangle {
 class OutputStream;
 }
-}
+} // namespace llvm
 
 using llvm::itanium_demangle::OutputStream;
 using llvm::itanium_demangle::StringView;
@@ -30,7 +33,7 @@ namespace llvm {
 namespace ms_demangle {
 
 // Storage classes
-enum Qualifiers : uint8_t {
+enum Qualifiers : std::uint8_t {
   Q_None = 0,
   Q_Const = 1 << 0,
   Q_Volatile = 1 << 1,
@@ -41,7 +44,7 @@ enum Qualifiers : uint8_t {
   Q_Pointer64 = 1 << 6
 };
 
-enum class StorageClass : uint8_t {
+enum class StorageClass : std::uint8_t {
   None,
   PrivateStatic,
   ProtectedStatic,
@@ -54,7 +57,7 @@ enum class PointerAffinity { None, Pointer, Reference, RValueReference };
 enum class FunctionRefQualifier { None, Reference, RValueReference };
 
 // Calling conventions
-enum class CallingConv : uint8_t {
+enum class CallingConv : std::uint8_t {
   None,
   Cdecl,
   Pascal,
@@ -67,7 +70,7 @@ enum class CallingConv : uint8_t {
   Regcall,
 };
 
-enum class ReferenceKind : uint8_t { None, LValueRef, RValueRef };
+enum class ReferenceKind : std::uint8_t { None, LValueRef, RValueRef };
 
 enum OutputFlags {
   OF_Default = 0,
@@ -106,7 +109,7 @@ enum class CharKind {
   Wchar,
 };
 
-enum class IntrinsicFunctionKind : uint8_t {
+enum class IntrinsicFunctionKind : std::uint8_t {
   None,
   New,                        // ?2 # operator new
   Delete,                     // ?3 # operator delete
@@ -197,7 +200,7 @@ enum class SpecialIntrinsicKind {
 };
 
 // Function classes
-enum FuncClass : uint16_t {
+enum FuncClass : std::uint16_t {
   FC_None = 0,
   FC_Public = 1 << 0,
   FC_Protected = 1 << 1,
@@ -361,7 +364,7 @@ struct VcallThunkIdentifierNode : public IdentifierNode {
 
   void output(OutputStream &OS, OutputFlags Flags) const override;
 
-  uint64_t OffsetInVTable = 0;
+  std::uint64_t OffsetInVTable = 0;
 };
 
 struct DynamicStructorIdentifierNode : public IdentifierNode {
@@ -408,7 +411,7 @@ struct LocalStaticGuardIdentifierNode : public IdentifierNode {
 
   void output(OutputStream &OS, OutputFlags Flags) const override;
 
-  uint32_t ScopeIndex = 0;
+  std::uint32_t ScopeIndex = 0;
 };
 
 struct ConversionOperatorIdentifierNode : public IdentifierNode {
@@ -441,10 +444,10 @@ struct ThunkSignatureNode : public FunctionSignatureNode {
   void outputPost(OutputStream &OS, OutputFlags Flags) const override;
 
   struct ThisAdjustor {
-    uint32_t StaticOffset = 0;
-    int32_t VBPtrOffset = 0;
-    int32_t VBOffsetOffset = 0;
-    int32_t VtordispOffset = 0;
+    std::uint32_t StaticOffset = 0;
+    std::int32_t VBPtrOffset = 0;
+    std::int32_t VBOffsetOffset = 0;
+    std::int32_t VtordispOffset = 0;
   };
 
   ThisAdjustor ThisAdjust;
@@ -539,19 +542,19 @@ struct TemplateParameterReferenceNode : public Node {
   SymbolNode *Symbol = nullptr;
 
   int ThunkOffsetCount = 0;
-  std::array<int64_t, 3> ThunkOffsets;
+  std::array<std::int64_t, 3> ThunkOffsets;
   PointerAffinity Affinity = PointerAffinity::None;
   bool IsMemberPointer = false;
 };
 
 struct IntegerLiteralNode : public Node {
   IntegerLiteralNode() : Node(NodeKind::IntegerLiteral) {}
-  IntegerLiteralNode(uint64_t Value, bool IsNegative)
+  IntegerLiteralNode(std::uint64_t Value, bool IsNegative)
       : Node(NodeKind::IntegerLiteral), Value(Value), IsNegative(IsNegative) {}
 
   void output(OutputStream &OS, OutputFlags Flags) const override;
 
-  uint64_t Value = 0;
+  std::uint64_t Value = 0;
   bool IsNegative = false;
 };
 
@@ -561,10 +564,10 @@ struct RttiBaseClassDescriptorNode : public IdentifierNode {
 
   void output(OutputStream &OS, OutputFlags Flags) const override;
 
-  uint32_t NVOffset = 0;
-  int32_t VBPtrOffset = 0;
-  uint32_t VBTableOffset = 0;
-  uint32_t Flags = 0;
+  std::uint32_t NVOffset = 0;
+  std::int32_t VBPtrOffset = 0;
+  std::uint32_t VBTableOffset = 0;
+  std::uint32_t Flags = 0;
 };
 
 struct SymbolNode : public Node {
