@@ -9,12 +9,10 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_REPLACE_AUTO_PTR_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_REPLACE_AUTO_PTR_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "../utils/IncludeInserter.h"
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 /// Transforms the deprecated `std::auto_ptr` into the C++11 `std::unique_ptr`.
 ///
@@ -24,7 +22,7 @@ namespace modernize {
 /// operations do not 'copy' the resource but they 'steal' it.
 /// `std::unique_ptr` uses move semantics instead, which makes the intent of
 /// transferring the resource explicit. This difference between the two smart
-/// pointers requeres to wrap the copy-ctor and assign-operator with
+/// pointers requires wrapping the copy-ctor and assign-operator with
 /// `std::move()`.
 ///
 /// For example, given:
@@ -43,18 +41,19 @@ namespace modernize {
 class ReplaceAutoPtrCheck : public ClangTidyCheck {
 public:
   ReplaceAutoPtrCheck(StringRef Name, ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
-  void registerPPCallbacks(CompilerInstance &Compiler) override;
+  void registerPPCallbacks(const SourceManager &SM, Preprocessor *PP,
+                           Preprocessor *ModuleExpanderPP) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
 private:
-  std::unique_ptr<utils::IncludeInserter> Inserter;
-  const utils::IncludeSorter::IncludeStyle IncludeStyle;
+  utils::IncludeInserter Inserter;
 };
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_REPLACE_AUTO_PTR_H

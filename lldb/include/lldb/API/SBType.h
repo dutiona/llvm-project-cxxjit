@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBType_h_
-#define LLDB_SBType_h_
+#ifndef LLDB_API_SBTYPE_H
+#define LLDB_API_SBTYPE_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -24,6 +24,8 @@ public:
   ~SBTypeMember();
 
   lldb::SBTypeMember &operator=(const lldb::SBTypeMember &rhs);
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -64,6 +66,8 @@ public:
 
   lldb::SBTypeMemberFunction &operator=(const lldb::SBTypeMemberFunction &rhs);
 
+  explicit operator bool() const;
+
   bool IsValid() const;
 
   const char *GetName();
@@ -102,8 +106,11 @@ public:
   SBType();
 
   SBType(const lldb::SBType &rhs);
+  SBType(const lldb::TypeImplSP &);
 
   ~SBType();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -125,6 +132,10 @@ public:
 
   bool IsAnonymousType();
 
+  bool IsScopedEnumerationType();
+
+  bool IsAggregateType();
+
   lldb::SBType GetPointerType();
 
   lldb::SBType GetPointeeType();
@@ -144,6 +155,9 @@ public:
   lldb::SBType GetVectorElementType();
 
   lldb::SBType GetCanonicalType();
+
+  lldb::SBType GetEnumerationIntegerType();
+
   // Get the "lldb::BasicType" enumeration for a type. If a type is not a basic
   // type eBasicTypeInvalid will be returned
   lldb::BasicType GetBasicType();
@@ -169,6 +183,8 @@ public:
 
   lldb::SBType GetTemplateArgumentType(uint32_t idx);
 
+  /// Return the TemplateArgumentKind of the template argument at index idx.
+  /// Variadic argument packs are automatically expanded.
   lldb::TemplateArgumentKind GetTemplateArgumentKind(uint32_t idx);
 
   lldb::SBType GetFunctionReturnType();
@@ -178,6 +194,8 @@ public:
   uint32_t GetNumberOfMemberFunctions();
 
   lldb::SBTypeMemberFunction GetMemberFunctionAtIndex(uint32_t idx);
+
+  lldb::SBModule GetModule();
 
   const char *GetName();
 
@@ -222,7 +240,6 @@ protected:
 
   SBType(const lldb_private::CompilerType &);
   SBType(const lldb::TypeSP &);
-  SBType(const lldb::TypeImplSP &);
 };
 
 class SBTypeList {
@@ -234,6 +251,8 @@ public:
   ~SBTypeList();
 
   lldb::SBTypeList &operator=(const lldb::SBTypeList &rhs);
+
+  explicit operator bool() const;
 
   bool IsValid();
 
@@ -251,4 +270,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBType_h_
+#endif // LLDB_API_SBTYPE_H

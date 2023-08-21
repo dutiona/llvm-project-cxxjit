@@ -1,4 +1,4 @@
-//===--- VariadicfunctiondefCheck.cpp - clang-tidy-------------------------===//
+//===-- VariadicFunctionDefCheck.cpp - clang-tidy -------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,14 +12,9 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace cert {
+namespace clang::tidy::cert {
 
 void VariadicFunctionDefCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   // We only care about function *definitions* that are variadic, and do not
   // have extern "C" language linkage.
   Finder->addMatcher(
@@ -36,6 +31,4 @@ void VariadicFunctionDefCheck::check(const MatchFinder::MatchResult &Result) {
        "parameter pack or currying instead");
 }
 
-} // namespace cert
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cert

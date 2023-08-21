@@ -13,6 +13,7 @@
 #include "CoverageFilters.h"
 #include "CoverageSummaryInfo.h"
 #include "llvm/Support/Regex.h"
+#include "llvm/Support/SpecialCaseList.h"
 
 using namespace llvm;
 
@@ -20,7 +21,7 @@ bool NameCoverageFilter::matches(
     const coverage::CoverageMapping &,
     const coverage::FunctionRecord &Function) const {
   StringRef FuncName = Function.Name;
-  return FuncName.find(Name) != StringRef::npos;
+  return FuncName.contains(Name);
 }
 
 bool NameRegexCoverageFilter::matches(
@@ -33,10 +34,10 @@ bool NameRegexCoverageFilter::matchesFilename(StringRef Filename) const {
   return llvm::Regex(Regex).match(Filename);
 }
 
-bool NameWhitelistCoverageFilter::matches(
+bool NameAllowlistCoverageFilter::matches(
     const coverage::CoverageMapping &,
     const coverage::FunctionRecord &Function) const {
-  return Whitelist.inSection("llvmcov", "whitelist_fun", Function.Name);
+  return Allowlist.inSection("llvmcov", "allowlist_fun", Function.Name);
 }
 
 bool RegionCoverageFilter::matches(

@@ -5,6 +5,7 @@
 shared_binary_target_configs = [
   "//llvm/utils/gn/build:compiler_defaults",
   "//llvm/utils/gn/build:llvm_code",
+  "//llvm/utils/gn/build:no_exceptions",
   "//llvm/utils/gn/build:no_rtti",
   "//llvm/utils/gn/build:thin_archive",
   "//llvm/utils/gn/build:warn_covered_switch_default",
@@ -21,7 +22,7 @@ set_defaults("static_library") {
   configs = shared_binary_target_configs
 }
 set_defaults("shared_library") {
-  configs = shared_binary_target_configs
+  configs = shared_binary_target_configs + [ "//llvm/utils/gn/build:zdefs" ]
 }
 set_defaults("source_set") {
   configs = shared_binary_target_configs

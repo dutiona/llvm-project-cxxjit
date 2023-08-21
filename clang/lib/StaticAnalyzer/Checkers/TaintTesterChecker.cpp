@@ -9,7 +9,9 @@
 // This checker can be used for testing how taint data is propagated.
 //
 //===----------------------------------------------------------------------===//
+
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
+#include "clang/StaticAnalyzer/Checkers/Taint.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
@@ -17,27 +19,16 @@
 
 using namespace clang;
 using namespace ento;
+using namespace taint;
 
 namespace {
-class TaintTesterChecker : public Checker< check::PostStmt<Expr> > {
-
-  mutable std::unique_ptr<BugType> BT;
-  void initBugType() const;
-
-  /// Given a pointer argument, get the symbol of the value it contains
-  /// (points to).
-  SymbolRef getPointedToSymbol(CheckerContext &C,
-                               const Expr* Arg,
-                               bool IssueWarning = true) const;
+class TaintTesterChecker : public Checker<check::PostStmt<Expr>> {
+  std::unique_ptr<BugType> BT =
+      std::make_unique<BugType>(this, "Tainted data", "General");
 
 public:
   void checkPostStmt(const Expr *E, CheckerContext &C) const;
 };
-}
-
-inline void TaintTesterChecker::initBugType() const {
-  if (!BT)
-    BT.reset(new BugType(this, "Tainted data", "General"));
 }
 
 void TaintTesterChecker::checkPostStmt(const Expr *E,
@@ -46,10 +37,9 @@ void TaintTesterChecker::checkPostStmt(const Expr *E,
   if (!State)
     return;
 
-  if (State->isTainted(E, C.getLocationContext())) {
+  if (isTainted(State, E, C.getLocationContext())) {
     if (ExplodedNode *N = C.generateNonFatalErrorNode()) {
-      initBugType();
-      auto report = llvm::make_unique<BugReport>(*BT, "tainted",N);
+      auto report = std::make_unique<PathSensitiveBugReport>(*BT, "tainted", N);
       report->addRange(E->getSourceRange());
       C.emitReport(std::move(report));
     }
@@ -60,6 +50,6 @@ void ento::registerTaintTesterChecker(CheckerManager &mgr) {
   mgr.registerChecker<TaintTesterChecker>();
 }
 
-bool ento::shouldRegisterTaintTesterChecker(const LangOptions &LO) {
+bool ento::shouldRegisterTaintTesterChecker(const CheckerManager &mgr) {
   return true;
 }

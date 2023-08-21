@@ -6,13 +6,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_Host_posix_HostInfoPosix_h_
-#define lldb_Host_posix_HostInfoPosix_h_
+#ifndef LLDB_HOST_POSIX_HOSTINFOPOSIX_H
+#define LLDB_HOST_POSIX_HOSTINFOPOSIX_H
 
 #include "lldb/Host/HostInfoBase.h"
 #include "lldb/Utility/FileSpec.h"
+#include <optional>
 
 namespace lldb_private {
+
+class UserIDResolver;
 
 class HostInfoPosix : public HostInfoBase {
   friend class HostInfoBase;
@@ -20,8 +23,7 @@ class HostInfoPosix : public HostInfoBase {
 public:
   static size_t GetPageSize();
   static bool GetHostname(std::string &s);
-  static const char *LookupUserName(uint32_t uid, std::string &user_name);
-  static const char *LookupGroupName(uint32_t gid, std::string &group_name);
+  static std::optional<std::string> GetOSKernelDescription();
 
   static uint32_t GetUserID();
   static uint32_t GetGroupID();
@@ -32,8 +34,7 @@ public:
 
   static bool GetEnvironmentVar(const std::string &var_name, std::string &var);
 
-  static bool ComputePathRelativeToLibrary(FileSpec &file_spec,
-                                           llvm::StringRef dir);
+  static UserIDResolver &GetUserIDResolver();
 
 protected:
   static bool ComputeSupportExeDirectory(FileSpec &file_spec);

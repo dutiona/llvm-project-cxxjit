@@ -9,16 +9,14 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_STATIC_DEFINITION_IN_ANONYMOUS_NAMESPACE_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_STATIC_DEFINITION_IN_ANONYMOUS_NAMESPACE_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace readability {
+namespace clang::tidy::readability {
 
 /// Finds static function and variable definitions in anonymous namespace.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/readability-static-definition-in-anonymous-namespace.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/readability/static-definition-in-anonymous-namespace.html
 class StaticDefinitionInAnonymousNamespaceCheck : public ClangTidyCheck {
 public:
   StaticDefinitionInAnonymousNamespaceCheck(StringRef Name,
@@ -28,8 +26,6 @@ public:
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace readability
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::readability
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_STATIC_DEFINITION_IN_ANONYMOUS_NAMESPACE_H

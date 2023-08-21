@@ -7,14 +7,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "MacroRepeatedSideEffectsCheck.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 namespace {
 class MacroRepeatedPPCallbacks : public PPCallbacks {
@@ -48,13 +47,11 @@ void MacroRepeatedPPCallbacks::MacroExpands(const Token &MacroNameTok,
 
   // Bail out if the contents of the macro are containing keywords that are
   // making the macro too complex.
-  if (std::find_if(
-          MI->tokens().begin(), MI->tokens().end(), [](const Token &T) {
-            return T.isOneOf(tok::kw_if, tok::kw_else, tok::kw_switch,
-                             tok::kw_case, tok::kw_break, tok::kw_while,
-                             tok::kw_do, tok::kw_for, tok::kw_continue,
-                             tok::kw_goto, tok::kw_return);
-          }) != MI->tokens().end())
+  if (llvm::any_of(MI->tokens(), [](const Token &T) {
+        return T.isOneOf(tok::kw_if, tok::kw_else, tok::kw_switch, tok::kw_case,
+                         tok::kw_break, tok::kw_while, tok::kw_do, tok::kw_for,
+                         tok::kw_continue, tok::kw_goto, tok::kw_return);
+      }))
     return;
 
   for (unsigned ArgNo = 0U; ArgNo < MI->getNumParams(); ++ArgNo) {
@@ -172,12 +169,8 @@ bool MacroRepeatedPPCallbacks::hasSideEffects(
 }
 
 void MacroRepeatedSideEffectsCheck::registerPPCallbacks(
-    CompilerInstance &Compiler) {
-  Compiler.getPreprocessor().addPPCallbacks(
-      ::llvm::make_unique<MacroRepeatedPPCallbacks>(
-          *this, Compiler.getPreprocessor()));
+    const SourceManager &SM, Preprocessor *PP, Preprocessor *ModuleExpanderPP) {
+  PP->addPPCallbacks(::std::make_unique<MacroRepeatedPPCallbacks>(*this, *PP));
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

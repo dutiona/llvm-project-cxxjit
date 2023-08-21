@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
@@ -15,7 +17,9 @@
 #include <functional>
 #include <cassert>
 
-#include "count_new.hpp"
+#include "count_new.h"
+
+#include "test_macros.h"
 
 class A {
   int data_[10];
@@ -58,19 +62,20 @@ int g2(int, int) { return 2; }
 int g3(int, int, int) { return 3; }
 
 int main(int, char**) {
+  globalMemCounter.reset();
   assert(globalMemCounter.checkOutstandingNewEq(0));
   {
     std::function<int(int)> f1 = A(1);
     std::function<int(int)> f2 = A(2);
     assert(A::count == 2);
     assert(globalMemCounter.checkOutstandingNewEq(2));
-    assert(f1.target<A>()->id() == 1);
-    assert(f2.target<A>()->id() == 2);
+    RTTI_ASSERT(f1.target<A>()->id() == 1);
+    RTTI_ASSERT(f2.target<A>()->id() == 2);
     f1.swap(f2);
     assert(A::count == 2);
     assert(globalMemCounter.checkOutstandingNewEq(2));
-    assert(f1.target<A>()->id() == 2);
-    assert(f2.target<A>()->id() == 1);
+    RTTI_ASSERT(f1.target<A>()->id() == 2);
+    RTTI_ASSERT(f2.target<A>()->id() == 1);
   }
   assert(A::count == 0);
   assert(globalMemCounter.checkOutstandingNewEq(0));
@@ -79,13 +84,13 @@ int main(int, char**) {
     std::function<int(int)> f2 = g;
     assert(A::count == 1);
     assert(globalMemCounter.checkOutstandingNewEq(1));
-    assert(f1.target<A>()->id() == 1);
-    assert(*f2.target<int (*)(int)>() == g);
+    RTTI_ASSERT(f1.target<A>()->id() == 1);
+    RTTI_ASSERT(*f2.target<int (*)(int)>() == g);
     f1.swap(f2);
     assert(A::count == 1);
     assert(globalMemCounter.checkOutstandingNewEq(1));
-    assert(*f1.target<int (*)(int)>() == g);
-    assert(f2.target<A>()->id() == 1);
+    RTTI_ASSERT(*f1.target<int (*)(int)>() == g);
+    RTTI_ASSERT(f2.target<A>()->id() == 1);
   }
   assert(A::count == 0);
   assert(globalMemCounter.checkOutstandingNewEq(0));
@@ -94,13 +99,13 @@ int main(int, char**) {
     std::function<int(int)> f2 = A(1);
     assert(A::count == 1);
     assert(globalMemCounter.checkOutstandingNewEq(1));
-    assert(*f1.target<int (*)(int)>() == g);
-    assert(f2.target<A>()->id() == 1);
+    RTTI_ASSERT(*f1.target<int (*)(int)>() == g);
+    RTTI_ASSERT(f2.target<A>()->id() == 1);
     f1.swap(f2);
     assert(A::count == 1);
     assert(globalMemCounter.checkOutstandingNewEq(1));
-    assert(f1.target<A>()->id() == 1);
-    assert(*f2.target<int (*)(int)>() == g);
+    RTTI_ASSERT(f1.target<A>()->id() == 1);
+    RTTI_ASSERT(*f2.target<int (*)(int)>() == g);
   }
   assert(A::count == 0);
   assert(globalMemCounter.checkOutstandingNewEq(0));
@@ -109,13 +114,13 @@ int main(int, char**) {
     std::function<int(int)> f2 = h;
     assert(A::count == 0);
     assert(globalMemCounter.checkOutstandingNewEq(0));
-    assert(*f1.target<int (*)(int)>() == g);
-    assert(*f2.target<int (*)(int)>() == h);
+    RTTI_ASSERT(*f1.target<int (*)(int)>() == g);
+    RTTI_ASSERT(*f2.target<int (*)(int)>() == h);
     f1.swap(f2);
     assert(A::count == 0);
     assert(globalMemCounter.checkOutstandingNewEq(0));
-    assert(*f1.target<int (*)(int)>() == h);
-    assert(*f2.target<int (*)(int)>() == g);
+    RTTI_ASSERT(*f1.target<int (*)(int)>() == h);
+    RTTI_ASSERT(*f2.target<int (*)(int)>() == g);
   }
   assert(A::count == 0);
   assert(globalMemCounter.checkOutstandingNewEq(0));
@@ -128,7 +133,7 @@ int main(int, char**) {
       f1.swap(f1);
     }
     assert(A::count == 1);
-    assert(f1.target<A>()->id() == 1);
+    RTTI_ASSERT(f1.target<A>()->id() == 1);
   }
   assert(A::count == 0);
   assert(globalMemCounter.checkOutstandingNewEq(0));
@@ -137,7 +142,7 @@ int main(int, char**) {
     DisableAllocationGuard guard;
     ((void)guard);
     f1.swap(f1);
-    assert(*f1.target<int (*)()>() == g0);
+    RTTI_ASSERT(*f1.target<int (*)()>() == g0);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   {
@@ -145,7 +150,7 @@ int main(int, char**) {
     DisableAllocationGuard guard;
     ((void)guard);
     f1.swap(f1);
-    assert(*f1.target<int (*)(int, int)>() == g2);
+    RTTI_ASSERT(*f1.target<int (*)(int, int)>() == g2);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   {
@@ -153,7 +158,7 @@ int main(int, char**) {
     DisableAllocationGuard guard;
     ((void)guard);
     f1.swap(f1);
-    assert(*f1.target<int (*)(int, int, int)>() == g3);
+    RTTI_ASSERT(*f1.target<int (*)(int, int, int)>() == g3);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   {
@@ -163,7 +168,7 @@ int main(int, char**) {
     ((void)guard);
     f1.swap(f1);
     assert(A::count == 1);
-    assert(f1.target<A>()->id() == 1);
+    RTTI_ASSERT(f1.target<A>()->id() == 1);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   assert(A::count == 0);
@@ -174,7 +179,7 @@ int main(int, char**) {
     ((void)guard);
     f1.swap(f1);
     assert(A::count == 1);
-    assert(f1.target<A>()->id() == 2);
+    RTTI_ASSERT(f1.target<A>()->id() == 2);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   assert(A::count == 0);
@@ -185,7 +190,7 @@ int main(int, char**) {
     ((void)guard);
     f1.swap(f1);
     assert(A::count == 1);
-    assert(f1.target<A>()->id() == 3);
+    RTTI_ASSERT(f1.target<A>()->id() == 3);
   }
   assert(globalMemCounter.checkOutstandingNewEq(0));
   assert(A::count == 0);

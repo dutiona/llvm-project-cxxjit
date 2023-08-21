@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Object/Error.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ManagedStatic.h"
 
 using namespace llvm;
 using namespace object;
@@ -51,6 +51,8 @@ std::string _object_error_category::message(int EV) const {
     return "Bitcode section not found in object file";
   case object_error::invalid_symbol_index:
     return "Invalid symbol index";
+  case object_error::section_stripped:
+    return "Section has been stripped from the object file";
   }
   llvm_unreachable("An enumerator of object_error does not have a message "
                    "defined.");
@@ -60,9 +62,10 @@ void BinaryError::anchor() {}
 char BinaryError::ID = 0;
 char GenericBinaryError::ID = 0;
 
-GenericBinaryError::GenericBinaryError(Twine Msg) : Msg(Msg.str()) {}
+GenericBinaryError::GenericBinaryError(const Twine &Msg) : Msg(Msg.str()) {}
 
-GenericBinaryError::GenericBinaryError(Twine Msg, object_error ECOverride)
+GenericBinaryError::GenericBinaryError(const Twine &Msg,
+                                       object_error ECOverride)
     : Msg(Msg.str()) {
   setErrorCode(make_error_code(ECOverride));
 }
@@ -71,25 +74,21 @@ void GenericBinaryError::log(raw_ostream &OS) const {
   OS << Msg;
 }
 
-static ManagedStatic<_object_error_category> error_category;
-
 const std::error_category &object::object_category() {
-  return *error_category;
+  static _object_error_category error_category;
+  return error_category;
 }
 
 llvm::Error llvm::object::isNotObjectErrorInvalidFileType(llvm::Error Err) {
-  if (auto Err2 =
-          handleErrors(std::move(Err), [](std::unique_ptr<ECError> M) -> Error {
-            // Try to handle 'M'. If successful, return a success value from
-            // the handler.
-            if (M->convertToErrorCode() == object_error::invalid_file_type)
-              return Error::success();
+  return handleErrors(std::move(Err), [](std::unique_ptr<ECError> M) -> Error {
+    // Try to handle 'M'. If successful, return a success value from
+    // the handler.
+    if (M->convertToErrorCode() == object_error::invalid_file_type)
+      return Error::success();
 
-            // We failed to handle 'M' - return it from the handler.
-            // This value will be passed back from catchErrors and
-            // wind up in Err2, where it will be returned from this function.
-            return Error(std::move(M));
-          }))
-    return Err2;
-  return Err;
+    // We failed to handle 'M' - return it from the handler.
+    // This value will be passed back from catchErrors and
+    // wind up in Err2, where it will be returned from this function.
+    return Error(std::move(M));
+  });
 }

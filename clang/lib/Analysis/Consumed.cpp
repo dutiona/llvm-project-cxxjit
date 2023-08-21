@@ -27,13 +27,13 @@
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 #include <memory>
+#include <optional>
 #include <utility>
 
 // TODO: Adjust states of args to constructors in the same way that arguments to
@@ -62,7 +62,7 @@ static SourceLocation getFirstStmtLoc(const CFGBlock *Block) {
   // Find the source location of the first statement in the block, if the block
   // is not empty.
   for (const auto &B : *Block)
-    if (Optional<CFGStmt> CS = B.getAs<CFGStmt>())
+    if (std::optional<CFGStmt> CS = B.getAs<CFGStmt>())
       return CS->getStmt()->getBeginLoc();
 
   // Block is empty.
@@ -76,12 +76,12 @@ static SourceLocation getFirstStmtLoc(const CFGBlock *Block) {
 static SourceLocation getLastStmtLoc(const CFGBlock *Block) {
   // Find the source location of the last statement in the block, if the block
   // is not empty.
-  if (const Stmt *StmtNode = Block->getTerminator()) {
+  if (const Stmt *StmtNode = Block->getTerminatorStmt()) {
     return StmtNode->getBeginLoc();
   } else {
     for (CFGBlock::const_reverse_iterator BI = Block->rbegin(),
          BE = Block->rend(); BI != BE; ++BI) {
-      if (Optional<CFGStmt> CS = BI->getAs<CFGStmt>())
+      if (std::optional<CFGStmt> CS = BI->getAs<CFGStmt>())
         return CS->getStmt()->getBeginLoc();
     }
   }
@@ -644,10 +644,10 @@ bool ConsumedStmtVisitor::handleCall(const CallExpr *Call, const Expr *ObjArg,
       continue;
 
     // Adjust state on the caller side.
-    if (isRValueRef(ParamType))
-      setStateForVarOrTmp(StateMap, PInfo, consumed::CS_Consumed);
-    else if (ReturnTypestateAttr *RT = Param->getAttr<ReturnTypestateAttr>())
+    if (ReturnTypestateAttr *RT = Param->getAttr<ReturnTypestateAttr>())
       setStateForVarOrTmp(StateMap, PInfo, mapReturnTypestateAttrState(RT));
+    else if (isRValueRef(ParamType) || isConsumableType(ParamType))
+      setStateForVarOrTmp(StateMap, PInfo, consumed::CS_Consumed);
     else if (isPointerOrRef(ParamType) &&
              (!ParamType->getPointeeType().isConstQualified() ||
               isSetOnReadPtrType(ParamType)))
@@ -847,7 +847,7 @@ void ConsumedStmtVisitor::VisitDeclStmt(const DeclStmt *DeclS) {
 
 void ConsumedStmtVisitor::VisitMaterializeTemporaryExpr(
   const MaterializeTemporaryExpr *Temp) {
-  forwardInfo(Temp->GetTemporaryExpr(), Temp);
+  forwardInfo(Temp->getSubExpr(), Temp);
 }
 
 void ConsumedStmtVisitor::VisitMemberExpr(const MemberExpr *MExpr) {
@@ -1026,7 +1026,7 @@ void ConsumedBlockInfo::addInfo(
   } else if (OwnedStateMap)
     Entry = std::move(OwnedStateMap);
   else
-    Entry = llvm::make_unique<ConsumedStateMap>(*StateMap);
+    Entry = std::make_unique<ConsumedStateMap>(*StateMap);
 }
 
 void ConsumedBlockInfo::addInfo(const CFGBlock *Block,
@@ -1058,7 +1058,7 @@ ConsumedBlockInfo::getInfo(const CFGBlock *Block) {
   assert(Block && "Block pointer must not be NULL");
 
   auto &Entry = StateMapsArray[Block->getBlockID()];
-  return isBackEdgeTarget(Block) ? llvm::make_unique<ConsumedStateMap>(*Entry)
+  return isBackEdgeTarget(Block) ? std::make_unique<ConsumedStateMap>(*Entry)
                                  : std::move(Entry);
 }
 
@@ -1317,7 +1317,7 @@ void ConsumedAnalyzer::run(AnalysisDeclContext &AC) {
 
   BlockInfo = ConsumedBlockInfo(CFGraph->getNumBlockIDs(), SortedGraph);
 
-  CurrStates = llvm::make_unique<ConsumedStateMap>();
+  CurrStates = std::make_unique<ConsumedStateMap>();
   ConsumedStmtVisitor Visitor(*this, CurrStates.get());
 
   // Add all trackable parameters to the state map.

@@ -11,11 +11,13 @@
 
 #include "platform.h"
 
+#include <stdint.h>
+
 #ifndef SCUDO_DEBUG
 #define SCUDO_DEBUG 0
 #endif
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 // String related macros.
 
@@ -27,108 +29,137 @@
 // Attributes & builtins related macros.
 
 #define INTERFACE __attribute__((visibility("default")))
+#define HIDDEN __attribute__((visibility("hidden")))
 #define WEAK __attribute__((weak))
-#define INLINE inline
 #define ALWAYS_INLINE inline __attribute__((always_inline))
-#define ALIAS(x) __attribute__((alias(x)))
-#define ALIGNED(x) __attribute__((aligned(x)))
-#define FORMAT(f, a) __attribute__((format(printf, f, a)))
+#define ALIAS(X) __attribute__((alias(X)))
+#define FORMAT(F, A) __attribute__((format(printf, F, A)))
 #define NOINLINE __attribute__((noinline))
 #define NORETURN __attribute__((noreturn))
-#define THREADLOCAL __thread
-#define LIKELY(x) __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define LIKELY(X) __builtin_expect(!!(X), 1)
+#define UNLIKELY(X) __builtin_expect(!!(X), 0)
 #if defined(__i386__) || defined(__x86_64__)
-// __builtin_prefetch(x) generates prefetchnt0 on x86
-#define PREFETCH(x) __asm__("prefetchnta (%0)" : : "r"(x))
+// __builtin_prefetch(X) generates prefetchnt0 on x86
+#define PREFETCH(X) __asm__("prefetchnta (%0)" : : "r"(X))
 #else
-#define PREFETCH(x) __builtin_prefetch(x)
+#define PREFETCH(X) __builtin_prefetch(X)
 #endif
 #define UNUSED __attribute__((unused))
 #define USED __attribute__((used))
 #define NOEXCEPT noexcept
 
-namespace scudo {
-
-typedef unsigned long uptr;
-typedef signed long sptr;
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef unsigned long long u64;
-typedef signed char s8;
-typedef signed short s16;
-typedef signed int s32;
-typedef signed long long s64;
-
-// Various integer constants.
-
-#undef __INT64_C
-#undef __UINT64_C
-#undef UINTPTR_MAX
-#if SCUDO_WORDSIZE == 64U
-#define __INT64_C(c) c##L
-#define __UINT64_C(c) c##UL
-#define UINTPTR_MAX (18446744073709551615UL)
+// This check is only available on Clang. This is essentially an alias of
+// C++20's 'constinit' specifier which will take care of this when (if?) we can
+// ask all libc's that use Scudo to compile us with C++20. Dynamic
+// initialization is bad; Scudo is designed to be lazy-initializated on the
+// first call to malloc/free (and friends), and this generally happens in the
+// loader somewhere in libdl's init. After the loader is done, control is
+// transferred to libc's initialization, and the dynamic initializers are run.
+// If there's a dynamic initializer for Scudo, then it will clobber the
+// already-initialized Scudo, and re-initialize all its members back to default
+// values, causing various explosions. Unfortunately, marking
+// scudo::Allocator<>'s constructor as 'constexpr' isn't sufficient to prevent
+// dynamic initialization, as default initialization is fine under 'constexpr'
+// (but not 'constinit'). Clang at -O0, and gcc at all opt levels will emit a
+// dynamic initializer for any constant-initialized variables if there is a mix
+// of default-initialized and constant-initialized variables.
+//
+// If you're looking at this because your build failed, you probably introduced
+// a new member to scudo::Allocator<> (possibly transiently) that didn't have an
+// initializer. The fix is easy - just add one.
+#if defined(__has_attribute)
+#if __has_attribute(require_constant_initialization)
+#define SCUDO_REQUIRE_CONSTANT_INITIALIZATION                                  \
+  __attribute__((__require_constant_initialization__))
 #else
-#define __INT64_C(c) c##LL
-#define __UINT64_C(c) c##ULL
-#define UINTPTR_MAX (4294967295U)
-#endif // SCUDO_WORDSIZE == 64U
-#undef INT32_MIN
-#define INT32_MIN (-2147483647 - 1)
-#undef INT32_MAX
-#define INT32_MAX (2147483647)
-#undef UINT32_MAX
-#define UINT32_MAX (4294967295U)
-#undef INT64_MIN
-#define INT64_MIN (-__INT64_C(9223372036854775807) - 1)
-#undef INT64_MAX
-#define INT64_MAX (__INT64_C(9223372036854775807))
-#undef UINT64_MAX
-#define UINT64_MAX (__UINT64_C(18446744073709551615))
-
-enum LinkerInitialized { LINKER_INITIALIZED = 0 };
-
-// Various CHECK related macros.
-
-#define COMPILER_CHECK(Pred) static_assert(Pred, "")
-
-// TODO(kostyak): implement at a later check-in.
-#define CHECK_IMPL(c1, op, c2)                                                 \
-  do {                                                                         \
-  } while (false)
-
-#define CHECK(a) CHECK_IMPL((a), !=, 0)
-#define CHECK_EQ(a, b) CHECK_IMPL((a), ==, (b))
-#define CHECK_NE(a, b) CHECK_IMPL((a), !=, (b))
-#define CHECK_LT(a, b) CHECK_IMPL((a), <, (b))
-#define CHECK_LE(a, b) CHECK_IMPL((a), <=, (b))
-#define CHECK_GT(a, b) CHECK_IMPL((a), >, (b))
-#define CHECK_GE(a, b) CHECK_IMPL((a), >=, (b))
-
-#if SCUDO_DEBUG
-#define DCHECK(a) CHECK(a)
-#define DCHECK_EQ(a, b) CHECK_EQ(a, b)
-#define DCHECK_NE(a, b) CHECK_NE(a, b)
-#define DCHECK_LT(a, b) CHECK_LT(a, b)
-#define DCHECK_LE(a, b) CHECK_LE(a, b)
-#define DCHECK_GT(a, b) CHECK_GT(a, b)
-#define DCHECK_GE(a, b) CHECK_GE(a, b)
-#else
-#define DCHECK(a)
-#define DCHECK_EQ(a, b)
-#define DCHECK_NE(a, b)
-#define DCHECK_LT(a, b)
-#define DCHECK_LE(a, b)
-#define DCHECK_GT(a, b)
-#define DCHECK_GE(a, b)
+#define SCUDO_REQUIRE_CONSTANT_INITIALIZATION
+#endif
 #endif
 
-// TODO(kostyak): implement at a later check-in.
-#define UNREACHABLE(msg)                                                       \
+namespace scudo {
+
+typedef uintptr_t uptr;
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef intptr_t sptr;
+typedef int8_t s8;
+typedef int16_t s16;
+typedef int32_t s32;
+typedef int64_t s64;
+
+// The following two functions have platform specific implementations.
+void outputRaw(const char *Buffer);
+void NORETURN die();
+
+#define RAW_CHECK_MSG(Expr, Msg)                                               \
   do {                                                                         \
+    if (UNLIKELY(!(Expr))) {                                                   \
+      outputRaw(Msg);                                                          \
+      die();                                                                   \
+    }                                                                          \
   } while (false)
+
+#define RAW_CHECK(Expr) RAW_CHECK_MSG(Expr, #Expr)
+
+void NORETURN reportCheckFailed(const char *File, int Line,
+                                const char *Condition, u64 Value1, u64 Value2);
+#define CHECK_IMPL(C1, Op, C2)                                                 \
+  do {                                                                         \
+    if (UNLIKELY(!(C1 Op C2))) {                                               \
+      scudo::reportCheckFailed(__FILE__, __LINE__, #C1 " " #Op " " #C2,        \
+                               (scudo::u64)C1, (scudo::u64)C2);                \
+      scudo::die();                                                            \
+    }                                                                          \
+  } while (false)
+
+#define CHECK(A) CHECK_IMPL((A), !=, 0)
+#define CHECK_EQ(A, B) CHECK_IMPL((A), ==, (B))
+#define CHECK_NE(A, B) CHECK_IMPL((A), !=, (B))
+#define CHECK_LT(A, B) CHECK_IMPL((A), <, (B))
+#define CHECK_LE(A, B) CHECK_IMPL((A), <=, (B))
+#define CHECK_GT(A, B) CHECK_IMPL((A), >, (B))
+#define CHECK_GE(A, B) CHECK_IMPL((A), >=, (B))
+
+#if SCUDO_DEBUG
+#define DCHECK(A) CHECK(A)
+#define DCHECK_EQ(A, B) CHECK_EQ(A, B)
+#define DCHECK_NE(A, B) CHECK_NE(A, B)
+#define DCHECK_LT(A, B) CHECK_LT(A, B)
+#define DCHECK_LE(A, B) CHECK_LE(A, B)
+#define DCHECK_GT(A, B) CHECK_GT(A, B)
+#define DCHECK_GE(A, B) CHECK_GE(A, B)
+#else
+#define DCHECK(A)                                                              \
+  do {                                                                         \
+  } while (false && (A))
+#define DCHECK_EQ(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) == (B))
+#define DCHECK_NE(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) != (B))
+#define DCHECK_LT(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) < (B))
+#define DCHECK_LE(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) <= (B))
+#define DCHECK_GT(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) > (B))
+#define DCHECK_GE(A, B)                                                        \
+  do {                                                                         \
+  } while (false && (A) >= (B))
+#endif
+
+// The superfluous die() call effectively makes this macro NORETURN.
+#define UNREACHABLE(Msg)                                                       \
+  do {                                                                         \
+    CHECK(0 && Msg);                                                           \
+    die();                                                                     \
+  } while (0)
 
 } // namespace scudo
 

@@ -14,8 +14,8 @@
 // array of load addresses for solibs loaded and unloaded.  The SPI will tell us
 // about both dyld and the executable, in addition to all of the usual solibs.
 
-#ifndef liblldb_DynamicLoaderMacOS_h_
-#define liblldb_DynamicLoaderMacOS_h_
+#ifndef LLDB_SOURCE_PLUGINS_DYNAMICLOADER_MACOSX_DYLD_DYNAMICLOADERMACOS_H
+#define LLDB_SOURCE_PLUGINS_DYNAMICLOADER_MACOSX_DYLD_DYNAMICLOADERMACOS_H
 
 #include <mutex>
 #include <vector>
@@ -32,28 +32,24 @@ class DynamicLoaderMacOS : public lldb_private::DynamicLoaderDarwin {
 public:
   DynamicLoaderMacOS(lldb_private::Process *process);
 
-  virtual ~DynamicLoaderMacOS() override;
+  ~DynamicLoaderMacOS() override;
 
-  //------------------------------------------------------------------
   // Static Functions
-  //------------------------------------------------------------------
   static void Initialize();
 
   static void Terminate();
 
-  static lldb_private::ConstString GetPluginNameStatic();
+  static llvm::StringRef GetPluginNameStatic() { return "macos-dyld"; }
 
-  static const char *GetPluginDescriptionStatic();
+  static llvm::StringRef GetPluginDescriptionStatic();
 
   static lldb_private::DynamicLoader *
   CreateInstance(lldb_private::Process *process, bool force);
 
-  //------------------------------------------------------------------
   /// Called after attaching a process.
   ///
   /// Allow DynamicLoader plug-ins to execute some code after
   /// attaching to a process.
-  //------------------------------------------------------------------
   bool ProcessDidExec() override;
 
   lldb_private::Status CanLoadImage() override;
@@ -63,12 +59,8 @@ public:
       lldb_private::LazyBool &using_shared_cache,
       lldb_private::LazyBool &private_shared_cache) override;
 
-  //------------------------------------------------------------------
   // PluginInterface protocol
-  //------------------------------------------------------------------
-  lldb_private::ConstString GetPluginName() override;
-
-  uint32_t GetPluginVersion() override;
+  llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
 protected:
   void PutToLog(lldb_private::Log *log) const;
@@ -79,9 +71,15 @@ protected:
 
   bool DidSetNotificationBreakpoint() override;
 
+  bool SetDYLDHandoverBreakpoint(lldb::addr_t notification_address);
+
+  void ClearDYLDHandoverBreakpoint();
+
   void AddBinaries(const std::vector<lldb::addr_t> &load_addresses);
 
   void DoClear() override;
+
+  bool IsFullyInitialized() override;
 
   static bool
   NotifyBreakpointHit(void *baton,
@@ -102,6 +100,7 @@ protected:
   uint32_t m_image_infos_stop_id; // The Stop ID the last time we
                                   // loaded/unloaded images
   lldb::user_id_t m_break_id;
+  lldb::user_id_t m_dyld_handover_break_id;
   mutable std::recursive_mutex m_mutex;
   lldb::addr_t m_maybe_image_infos_address; // If dyld is still maintaining the
                                             // all_image_infos address, store it
@@ -109,9 +108,7 @@ protected:
                                             // exec's when talking to
                                             // debugservers that don't support
                                             // the "reason:exec" annotation.
-
-private:
-  DISALLOW_COPY_AND_ASSIGN(DynamicLoaderMacOS);
+  bool m_libsystem_fully_initalized;
 };
 
-#endif // liblldb_DynamicLoaderMacOS_h_
+#endif // LLDB_SOURCE_PLUGINS_DYNAMICLOADER_MACOSX_DYLD_DYNAMICLOADERMACOS_H

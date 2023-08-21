@@ -10,19 +10,19 @@
 
 int a[10];
 
-int f0() {
+int f0(void) {
   return OBJECT_SIZE_BUILTIN(&a); // expected-error {{too few arguments to function}}
 }
-int f1() {
+int f1(void) {
   return (OBJECT_SIZE_BUILTIN(&a, 0) + 
           OBJECT_SIZE_BUILTIN(&a, 1) + 
           OBJECT_SIZE_BUILTIN(&a, 2) + 
           OBJECT_SIZE_BUILTIN(&a, 3));
 }
-int f2() {
+int f2(void) {
   return OBJECT_SIZE_BUILTIN(&a, -1); // expected-error {{argument value -1 is outside the valid range [0, 3]}}
 }
-int f3() {
+int f3(void) {
   return OBJECT_SIZE_BUILTIN(&a, 4); // expected-error {{argument value 4 is outside the valid range [0, 3]}}
 }
 
@@ -30,7 +30,7 @@ int f3() {
 // rdar://6252231 - cannot call vsnprintf with va_list on x86_64
 void f4(const char *fmt, ...) {
  __builtin_va_list args;
- __builtin___vsnprintf_chk (0, 42, 0, 11, fmt, args); // expected-warning {{'__builtin___vsnprintf_chk' will always overflow; destination buffer has size 11, but size argument is 42}}
+ __builtin___vsnprintf_chk (0, 42, 0, 11, fmt, args); // expected-warning {{'vsnprintf' will always overflow; destination buffer has size 11, but size argument is 42}}
 }
 
 // rdar://18334276
@@ -57,7 +57,7 @@ void f6(void)
   char b[5];
   char buf[10];
   __builtin___memccpy_chk (buf, b, '\0', sizeof(b), OBJECT_SIZE_BUILTIN (buf, 0));
-  __builtin___memccpy_chk (b, buf, '\0', sizeof(buf), OBJECT_SIZE_BUILTIN (b, 0));  // expected-warning {{'__builtin___memccpy_chk' will always overflow; destination buffer has size 5, but size argument is 10}}
+  __builtin___memccpy_chk (b, buf, '\0', sizeof(buf), OBJECT_SIZE_BUILTIN (b, 0));  // expected-warning {{'memccpy' will always overflow; destination buffer has size 5, but size argument is 10}}
 }
 
 int pr28314(void) {
@@ -84,7 +84,7 @@ int pr28314(void) {
   return a;
 }
 
-int pr31843() {
+int pr31843(void) {
   int n = 0;
 
   struct { int f; } a;

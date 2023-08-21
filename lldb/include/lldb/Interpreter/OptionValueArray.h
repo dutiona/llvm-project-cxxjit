@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_OptionValueArray_h_
-#define liblldb_OptionValueArray_h_
+#ifndef LLDB_INTERPRETER_OPTIONVALUEARRAY_H
+#define LLDB_INTERPRETER_OPTIONVALUEARRAY_H
 
 #include <vector>
 
@@ -15,36 +15,33 @@
 
 namespace lldb_private {
 
-class OptionValueArray : public OptionValue {
+class OptionValueArray : public Cloneable<OptionValueArray, OptionValue> {
 public:
   OptionValueArray(uint32_t type_mask = UINT32_MAX, bool raw_value_dump = false)
-      : m_type_mask(type_mask), m_values(), m_raw_value_dump(raw_value_dump) {}
+      : m_type_mask(type_mask), m_raw_value_dump(raw_value_dump) {}
 
-  ~OptionValueArray() override {}
+  ~OptionValueArray() override = default;
 
-  //---------------------------------------------------------------------
   // Virtual subclass pure virtual overrides
-  //---------------------------------------------------------------------
 
   OptionValue::Type GetType() const override { return eTypeArray; }
 
   void DumpValue(const ExecutionContext *exe_ctx, Stream &strm,
                  uint32_t dump_mask) override;
 
+  llvm::json::Value ToJSON(const ExecutionContext *exe_ctx) override;
+
   Status
   SetValueFromString(llvm::StringRef value,
                      VarSetOperationType op = eVarSetOperationAssign) override;
-  Status
-  SetValueFromString(const char *,
-                     VarSetOperationType = eVarSetOperationAssign) = delete;
 
-  bool Clear() override {
+  void Clear() override {
     m_values.clear();
     m_value_was_set = false;
-    return true;
   }
 
-  lldb::OptionValueSP DeepCopy() const override;
+  lldb::OptionValueSP
+  DeepCopy(const lldb::OptionValueSP &new_parent) const override;
 
   bool IsAggregateValue() const override { return true; }
 
@@ -52,9 +49,7 @@ public:
                                   llvm::StringRef name, bool will_modify,
                                   Status &error) const override;
 
-  //---------------------------------------------------------------------
   // Subclass specific functions
-  //---------------------------------------------------------------------
 
   size_t GetSize() const { return m_values.size(); }
 
@@ -129,4 +124,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_OptionValueArray_h_
+#endif // LLDB_INTERPRETER_OPTIONVALUEARRAY_H

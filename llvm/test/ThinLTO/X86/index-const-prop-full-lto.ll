@@ -8,9 +8,9 @@
 
 ; All references from functions in full LTO module are not constant.
 ; We cannot internalize @g
-; CHECK: @g = available_externally dso_local global i32 42
+; CHECK: @g = available_externally global i32 42
 
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
 declare i32 @foo()
@@ -18,7 +18,7 @@ declare i32 @foo()
 
 define i32 @main() {
   %v = call i32 @foo()
-  %v2 = load i32, i32* @g
+  %v2 = load i32, ptr @g
   %v3 = add i32 %v, %v2
   ret i32 %v3
 }

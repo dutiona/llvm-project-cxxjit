@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_Host_HostThread_h_
-#define lldb_Host_HostThread_h_
+#ifndef LLDB_HOST_HOSTTHREAD_H
+#define LLDB_HOST_HOSTTHREAD_H
 
 #include "lldb/Host/HostNativeThreadForward.h"
 #include "lldb/Utility/Status.h"
@@ -19,15 +19,13 @@ namespace lldb_private {
 
 class HostNativeThreadBase;
 
-//----------------------------------------------------------------------
-/// @class HostInfo HostInfo.h "lldb/Host/HostThread.h"
+/// \class HostInfo HostInfo.h "lldb/Host/HostThread.h"
 /// A class that represents a thread running inside of a process on the
 ///        local machine.
 ///
 /// HostThread allows querying and manipulation of threads running on the host
 /// machine.
 ///
-//----------------------------------------------------------------------
 class HostThread {
 public:
   HostThread();

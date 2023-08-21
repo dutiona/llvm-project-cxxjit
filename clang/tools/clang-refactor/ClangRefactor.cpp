@@ -26,6 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 #include <string>
 
 using namespace clang;
@@ -38,12 +39,12 @@ namespace opts {
 static cl::OptionCategory CommonRefactorOptions("Refactoring options");
 
 static cl::opt<bool> Verbose("v", cl::desc("Use verbose output"),
-                             cl::cat(cl::GeneralCategory),
-                             cl::sub(*cl::AllSubCommands));
+                             cl::cat(cl::getGeneralCategory()),
+                             cl::sub(cl::SubCommand::getAll()));
 
 static cl::opt<bool> Inplace("i", cl::desc("Inplace edit <file>s"),
-                             cl::cat(cl::GeneralCategory),
-                             cl::sub(*cl::AllSubCommands));
+                             cl::cat(cl::getGeneralCategory()),
+                             cl::sub(cl::SubCommand::getAll()));
 
 } // end namespace opts
 
@@ -116,8 +117,8 @@ public:
 
   bool forAllRanges(const SourceManager &SM,
                     llvm::function_ref<void(SourceRange R)> Callback) override {
-    const FileEntry *FE = SM.getFileManager().getFile(Range.FileName);
-    FileID FID = FE ? SM.translateFile(FE) : FileID();
+    auto FE = SM.getFileManager().getFile(Range.FileName);
+    FileID FID = FE ? SM.translateFile(*FE) : FileID();
     if (!FE || FID.isInvalid()) {
       llvm::errs() << "error: -selection=" << Range.FileName
                    << ":... : given file is not in the target TU\n";
@@ -147,16 +148,16 @@ std::unique_ptr<SourceSelectionArgument>
 SourceSelectionArgument::fromString(StringRef Value) {
   if (Value.startswith("test:")) {
     StringRef Filename = Value.drop_front(strlen("test:"));
-    Optional<TestSelectionRangesInFile> ParsedTestSelection =
+    std::optional<TestSelectionRangesInFile> ParsedTestSelection =
         findTestSelectionRanges(Filename);
     if (!ParsedTestSelection)
       return nullptr; // A parsing error was already reported.
-    return llvm::make_unique<TestSourceSelectionArgument>(
+    return std::make_unique<TestSourceSelectionArgument>(
         std::move(*ParsedTestSelection));
   }
-  Optional<ParsedSourceRange> Range = ParsedSourceRange::fromString(Value);
+  std::optional<ParsedSourceRange> Range = ParsedSourceRange::fromString(Value);
   if (Range)
-    return llvm::make_unique<SourceRangeSelectionArgument>(std::move(*Range));
+    return std::make_unique<SourceRangeSelectionArgument>(std::move(*Range));
   llvm::errs() << "error: '-selection' option must be specified using "
                   "<file>:<line>:<column> or "
                   "<file>:<line>:<column>-<line>:<column> format\n";
@@ -194,13 +195,13 @@ public:
       : Options(Options) {}
 
   void visit(const RefactoringOption &Opt,
-             Optional<std::string> &Value) override {
+             std::optional<std::string> &Value) override {
     const cl::opt<std::string> &CLOpt = Options.getStringOption(Opt);
     if (!CLOpt.getValue().empty()) {
       Value = CLOpt.getValue();
       return;
     }
-    Value = None;
+    Value = std::nullopt;
     if (Opt.isRequired())
       MissingRequiredOptions.push_back(&Opt);
   }
@@ -224,7 +225,8 @@ public:
       RefactoringActionCommandLineOptions &Options)
       : Category(Category), Subcommand(Subcommand), Options(Options) {}
 
-  void visit(const RefactoringOption &Opt, Optional<std::string> &) override {
+  void visit(const RefactoringOption &Opt,
+             std::optional<std::string> &) override {
     if (Visited.insert(&Opt).second)
       Options.addStringOption(Opt, create<std::string>(Opt));
   }
@@ -237,7 +239,7 @@ private:
                                "specified for one refactoring action");
     // FIXME: cl::Required can be specified when this option is present
     // in all rules in an action.
-    return llvm::make_unique<cl::opt<T>>(
+    return std::make_unique<cl::opt<T>>(
         Opt.getName(), cl::desc(Opt.getDescription()), cl::Optional,
         cl::cat(Category), cl::sub(Subcommand));
   }
@@ -260,7 +262,7 @@ public:
     // Check if the selection option is supported.
     for (const auto &Rule : this->ActionRules) {
       if (Rule->hasSelectionRequirement()) {
-        Selection = llvm::make_unique<cl::opt<std::string>>(
+        Selection = std::make_unique<cl::opt<std::string>>(
             "selection",
             cl::desc(
                 "The selected source range in which the refactoring should "
@@ -316,7 +318,7 @@ public:
   ClangRefactorConsumer(AtomicChanges &Changes) : SourceChanges(&Changes) {}
 
   void handleError(llvm::Error Err) override {
-    Optional<PartialDiagnosticAt> Diag = DiagnosticError::take(Err);
+    std::optional<PartialDiagnosticAt> Diag = DiagnosticError::take(Err);
     if (!Diag) {
       llvm::errs() << llvm::toString(std::move(Err)) << "\n";
       return;
@@ -361,7 +363,7 @@ public:
 
     // Create subcommands and command-line options.
     for (auto &Action : Actions) {
-      SubCommands.push_back(llvm::make_unique<RefactoringActionSubcommand>(
+      SubCommands.push_back(std::make_unique<RefactoringActionSubcommand>(
           std::move(Action), Action->createActiveActionRules(),
           opts::CommonRefactorOptions));
     }
@@ -461,13 +463,15 @@ public:
       ToolActionFactory(TUCallbackType Callback)
           : Callback(std::move(Callback)) {}
 
-      FrontendAction *create() override { return new ToolASTAction(Callback); }
+      std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<ToolASTAction>(Callback);
+      }
 
     private:
       TUCallbackType Callback;
     };
 
-    return llvm::make_unique<ToolActionFactory>(
+    return std::make_unique<ToolActionFactory>(
         [this](ASTContext &AST) { return callback(AST); });
   }
 
@@ -497,7 +501,7 @@ public:
 
       if (opts::Inplace) {
         std::error_code EC;
-        llvm::raw_fd_ostream OS(File, EC, llvm::sys::fs::F_Text);
+        llvm::raw_fd_ostream OS(File, EC, llvm::sys::fs::OF_TextWithCRLF);
         if (EC) {
           llvm::errs() << EC.message() << "\n";
           return true;
@@ -610,9 +614,14 @@ int main(int argc, const char **argv) {
 
   ClangRefactorTool RefactorTool;
 
-  CommonOptionsParser Options(
-      argc, argv, cl::GeneralCategory, cl::ZeroOrMore,
+  auto ExpectedParser = CommonOptionsParser::create(
+      argc, argv, cl::getGeneralCategory(), cl::ZeroOrMore,
       "Clang-based refactoring tool for C, C++ and Objective-C");
+  if (!ExpectedParser) {
+    llvm::errs() << ExpectedParser.takeError();
+    return 1;
+  }
+  CommonOptionsParser &Options = ExpectedParser.get();
 
   if (auto Err = RefactorTool.Init()) {
     llvm::errs() << llvm::toString(std::move(Err)) << "\n";

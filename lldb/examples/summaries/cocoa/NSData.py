@@ -136,7 +136,7 @@ def NSData_SummaryProvider(valobj, dict):
         logger >> "got a summary: it is " + str(summary)
         if summary is None:
             summary = '<variable is not NSData>'
-        elif isinstance(summary, basestring):
+        elif isinstance(summary, str):
             pass
         else:
             if summary == 1:
@@ -164,7 +164,7 @@ def NSData_SummaryProvider2(valobj, dict):
         logger >> "got a summary: it is " + str(summary)
         if summary is None:
             summary = '<variable is not CFData>'
-        elif isinstance(summary, basestring):
+        elif isinstance(summary, str):
             pass
         else:
             if summary == 1:

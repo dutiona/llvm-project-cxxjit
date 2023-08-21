@@ -20,12 +20,10 @@
 
 namespace lldb_private {
 
-//----------------------------------------------------------------------
 // DebuggerThread
 //
 // Debugs a single process, notifying listeners as appropriate when interesting
 // things occur.
-//----------------------------------------------------------------------
 class DebuggerThread : public std::enable_shared_from_this<DebuggerThread> {
 public:
   DebuggerThread(DebugDelegateSP debug_delegate);
@@ -93,10 +91,8 @@ private:
   // exit.
   bool m_detached = false;
 
-  static lldb::thread_result_t DebuggerThreadLaunchRoutine(void *data);
   lldb::thread_result_t
   DebuggerThreadLaunchRoutine(const ProcessLaunchInfo &launch_info);
-  static lldb::thread_result_t DebuggerThreadAttachRoutine(void *data);
   lldb::thread_result_t
   DebuggerThreadAttachRoutine(lldb::pid_t pid,
                               const ProcessAttachInfo &launch_info);

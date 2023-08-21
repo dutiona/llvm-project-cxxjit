@@ -9,7 +9,6 @@
 #ifndef LLVM_DEBUGINFO_CODEVIEW_RECORDSERIALIZATION_H
 #define LLVM_DEBUGINFO_CODEVIEW_RECORDSERIALIZATION_H
 
-#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/CodeView/CodeView.h"
@@ -18,9 +17,9 @@
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
 #include <cinttypes>
-#include <tuple>
 
 namespace llvm {
+class APSInt;
 namespace codeview {
 using llvm::support::little32_t;
 using llvm::support::ulittle16_t;
@@ -31,6 +30,9 @@ using llvm::support::ulittle32_t;
 enum : unsigned { MaxRecordLength = 0xFF00 };
 
 struct RecordPrefix {
+  RecordPrefix() = default;
+  explicit RecordPrefix(uint16_t Kind) : RecordLen(2), RecordKind(Kind) {}
+
   ulittle16_t RecordLen;  // Record length, starting from &RecordKind.
   ulittle16_t RecordKind; // Record kind enum (SymRecordKind or TypeRecordKind)
 };

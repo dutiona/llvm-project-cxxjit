@@ -50,7 +50,6 @@
 //        to use WZR/XZR directly in some cases.
 //===----------------------------------------------------------------------===//
 #include "AArch64.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/iterator_range.h"
@@ -176,7 +175,7 @@ bool AArch64RedundantCopyElimination::knownRegValInBlock(
     case AArch64::ADDSWri:
     case AArch64::ADDSXri:
       IsCMN = true;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     // CMP is an alias for SUBS with a dead destination register.
     case AArch64::SUBSWri:
     case AArch64::SUBSXri: {
@@ -379,8 +378,8 @@ bool AArch64RedundantCopyElimination::optimizeBlock(MachineBasicBlock *MBB) {
     bool IsCopy = MI->isCopy();
     bool IsMoveImm = MI->isMoveImmediate();
     if (IsCopy || IsMoveImm) {
-      MCPhysReg DefReg = MI->getOperand(0).getReg();
-      MCPhysReg SrcReg = IsCopy ? MI->getOperand(1).getReg() : 0;
+      Register DefReg = MI->getOperand(0).getReg();
+      Register SrcReg = IsCopy ? MI->getOperand(1).getReg() : Register();
       int64_t SrcImm = IsMoveImm ? MI->getOperand(1).getImm() : 0;
       if (!MRI->isReserved(DefReg) &&
           ((IsCopy && (SrcReg == AArch64::XZR || SrcReg == AArch64::WZR)) ||
@@ -407,6 +406,11 @@ bool AArch64RedundantCopyElimination::optimizeBlock(MachineBasicBlock *MBB) {
                   return !O.isDead() && O.isReg() && O.isDef() &&
                          O.getReg() != CmpReg;
                 }))
+              continue;
+
+            // Don't remove a move immediate that implicitly defines the upper
+            // bits as different.
+            if (TRI->isSuperRegister(DefReg, KnownReg.Reg) && KnownReg.Imm < 0)
               continue;
           }
 

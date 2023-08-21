@@ -8,6 +8,8 @@
 
 // <codecvt>
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 // template <class Elem, unsigned long Maxcode = 0x10ffff,
 //           codecvt_mode Mode = (codecvt_mode)0>
 // class codecvt_utf8
@@ -23,6 +25,8 @@
 
 #include <codecvt>
 #include <cassert>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

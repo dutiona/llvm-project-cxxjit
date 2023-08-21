@@ -12,8 +12,8 @@
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeRecordMapping.h"
 #include "llvm/DebugInfo/CodeView/TypeVisitorCallbacks.h"
-#include "llvm/DebugInfo/PDB/Native/RawTypes.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/BinaryByteStream.h"
 #include "llvm/Support/BinaryItemStream.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Testing/Support/Error.h"
@@ -22,7 +22,6 @@
 
 using namespace llvm;
 using namespace llvm::codeview;
-using namespace llvm::pdb;
 
 namespace llvm {
 namespace codeview {
@@ -42,8 +41,6 @@ inline bool operator!=(const ArrayRecord &R1, const ArrayRecord &R2) {
 }
 
 inline bool operator==(const CVType &R1, const CVType &R2) {
-  if (R1.Type != R2.Type)
-    return false;
   if (R1.RecordData != R2.RecordData)
     return false;
   return true;
@@ -65,11 +62,11 @@ namespace {
 
 class MockCallbacks : public TypeVisitorCallbacks {
 public:
-  virtual Error visitTypeBegin(CVType &CVR, TypeIndex Index) {
+  Error visitTypeBegin(CVType &CVR, TypeIndex Index) override {
     Indices.push_back(Index);
     return Error::success();
   }
-  virtual Error visitKnownRecord(CVType &CVR, ArrayRecord &AR) {
+  Error visitKnownRecord(CVType &CVR, ArrayRecord &AR) override {
     VisitedRecords.push_back(AR);
     RawRecords.push_back(CVR);
     return Error::success();
@@ -90,7 +87,7 @@ public:
   RandomAccessVisitorTest() {}
 
   static void SetUpTestCase() {
-    GlobalState = llvm::make_unique<GlobalTestState>();
+    GlobalState = std::make_unique<GlobalTestState>();
 
     AppendingTypeTableBuilder Builder(GlobalState->Allocator);
 
@@ -107,7 +104,7 @@ public:
       GlobalState->Records.push_back(AR);
       GlobalState->Indices.push_back(Builder.writeLeafType(AR));
 
-      CVType Type(TypeLeafKind::LF_ARRAY, Builder.records().back());
+      CVType Type(Builder.records().back());
       GlobalState->TypeVector.push_back(Type);
 
       GlobalState->AllOffsets.push_back(
@@ -122,7 +119,7 @@ public:
   static void TearDownTestCase() { GlobalState.reset(); }
 
   void SetUp() override {
-    TestState = llvm::make_unique<PerTestState>();
+    TestState = std::make_unique<PerTestState>();
   }
 
   void TearDown() override { TestState.reset(); }
@@ -369,11 +366,10 @@ TEST_F(RandomAccessVisitorTest, CrossChunkName) {
   TypeIndex IndexOne = Builder.writeLeafType(Modifier);
 
   // set up a type stream that refers to the above two serialized records.
-  std::vector<CVType> TypeArray;
-  TypeArray.push_back(
-      CVType(static_cast<TypeLeafKind>(Class.Kind), Builder.records()[0]));
-  TypeArray.push_back(
-      CVType(static_cast<TypeLeafKind>(Modifier.Kind), Builder.records()[1]));
+  std::vector<CVType> TypeArray = {
+      {Builder.records()[0]},
+      {Builder.records()[1]},
+  };
   BinaryItemStream<CVType> ItemStream(llvm::support::little);
   ItemStream.setItems(TypeArray);
   VarStreamArray<CVType> TypeStream(ItemStream);

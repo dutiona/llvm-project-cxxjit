@@ -85,14 +85,14 @@ void UndefinedAssignmentChecker::checkBind(SVal location, SVal val,
     }
 
     if (const DeclStmt *DS = dyn_cast<DeclStmt>(StoreE)) {
-      const VarDecl *VD = dyn_cast<VarDecl>(DS->getSingleDecl());
+      const VarDecl *VD = cast<VarDecl>(DS->getSingleDecl());
       ex = VD->getInit();
     }
 
     if (const auto *CD =
             dyn_cast<CXXConstructorDecl>(C.getStackFrame()->getDecl())) {
       if (CD->isImplicit()) {
-        for (auto I : CD->inits()) {
+        for (auto *I : CD->inits()) {
           if (I->getInit()->IgnoreImpCasts() == StoreE) {
             OS << "Value assigned to field '" << I->getMember()->getName()
                << "' in implicit constructor is garbage or undefined";
@@ -108,7 +108,7 @@ void UndefinedAssignmentChecker::checkBind(SVal location, SVal val,
   if (OS.str().empty())
     OS << DefaultMsg;
 
-  auto R = llvm::make_unique<BugReport>(*BT, OS.str(), N);
+  auto R = std::make_unique<PathSensitiveBugReport>(*BT, OS.str(), N);
   if (ex) {
     R->addRange(ex->getSourceRange());
     bugreporter::trackExpressionValue(N, ex, *R);
@@ -120,6 +120,6 @@ void ento::registerUndefinedAssignmentChecker(CheckerManager &mgr) {
   mgr.registerChecker<UndefinedAssignmentChecker>();
 }
 
-bool ento::shouldRegisterUndefinedAssignmentChecker(const LangOptions &LO) {
+bool ento::shouldRegisterUndefinedAssignmentChecker(const CheckerManager &mgr) {
   return true;
 }

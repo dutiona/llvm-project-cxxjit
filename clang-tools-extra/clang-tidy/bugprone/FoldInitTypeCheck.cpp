@@ -12,9 +12,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 void FoldInitTypeCheck::registerMatchers(MatchFinder *Finder) {
   // We match functions of interest and bind the iterator and init value types.
@@ -115,7 +113,7 @@ void FoldInitTypeCheck::doCheck(const BuiltinType &IterValueType,
 }
 
 void FoldInitTypeCheck::check(const MatchFinder::MatchResult &Result) {
-  // Given the iterator and init value type retreived by the matchers,
+  // Given the iterator and init value type retrieved by the matchers,
   // we check that the ::value_type of the iterator is compatible with
   // the init value type.
   const auto *InitType = Result.Nodes.getNodeAs<BuiltinType>("InitType");
@@ -134,6 +132,4 @@ void FoldInitTypeCheck::check(const MatchFinder::MatchResult &Result) {
     doCheck(*Iter2ValueType, *InitType, *Result.Context, *CallNode);
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

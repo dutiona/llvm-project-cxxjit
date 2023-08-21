@@ -16,6 +16,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Driver/DriverDiagnostic.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -32,17 +33,14 @@ namespace {
 class PaddingChecker : public Checker<check::ASTDecl<TranslationUnitDecl>> {
 private:
   mutable std::unique_ptr<BugType> PaddingBug;
-  mutable int64_t AllowedPad;
   mutable BugReporter *BR;
 
 public:
+  int64_t AllowedPad;
+
   void checkASTDecl(const TranslationUnitDecl *TUD, AnalysisManager &MGR,
                     BugReporter &BRArg) const {
     BR = &BRArg;
-    AllowedPad =
-        MGR.getAnalyzerOptions()
-          .getCheckerIntegerOption("AllowedPad", 24, this);
-    assert(AllowedPad >= 0 && "AllowedPad option should be non-negative");
 
     // The calls to checkAST* from AnalysisConsumer don't
     // visit template instantiations or lambda classes. We
@@ -184,7 +182,7 @@ public:
       return false;
     };
 
-    if (std::any_of(RD->field_begin(), RD->field_end(), IsTrickyField))
+    if (llvm::any_of(RD->fields(), IsTrickyField))
       return true;
     return false;
   }
@@ -195,6 +193,11 @@ public:
     CharUnits PaddingSum;
     CharUnits Offset = ASTContext.toCharUnitsFromBits(RL.getFieldOffset(0));
     for (const FieldDecl *FD : RD->fields()) {
+      // Skip field that is a subobject of zero size, marked with
+      // [[no_unique_address]] or an empty bitfield, because its address can be
+      // set the same as the other fields addresses.
+      if (FD->isZeroSize(ASTContext))
+        continue;
       // This checker only cares about the padded size of the
       // field, and not the data size. If the field is a record
       // with tail padding, then we won't put that number in our
@@ -250,8 +253,9 @@ public:
       FieldInfo RetVal;
       RetVal.Field = FD;
       auto &Ctx = FD->getASTContext();
-      std::tie(RetVal.Size, RetVal.Align) =
-          Ctx.getTypeInfoInChars(FD->getType());
+      auto Info = Ctx.getTypeInfoInChars(FD->getType());
+      RetVal.Size = FD->isZeroSize(Ctx) ? CharUnits::Zero() : Info.Width;
+      RetVal.Align = Info.Align;
       assert(llvm::isPowerOf2_64(RetVal.Align.getQuantity()));
       if (auto Max = FD->getMaxAlignment())
         RetVal.Align = std::max(Ctx.toCharUnitsFromBits(Max), RetVal.Align);
@@ -276,15 +280,13 @@ public:
       long long CurAlignmentBits = 1ull << (std::min)(TrailingZeros, 62u);
       CharUnits CurAlignment = CharUnits::fromQuantity(CurAlignmentBits);
       FieldInfo InsertPoint = {CurAlignment, CharUnits::Zero(), nullptr};
-      auto CurBegin = Fields.begin();
-      auto CurEnd = Fields.end();
 
       // In the typical case, this will find the last element
       // of the vector. We won't find a middle element unless
       // we started on a poorly aligned address or have an overly
       // aligned field.
-      auto Iter = std::upper_bound(CurBegin, CurEnd, InsertPoint);
-      if (Iter != CurBegin) {
+      auto Iter = llvm::upper_bound(Fields, InsertPoint);
+      if (Iter != Fields.begin()) {
         // We found a field that we can layout with the current alignment.
         --Iter;
         NewOffset += Iter->Size;
@@ -310,7 +312,7 @@ public:
       const SmallVector<const FieldDecl *, 20> &OptimalFieldsOrder) const {
     if (!PaddingBug)
       PaddingBug =
-          llvm::make_unique<BugType>(this, "Excessive Padding", "Performance");
+          std::make_unique<BugType>(this, "Excessive Padding", "Performance");
 
     SmallString<100> Buf;
     llvm::raw_svector_ostream Os(Buf);
@@ -330,16 +332,17 @@ public:
     }
 
     Os << " (" << BaselinePad.getQuantity() << " padding bytes, where "
-       << OptimalPad.getQuantity() << " is optimal). \n"
-       << "Optimal fields order: \n";
+       << OptimalPad.getQuantity() << " is optimal). "
+       << "Optimal fields order: ";
     for (const auto *FD : OptimalFieldsOrder)
-      Os << FD->getName() << ", \n";
+      Os << FD->getName() << ", ";
     Os << "consider reordering the fields or adding explicit padding "
           "members.";
 
     PathDiagnosticLocation CELoc =
         PathDiagnosticLocation::create(RD, BR->getSourceManager());
-    auto Report = llvm::make_unique<BugReport>(*PaddingBug, Os.str(), CELoc);
+    auto Report =
+        std::make_unique<BasicBugReport>(*PaddingBug, Os.str(), CELoc);
     Report->setDeclWithIssue(RD);
     Report->addRange(RD->getSourceRange());
     BR->emitReport(std::move(Report));
@@ -348,9 +351,14 @@ public:
 } // namespace
 
 void ento::registerPaddingChecker(CheckerManager &Mgr) {
-  Mgr.registerChecker<PaddingChecker>();
+  auto *Checker = Mgr.registerChecker<PaddingChecker>();
+  Checker->AllowedPad = Mgr.getAnalyzerOptions()
+          .getCheckerIntegerOption(Checker, "AllowedPad");
+  if (Checker->AllowedPad < 0)
+    Mgr.reportInvalidCheckerOptionValue(
+        Checker, "AllowedPad", "a non-negative value");
 }
 
-bool ento::shouldRegisterPaddingChecker(const LangOptions &LO) {
+bool ento::shouldRegisterPaddingChecker(const CheckerManager &mgr) {
   return true;
 }

@@ -6,19 +6,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_RegisterContext_x86_H_
-#define liblldb_RegisterContext_x86_H_
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_REGISTERCONTEXT_X86_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_REGISTERCONTEXT_X86_H
 
 #include <cstddef>
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/Support/Compiler.h"
 
 namespace lldb_private {
-//---------------------------------------------------------------------------
 // i386 ehframe, dwarf regnums
-//---------------------------------------------------------------------------
 
 // Register numbers seen in eh_frame (eRegisterKindEHFrame) on i386 systems
 // (non-Darwin)
@@ -131,9 +130,7 @@ enum {
   dwarf_bnd3_i386,
 };
 
-//---------------------------------------------------------------------------
 // AMD x86_64, AMD64, Intel EM64T, or Intel 64 ehframe, dwarf regnums
-//---------------------------------------------------------------------------
 
 // EHFrame and DWARF Register numbers (eRegisterKindEHFrame &
 // eRegisterKindDWARF)
@@ -241,14 +238,25 @@ enum {
   // dwarf_k7_x86_64,
 };
 
-//---------------------------------------------------------------------------
 // Generic floating-point registers
-//---------------------------------------------------------------------------
+
+LLVM_PACKED_START
+struct MMSRegComp {
+  uint64_t mantissa;
+  uint16_t sign_exp;
+};
 
 struct MMSReg {
-  uint8_t bytes[10];
+  union {
+    uint8_t bytes[10];
+    MMSRegComp comp;
+  };
   uint8_t pad[6];
 };
+LLVM_PACKED_END
+
+static_assert(sizeof(MMSRegComp) == 10, "MMSRegComp is not 10 bytes of size");
+static_assert(sizeof(MMSReg) == 16, "MMSReg is not 16 bytes of size");
 
 struct XMMReg {
   uint8_t bytes[16]; // 128-bits for each XMM register
@@ -282,9 +290,7 @@ struct FXSAVE {
   uint8_t padding2[40];
 };
 
-//---------------------------------------------------------------------------
 // Extended floating-point registers
-//---------------------------------------------------------------------------
 
 struct YMMHReg {
   uint8_t bytes[16]; // 16 * 8 bits for the high bytes of each YMM register
@@ -360,6 +366,26 @@ union FPR {
 };
 
 LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+
+// Convenience function to combine YMM register data from XSAVE-style input.
+inline YMMReg XStateToYMM(const void* xmm_bytes, const void* ymmh_bytes) {
+  YMMReg ret;
+
+  ::memcpy(ret.bytes, xmm_bytes, sizeof(XMMReg));
+  ::memcpy(ret.bytes + sizeof(XMMReg), ymmh_bytes, sizeof(YMMHReg));
+
+  return ret;
+}
+
+// Convenience function to copy YMM register data into XSAVE-style output.
+inline void YMMToXState(const YMMReg& input, void* xmm_bytes, void* ymmh_bytes) {
+  ::memcpy(xmm_bytes, input.bytes, sizeof(XMMReg));
+  ::memcpy(ymmh_bytes, input.bytes + sizeof(XMMReg), sizeof(YMMHReg));
+}
+
+uint16_t AbridgedToFullTagWord(uint8_t abridged_tw, uint16_t sw,
+                               llvm::ArrayRef<MMSReg> st_regs);
+uint8_t FullToAbridgedTagWord(uint16_t tw);
 
 } // namespace lldb_private
 

@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: !stdlib=libc++ && (c++03 || c++11 || c++14)
+
 // <string_view>
 
 // constexpr int compare(const charT* s) const;
@@ -14,7 +16,7 @@
 #include <cassert>
 
 #include "test_macros.h"
-#include "constexpr_char_traits.hpp"
+#include "constexpr_char_traits.h"
 
 int sign ( int x ) { return x > 0 ? 1 : ( x < 0 ? -1 : 0 ); }
 
@@ -53,6 +55,7 @@ int main(int, char**)
     test("abcdefghijklmnopqrst", "abcdefghijklmnopqrst", 0);
     }
 
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
     test(L"", L"", 0);
     test(L"", L"abcde", -5);
@@ -71,6 +74,7 @@ int main(int, char**)
     test(L"abcdefghijklmnopqrst", L"abcdefghij", 10);
     test(L"abcdefghijklmnopqrst", L"abcdefghijklmnopqrst", 0);
     }
+#endif
 
 #if TEST_STD_VER >= 11
     {
@@ -118,8 +122,8 @@ int main(int, char**)
     constexpr SV  sv1;
     constexpr SV  sv2 { "abcde", 5 };
     static_assert ( sv1.compare("") == 0, "" );
-    static_assert ( sv1.compare("abcde") == -1, "" );
-    static_assert ( sv2.compare("") == 1, "" );
+    static_assert ( sv1.compare("abcde") < 0, "" );
+    static_assert ( sv2.compare("") > 0, "" );
     static_assert ( sv2.compare("abcde") == 0, "" );
     }
 #endif

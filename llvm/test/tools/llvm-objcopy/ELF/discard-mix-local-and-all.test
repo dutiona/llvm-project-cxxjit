@@ -1,4 +1,4 @@
-# RUN: yaml2obj %s > %t
+# RUN: yaml2obj %s -o %t
 # Establish baseline objects for further checks. --discard-locals only discards
 # compiler-generated local symbols (starting with .L), --discard-all discards
 # all regular local symbols.
@@ -55,17 +55,16 @@ Sections:
   - Name:            .text
     Type:            SHT_PROGBITS
 Symbols:
-  Local:
-    - Name:     Local
-      Type:     STT_FUNC
-      Section:  .text
-    - Name:     .L.str
-      Type:     STT_OBJECT
-      Section:  .text
-  Global:
-    - Name:     Global
-      Type:     STT_FUNC
-      Section:  .text
+  - Name:     Local
+    Type:     STT_FUNC
+    Section:  .text
+  - Name:     .L.str
+    Type:     STT_OBJECT
+    Section:  .text
+  - Name:     Global
+    Type:     STT_FUNC
+    Section:  .text
+    Binding:  STB_GLOBAL
 
 # CHECK:               Symbols [
 # CHECK-NEXT:            Symbol {

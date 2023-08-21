@@ -12,7 +12,7 @@
 ; that module (%t3.bc) to be imported. Check that the imported reference's
 ; promoted name matches the imported copy.
 ; RUN: llvm-lto -thinlto-action=import %t.bc -thinlto-index=%t4.bc -o - | llvm-dis -o - | FileCheck %s --check-prefix=IMPORT
-; IMPORT: @baz.llvm.[[HASH:[0-9]+]] = available_externally hidden constant i32 10, align 4
+; IMPORT: @baz.llvm.[[HASH:[0-9]+]] = internal constant i32 10, align 4
 ; IMPORT: call i32 @foo.llvm.[[HASH]]
 ; IMPORT: define available_externally hidden i32 @foo.llvm.[[HASH]]()
 
@@ -28,14 +28,14 @@
 
 ; ModuleID = 'local_name_conflict_main.o'
 source_filename = "local_name_conflict_main.c"
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: noinline nounwind uwtable
 define i32 @main() {
 entry:
   %retval = alloca i32, align 4
-  store i32 0, i32* %retval, align 4
+  store i32 0, ptr %retval, align 4
   %call = call i32 (...) @b()
   ret i32 %call
 }

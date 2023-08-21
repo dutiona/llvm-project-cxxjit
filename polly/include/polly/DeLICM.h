@@ -17,16 +17,36 @@
 #ifndef POLLY_DELICM_H
 #define POLLY_DELICM_H
 
-#include "polly/Support/GICHelper.h"
+#include "polly/ScopPass.h"
+#include "isl/isl-noexceptions.h"
 
 namespace llvm {
 class PassRegistry;
 class Pass;
+class raw_ostream;
 } // namespace llvm
 
 namespace polly {
 /// Create a new DeLICM pass instance.
-llvm::Pass *createDeLICMPass();
+llvm::Pass *createDeLICMWrapperPass();
+llvm::Pass *createDeLICMPrinterLegacyPass(llvm::raw_ostream &OS);
+
+struct DeLICMPass final : llvm::PassInfoMixin<DeLICMPass> {
+  DeLICMPass() {}
+
+  llvm::PreservedAnalyses run(Scop &S, ScopAnalysisManager &SAM,
+                              ScopStandardAnalysisResults &SAR, SPMUpdater &U);
+};
+
+struct DeLICMPrinterPass final : llvm::PassInfoMixin<DeLICMPrinterPass> {
+  DeLICMPrinterPass(raw_ostream &OS) : OS(OS) {}
+
+  PreservedAnalyses run(Scop &S, ScopAnalysisManager &,
+                        ScopStandardAnalysisResults &SAR, SPMUpdater &);
+
+private:
+  llvm::raw_ostream &OS;
+};
 
 /// Determine whether two lifetimes are conflicting.
 ///
@@ -38,10 +58,12 @@ bool isConflicting(isl::union_set ExistingOccupied,
                    isl::union_set ProposedUnused, isl::union_map ProposedKnown,
                    isl::union_map ProposedWrites,
                    llvm::raw_ostream *OS = nullptr, unsigned Indent = 0);
+
 } // namespace polly
 
 namespace llvm {
-void initializeDeLICMPass(llvm::PassRegistry &);
+void initializeDeLICMWrapperPassPass(llvm::PassRegistry &);
+void initializeDeLICMPrinterLegacyPassPass(llvm::PassRegistry &);
 } // namespace llvm
 
 #endif /* POLLY_DELICM_H */

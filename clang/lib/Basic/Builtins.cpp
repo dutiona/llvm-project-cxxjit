@@ -11,20 +11,33 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/Builtins.h"
+#include "BuiltinTargetFeatures.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/StringRef.h"
 using namespace clang;
 
-static const Builtin::Info BuiltinInfo[] = {
-  { "not a builtin function", nullptr, nullptr, nullptr, ALL_LANGUAGES,nullptr},
+const char *HeaderDesc::getName() const {
+  switch (ID) {
+#define HEADER(ID, NAME)                                                       \
+  case ID:                                                                     \
+    return NAME;
+#include "clang/Basic/BuiltinHeaders.def"
+#undef HEADER
+  };
+  llvm_unreachable("Unknown HeaderDesc::HeaderID enum");
+}
+
+static constexpr Builtin::Info BuiltinInfo[] = {
+    {"not a builtin function", nullptr, nullptr, nullptr, HeaderDesc::NO_HEADER,
+     ALL_LANGUAGES},
 #define BUILTIN(ID, TYPE, ATTRS)                                               \
-  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define LANGBUILTIN(ID, TYPE, ATTRS, LANGS)                                    \
-  { #ID, TYPE, ATTRS, nullptr, LANGS, nullptr },
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, LANGS},
 #define LIBBUILTIN(ID, TYPE, ATTRS, HEADER, LANGS)                             \
-  { #ID, TYPE, ATTRS, HEADER, LANGS, nullptr },
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::HEADER, LANGS},
 #include "clang/Basic/Builtins.def"
 };
 
@@ -47,37 +60,66 @@ void Builtin::Context::InitializeTarget(const TargetInfo &Target,
     AuxTSRecords = AuxTarget->getTargetBuiltins();
 }
 
-bool Builtin::Context::isBuiltinFunc(const char *Name) {
-  StringRef FuncName(Name);
-  for (unsigned i = Builtin::NotBuiltin + 1; i != Builtin::FirstTSBuiltin; ++i)
-    if (FuncName.equals(BuiltinInfo[i].Name))
+bool Builtin::Context::isBuiltinFunc(llvm::StringRef FuncName) {
+  bool InStdNamespace = FuncName.consume_front("std-");
+  for (unsigned i = Builtin::NotBuiltin + 1; i != Builtin::FirstTSBuiltin;
+       ++i) {
+    if (FuncName.equals(BuiltinInfo[i].Name) &&
+        (bool)strchr(BuiltinInfo[i].Attributes, 'z') == InStdNamespace)
       return strchr(BuiltinInfo[i].Attributes, 'f') != nullptr;
+  }
 
   return false;
 }
 
-bool Builtin::Context::builtinIsSupported(const Builtin::Info &BuiltinInfo,
-                                          const LangOptions &LangOpts) {
-  bool BuiltinsUnsupported =
-      (LangOpts.NoBuiltin || LangOpts.isNoBuiltinFunc(BuiltinInfo.Name)) &&
-      strchr(BuiltinInfo.Attributes, 'f');
-  bool MathBuiltinsUnsupported =
-    LangOpts.NoMathBuiltin && BuiltinInfo.HeaderName &&
-    llvm::StringRef(BuiltinInfo.HeaderName).equals("math.h");
-  bool GnuModeUnsupported = !LangOpts.GNUMode && (BuiltinInfo.Langs & GNU_LANG);
-  bool MSModeUnsupported =
-      !LangOpts.MicrosoftExt && (BuiltinInfo.Langs & MS_LANG);
-  bool ObjCUnsupported = !LangOpts.ObjC && BuiltinInfo.Langs == OBJC_LANG;
-  bool OclC1Unsupported = (LangOpts.OpenCLVersion / 100) != 1 &&
-                          (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES ) ==  OCLC1X_LANG;
-  bool OclC2Unsupported = LangOpts.OpenCLVersion != 200 &&
-                          (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES) == OCLC20_LANG;
-  bool OclCUnsupported = !LangOpts.OpenCL &&
-                         (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES);
-  bool OpenMPUnsupported = !LangOpts.OpenMP && BuiltinInfo.Langs == OMP_LANG;
-  return !BuiltinsUnsupported && !MathBuiltinsUnsupported && !OclCUnsupported &&
-         !OclC1Unsupported && !OclC2Unsupported && !OpenMPUnsupported &&
-         !GnuModeUnsupported && !MSModeUnsupported && !ObjCUnsupported;
+/// Is this builtin supported according to the given language options?
+static bool builtinIsSupported(const Builtin::Info &BuiltinInfo,
+                               const LangOptions &LangOpts) {
+  /* Builtins Unsupported */
+  if (LangOpts.NoBuiltin && strchr(BuiltinInfo.Attributes, 'f') != nullptr)
+    return false;
+  /* CorBuiltins Unsupported */
+  if (!LangOpts.Coroutines && (BuiltinInfo.Langs & COR_LANG))
+    return false;
+  /* MathBuiltins Unsupported */
+  if (LangOpts.NoMathBuiltin && BuiltinInfo.Header.ID == HeaderDesc::MATH_H)
+    return false;
+  /* GnuMode Unsupported */
+  if (!LangOpts.GNUMode && (BuiltinInfo.Langs & GNU_LANG))
+    return false;
+  /* MSMode Unsupported */
+  if (!LangOpts.MicrosoftExt && (BuiltinInfo.Langs & MS_LANG))
+    return false;
+  /* ObjC Unsupported */
+  if (!LangOpts.ObjC && BuiltinInfo.Langs == OBJC_LANG)
+    return false;
+  /* OpenCLC Unsupported */
+  if (!LangOpts.OpenCL && (BuiltinInfo.Langs & ALL_OCL_LANGUAGES))
+    return false;
+  /* OopenCL GAS Unsupported */
+  if (!LangOpts.OpenCLGenericAddressSpace && (BuiltinInfo.Langs & OCL_GAS))
+    return false;
+  /* OpenCL Pipe Unsupported */
+  if (!LangOpts.OpenCLPipes && (BuiltinInfo.Langs & OCL_PIPE))
+    return false;
+
+  // Device side enqueue is not supported until OpenCL 2.0. In 2.0 and higher
+  // support is indicated with language option for blocks.
+
+  /* OpenCL DSE Unsupported */
+  if ((LangOpts.getOpenCLCompatibleVersion() < 200 || !LangOpts.Blocks) &&
+      (BuiltinInfo.Langs & OCL_DSE))
+    return false;
+  /* OpenMP Unsupported */
+  if (!LangOpts.OpenMP && BuiltinInfo.Langs == OMP_LANG)
+    return false;
+  /* CUDA Unsupported */
+  if (!LangOpts.CUDA && BuiltinInfo.Langs == CUDA_LANG)
+    return false;
+  /* CPlusPlus Unsupported */
+  if (!LangOpts.CPlusPlus && BuiltinInfo.Langs == CXX_LANG)
+    return false;
+  return true;
 }
 
 /// initializeBuiltins - Mark the identifiers for all the builtins with their
@@ -100,10 +142,19 @@ void Builtin::Context::initializeBuiltins(IdentifierTable &Table,
   for (unsigned i = 0, e = AuxTSRecords.size(); i != e; ++i)
     Table.get(AuxTSRecords[i].Name)
         .setBuiltinID(i + Builtin::FirstTSBuiltin + TSRecords.size());
-}
 
-void Builtin::Context::forgetBuiltin(unsigned ID, IdentifierTable &Table) {
-  Table.get(getRecord(ID).Name).setBuiltinID(0);
+  // Step #4: Unregister any builtins specified by -fno-builtin-foo.
+  for (llvm::StringRef Name : LangOpts.NoBuiltinFuncs) {
+    bool InStdNamespace = Name.consume_front("std-");
+    auto NameIt = Table.find(Name);
+    if (NameIt != Table.end()) {
+      unsigned ID = NameIt->second->getBuiltinID();
+      if (ID != Builtin::NotBuiltin && isPredefinedLibFunction(ID) &&
+          isInStdNamespace(ID) == InStdNamespace) {
+        Table.get(Name).setBuiltinID(Builtin::NotBuiltin);
+      }
+    }
+  }
 }
 
 unsigned Builtin::Context::getRequiredVectorWidth(unsigned ID) const {
@@ -183,33 +234,19 @@ bool Builtin::Context::performsCallback(unsigned ID,
 }
 
 bool Builtin::Context::canBeRedeclared(unsigned ID) const {
-  return ID == Builtin::NotBuiltin ||
-         ID == Builtin::BI__va_start ||
-         (!hasReferenceArgsOrResult(ID) &&
-          !hasCustomTypechecking(ID));
+  return ID == Builtin::NotBuiltin || ID == Builtin::BI__va_start ||
+         ID == Builtin::BI__builtin_assume_aligned ||
+         (!hasReferenceArgsOrResult(ID) && !hasCustomTypechecking(ID)) ||
+         isInStdNamespace(ID);
 }
 
-unsigned Builtin::getFortifiedVariantFunction(unsigned BuiltinID) {
-  switch (BuiltinID) {
-  case Builtin::BImemcpy:    return Builtin::BI__builtin___memcpy_chk;
-  case Builtin::BImemmove:   return Builtin::BI__builtin___memmove_chk;
-  case Builtin::BImemset:    return Builtin::BI__builtin___memset_chk;
-  case Builtin::BIstpcpy:    return Builtin::BI__builtin___stpcpy_chk;
-  case Builtin::BIstrcat:    return Builtin::BI__builtin___strcat_chk;
-  case Builtin::BIstrcpy:    return Builtin::BI__builtin___strcpy_chk;
-  case Builtin::BIstrlcat:   return Builtin::BI__builtin___strlcat_chk;
-  case Builtin::BIstrlcpy:   return Builtin::BI__builtin___strlcpy_chk;
-  case Builtin::BIstrncat:   return Builtin::BI__builtin___strncat_chk;
-  case Builtin::BIstrncpy:   return Builtin::BI__builtin___strncpy_chk;
-  case Builtin::BIstpncpy:   return Builtin::BI__builtin___stpncpy_chk;
-  case Builtin::BIsnprintf:  return Builtin::BI__builtin___snprintf_chk;
-  case Builtin::BIvsnprintf: return Builtin::BI__builtin___vsnprintf_chk;
-  case Builtin::BIsprintf:   return Builtin::BI__builtin___sprintf_chk;
-  case Builtin::BIvsprintf:  return Builtin::BI__builtin___vsprintf_chk;
-  case Builtin::BIfprintf:   return Builtin::BI__builtin___fprintf_chk;
-  case Builtin::BIvfprintf:  return Builtin::BI__builtin___vfprintf_chk;
-  case Builtin::BIprintf:    return Builtin::BI__builtin___printf_chk;
-  case Builtin::BIvprintf:   return Builtin::BI__builtin___vprintf_chk;
-  default: return 0;
-  }
+bool Builtin::evaluateRequiredTargetFeatures(
+    StringRef RequiredFeatures, const llvm::StringMap<bool> &TargetFetureMap) {
+  // Return true if the builtin doesn't have any required features.
+  if (RequiredFeatures.empty())
+    return true;
+  assert(!RequiredFeatures.contains(' ') && "Space in feature list");
+
+  TargetFeatures TF(TargetFetureMap);
+  return TF.hasRequiredFeatures(RequiredFeatures);
 }

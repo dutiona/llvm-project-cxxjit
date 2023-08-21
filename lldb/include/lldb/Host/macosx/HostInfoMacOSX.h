@@ -6,12 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_Host_macosx_HostInfoMacOSX_h_
-#define lldb_Host_macosx_HostInfoMacOSX_h_
+#ifndef LLDB_HOST_MACOSX_HOSTINFOMACOSX_H
+#define LLDB_HOST_MACOSX_HOSTINFOMACOSX_H
 
 #include "lldb/Host/posix/HostInfoPosix.h"
 #include "lldb/Utility/FileSpec.h"
+#include "lldb/Utility/XcodeSDK.h"
 #include "llvm/Support/VersionTuple.h"
+#include <optional>
 
 namespace lldb_private {
 
@@ -20,16 +22,20 @@ class ArchSpec;
 class HostInfoMacOSX : public HostInfoPosix {
   friend class HostInfoBase;
 
-private:
-  // Static class, unconstructable.
-  HostInfoMacOSX();
-  ~HostInfoMacOSX();
-
 public:
   static llvm::VersionTuple GetOSVersion();
-  static bool GetOSBuildString(std::string &s);
-  static bool GetOSKernelDescription(std::string &s);
+  static llvm::VersionTuple GetMacCatalystVersion();
+  static std::optional<std::string> GetOSBuildString();
   static FileSpec GetProgramFileSpec();
+  static FileSpec GetXcodeContentsDirectory();
+  static FileSpec GetXcodeDeveloperDirectory();
+
+  /// Query xcrun to find an Xcode SDK directory.
+  static llvm::Expected<llvm::StringRef> GetXcodeSDKPath(XcodeSDK sdk);
+
+  /// Shared cache utilities
+  static SharedCacheImageInfo
+  GetSharedCacheImageInfo(llvm::StringRef image_name);
 
 protected:
   static bool ComputeSupportExeDirectory(FileSpec &file_spec);

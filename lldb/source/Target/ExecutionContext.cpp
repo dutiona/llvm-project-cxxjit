@@ -1,4 +1,4 @@
-//===-- ExecutionContext.cpp ------------------------------------*- C++ -*-===//
+//===-- ExecutionContext.cpp ----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -19,9 +19,7 @@ using namespace lldb_private;
 ExecutionContext::ExecutionContext()
     : m_target_sp(), m_process_sp(), m_thread_sp(), m_frame_sp() {}
 
-ExecutionContext::ExecutionContext(const ExecutionContext &rhs)
-    : m_target_sp(rhs.m_target_sp), m_process_sp(rhs.m_process_sp),
-      m_thread_sp(rhs.m_thread_sp), m_frame_sp(rhs.m_frame_sp) {}
+ExecutionContext::ExecutionContext(const ExecutionContext &rhs) = default;
 
 ExecutionContext::ExecutionContext(const lldb::TargetSP &target_sp,
                                    bool get_process)
@@ -183,9 +181,9 @@ uint32_t ExecutionContext::GetAddressByteSize() const {
 
 lldb::ByteOrder ExecutionContext::GetByteOrder() const {
   if (m_target_sp && m_target_sp->GetArchitecture().IsValid())
-    m_target_sp->GetArchitecture().GetByteOrder();
+    return m_target_sp->GetArchitecture().GetByteOrder();
   if (m_process_sp)
-    m_process_sp->GetByteOrder();
+    return m_process_sp->GetByteOrder();
   return endian::InlHostByteOrder();
 }
 
@@ -224,30 +222,22 @@ ExecutionContextScope *ExecutionContext::GetBestExecutionContextScope() const {
 }
 
 Target &ExecutionContext::GetTargetRef() const {
-#if defined(LLDB_CONFIGURATION_DEBUG) || defined(LLDB_CONFIGURATION_RELEASE)
   assert(m_target_sp);
-#endif
   return *m_target_sp;
 }
 
 Process &ExecutionContext::GetProcessRef() const {
-#if defined(LLDB_CONFIGURATION_DEBUG) || defined(LLDB_CONFIGURATION_RELEASE)
   assert(m_process_sp);
-#endif
   return *m_process_sp;
 }
 
 Thread &ExecutionContext::GetThreadRef() const {
-#if defined(LLDB_CONFIGURATION_DEBUG) || defined(LLDB_CONFIGURATION_RELEASE)
   assert(m_thread_sp);
-#endif
   return *m_thread_sp;
 }
 
 StackFrame &ExecutionContext::GetFrameRef() const {
-#if defined(LLDB_CONFIGURATION_DEBUG) || defined(LLDB_CONFIGURATION_RELEASE)
   assert(m_frame_sp);
-#endif
   return *m_frame_sp;
 }
 
@@ -403,32 +393,27 @@ bool ExecutionContext::HasFrameScope() const {
 }
 
 ExecutionContextRef::ExecutionContextRef()
-    : m_target_wp(), m_process_wp(), m_thread_wp(),
-      m_tid(LLDB_INVALID_THREAD_ID), m_stack_id() {}
+    : m_target_wp(), m_process_wp(), m_thread_wp(), m_stack_id() {}
 
 ExecutionContextRef::ExecutionContextRef(const ExecutionContext *exe_ctx)
-    : m_target_wp(), m_process_wp(), m_thread_wp(),
-      m_tid(LLDB_INVALID_THREAD_ID), m_stack_id() {
+    : m_target_wp(), m_process_wp(), m_thread_wp(), m_stack_id() {
   if (exe_ctx)
     *this = *exe_ctx;
 }
 
 ExecutionContextRef::ExecutionContextRef(const ExecutionContext &exe_ctx)
-    : m_target_wp(), m_process_wp(), m_thread_wp(),
-      m_tid(LLDB_INVALID_THREAD_ID), m_stack_id() {
+    : m_target_wp(), m_process_wp(), m_thread_wp(), m_stack_id() {
   *this = exe_ctx;
 }
 
 ExecutionContextRef::ExecutionContextRef(Target *target, bool adopt_selected)
-    : m_target_wp(), m_process_wp(), m_thread_wp(),
-      m_tid(LLDB_INVALID_THREAD_ID), m_stack_id() {
+    : m_target_wp(), m_process_wp(), m_thread_wp(), m_stack_id() {
   SetTargetPtr(target, adopt_selected);
 }
 
 ExecutionContextRef::ExecutionContextRef(const ExecutionContextRef &rhs)
-    : m_target_wp(rhs.m_target_wp), m_process_wp(rhs.m_process_wp),
-      m_thread_wp(rhs.m_thread_wp), m_tid(rhs.m_tid),
-      m_stack_id(rhs.m_stack_id) {}
+
+    = default;
 
 ExecutionContextRef &ExecutionContextRef::
 operator=(const ExecutionContextRef &rhs) {

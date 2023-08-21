@@ -6,36 +6,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ValueObjectList_h_
-#define liblldb_ValueObjectList_h_
+#ifndef LLDB_CORE_VALUEOBJECTLIST_H
+#define LLDB_CORE_VALUEOBJECTLIST_H
 
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-types.h"
 
 #include <vector>
 
-#include <stddef.h>
+#include <cstddef>
 
 namespace lldb_private {
 class ValueObject;
-}
 
-namespace lldb_private {
-
-//----------------------------------------------------------------------
-// A collection of ValueObject values that
-//----------------------------------------------------------------------
+/// A collection of ValueObject values that.
 class ValueObjectList {
 public:
-  //------------------------------------------------------------------
-  // Constructors and Destructors
-  //------------------------------------------------------------------
-  ValueObjectList();
-
-  ValueObjectList(const ValueObjectList &rhs);
-
-  ~ValueObjectList();
-
   const ValueObjectList &operator=(const ValueObjectList &rhs);
 
   void Append(const lldb::ValueObjectSP &val_obj_sp);
@@ -67,12 +53,10 @@ public:
   }
 protected:
   typedef std::vector<lldb::ValueObjectSP> collection;
-  //------------------------------------------------------------------
   // Classes that inherit from ValueObjectList can see and modify these
-  //------------------------------------------------------------------
   collection m_value_objects;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_ValueObjectList_h_
+#endif // LLDB_CORE_VALUEOBJECTLIST_H

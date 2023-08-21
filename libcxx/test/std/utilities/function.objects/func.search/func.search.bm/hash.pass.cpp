@@ -6,8 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
-// XFAIL: c++17, c++2a
+// UNSUPPORTED: c++03, c++11, c++14
 
 // <functional>
 
@@ -33,9 +32,10 @@
 
 
 #include <algorithm>
-#include <functional>
 #include <cassert>
+#include <functional>
 
+#include "test_macros.h"
 #include "test_iterators.h"
 
 template <typename T> struct MyHash {

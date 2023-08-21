@@ -12,8 +12,8 @@ define i32 @a() {
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    .cfi_def_cfa_offset 16
 ; CHECK-NEXT:    .cfi_offset w30, -16
-; CHECK-NEXT:    bl [[OUTLINED_DIRECT:OUTLINED_FUNCTION_[0-9]+]]
-; CHECK-NEXT:    add w0, w0, #8 // =8
+; CHECK-NEXT:    bl OUTLINED_FUNCTION_1
+; CHECK-NEXT:    add w0, w0, #8
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
 ; CHECK-NEXT:    ret
 entry:
@@ -28,8 +28,8 @@ define i32 @b() {
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    .cfi_def_cfa_offset 16
 ; CHECK-NEXT:    .cfi_offset w30, -16
-; CHECK-NEXT:    bl [[OUTLINED_DIRECT]]
-; CHECK-NEXT:    add w0, w0, #88 // =88
+; CHECK-NEXT:    bl OUTLINED_FUNCTION_1
+; CHECK-NEXT:    add w0, w0, #88
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
 ; CHECK-NEXT:    ret
 entry:
@@ -38,14 +38,14 @@ entry:
   ret i32 %cx
 }
 
-define hidden i32 @c(i32 (i32, i32, i32, i32)* %fptr) {
+define hidden i32 @c(ptr %fptr) {
 ; CHECK-LABEL: c:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    .cfi_def_cfa_offset 16
 ; CHECK-NEXT:    .cfi_offset w30, -16
-; CHECK-NEXT:    bl [[OUTLINED_INDIRECT:OUTLINED_FUNCTION_[0-9]+]]
-; CHECK-NEXT:    add w0, w0, #8 // =8
+; CHECK-NEXT:    bl OUTLINED_FUNCTION_0
+; CHECK-NEXT:    add w0, w0, #8
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
 ; CHECK-NEXT:    ret
 entry:
@@ -54,14 +54,14 @@ entry:
   ret i32 %add
 }
 
-define hidden i32 @d(i32 (i32, i32, i32, i32)* %fptr) {
+define hidden i32 @d(ptr %fptr) {
 ; CHECK-LABEL: d:
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    str x30, [sp, #-16]! // 8-byte Folded Spill
 ; CHECK-NEXT:    .cfi_def_cfa_offset 16
 ; CHECK-NEXT:    .cfi_offset w30, -16
-; CHECK-NEXT:    bl [[OUTLINED_INDIRECT]]
-; CHECK-NEXT:    add w0, w0, #88 // =88
+; CHECK-NEXT:    bl OUTLINED_FUNCTION_0
+; CHECK-NEXT:    add w0, w0, #88
 ; CHECK-NEXT:    ldr x30, [sp], #16 // 8-byte Folded Reload
 ; CHECK-NEXT:    ret
 entry:
@@ -70,19 +70,21 @@ entry:
   ret i32 %add
 }
 
-; CHECK: [[OUTLINED_INDIRECT]]:
+; CHECK: OUTLINED_FUNCTION_0:
+; CHECK-SAME: // @OUTLINED_FUNCTION_0 Thunk
 ; CHECK:        // %bb.0:
 ; CHECK-NEXT:   mov     x8, x0
-; CHECK-NEXT:   orr     w0, wzr, #0x1
-; CHECK-NEXT:   orr     w1, wzr, #0x2
-; CHECK-NEXT:   orr     w2, wzr, #0x3
-; CHECK-NEXT:   orr     w3, wzr, #0x4
+; CHECK-NEXT:   mov     w0, #1
+; CHECK-NEXT:   mov     w1, #2
+; CHECK-NEXT:   mov     w2, #3
+; CHECK-NEXT:   mov     w3, #4
 ; CHECK-NEXT:   br      x8
 
-; CHECK: [[OUTLINED_DIRECT]]:
+; CHECK: OUTLINED_FUNCTION_1:
+; CHECK-SAME: // @OUTLINED_FUNCTION_1 Thunk
 ; CHECK:       // %bb.0:
-; CHECK-NEXT:    orr     w0, wzr, #0x1
-; CHECK-NEXT:    orr     w1, wzr, #0x2
-; CHECK-NEXT:    orr     w2, wzr, #0x3
-; CHECK-NEXT:    orr     w3, wzr, #0x4
+; CHECK-NEXT:    mov     w0, #1
+; CHECK-NEXT:    mov     w1, #2
+; CHECK-NEXT:    mov     w2, #3
+; CHECK-NEXT:    mov     w3, #4
 ; CHECK-NEXT:    b       thunk_called_fn

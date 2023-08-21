@@ -1,8 +1,8 @@
 ; RUN: llc < %s -asm-verbose=false | FileCheck %s
+; RUN: llc < %s -asm-verbose=false -opaque-pointers | FileCheck %s
 
 ; Test main functions with alternate signatures.
 
-target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 target triple = "wasm32-unknown-unknown"
 
 declare i32 @main()
@@ -14,5 +14,5 @@ define i32 @foo() {
 
 ; CHECK-LABEL: foo:
 ; CHECK-NEXT:    .functype foo () -> (i32)
-; CHECK-NEXT:    call __original_main@FUNCTION
+; CHECK-NEXT:    call __original_main
 ; CHECK-NEXT:    end_function

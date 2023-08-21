@@ -9,16 +9,14 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_MAKE_SMART_PTR_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_MAKE_SMART_PTR_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "../utils/IncludeInserter.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "llvm/ADT/StringRef.h"
 #include <string>
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 /// Base class for MakeSharedCheck and MakeUniqueCheck.
 class MakeSmartPtrCheck : public ClangTidyCheck {
@@ -26,7 +24,8 @@ public:
   MakeSmartPtrCheck(StringRef Name, ClangTidyContext *Context,
                     StringRef MakeSmartPtrFunctionName);
   void registerMatchers(ast_matchers::MatchFinder *Finder) final;
-  void registerPPCallbacks(clang::CompilerInstance &Compiler) override;
+  void registerPPCallbacks(const SourceManager &SM, Preprocessor *PP,
+                           Preprocessor *ModuleExpanderPP) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) final;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
@@ -40,16 +39,16 @@ protected:
   virtual SmartPtrTypeMatcher getSmartPointerTypeMatcher() const = 0;
 
   /// Returns whether the C++ version is compatible with current check.
-  virtual bool isLanguageVersionSupported(const LangOptions &LangOpts) const;
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override;
 
   static const char PointerType[];
 
 private:
-  std::unique_ptr<utils::IncludeInserter> Inserter;
-  const utils::IncludeSorter::IncludeStyle IncludeStyle;
-  const std::string MakeSmartPtrFunctionHeader;
-  const std::string MakeSmartPtrFunctionName;
+  utils::IncludeInserter Inserter;
+  const StringRef MakeSmartPtrFunctionHeader;
+  const StringRef MakeSmartPtrFunctionName;
   const bool IgnoreMacros;
+  const bool IgnoreDefaultInitialization;
 
   void checkConstruct(SourceManager &SM, ASTContext *Ctx,
                       const CXXConstructExpr *Construct, const QualType *Type,
@@ -63,8 +62,6 @@ private:
   void insertHeader(DiagnosticBuilder &Diag, FileID FD);
 };
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_MAKE_SMART_PTR_H

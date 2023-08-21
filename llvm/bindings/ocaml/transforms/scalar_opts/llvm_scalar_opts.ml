@@ -9,6 +9,9 @@
 external add_aggressive_dce
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_aggressive_dce"
+external add_dce
+  : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
+  = "llvm_add_dce"
 external add_alignment_from_assumptions
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_alignment_from_assumptions"
@@ -54,9 +57,6 @@ external add_loop_reroll
 external add_loop_unroll
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_loop_unroll"
-external add_loop_unswitch
-  : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
-  = "llvm_add_loop_unswitch"
 external add_memcpy_opt
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_memcpy_opt"
@@ -93,9 +93,6 @@ external add_lib_call_simplification
 external add_tail_call_elimination
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_tail_call_elimination"
-external add_constant_propagation
-  : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
-  = "llvm_add_constant_propagation"
 external add_memory_to_register_demotion
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_demote_memory_to_register"
@@ -111,6 +108,9 @@ external add_early_cse
 external add_lower_expect_intrinsic
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_lower_expect_intrinsic"
+external add_lower_constant_intrinsics
+  : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
+  = "llvm_add_lower_constant_intrinsics"
 external add_type_based_alias_analysis
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_type_based_alias_analysis"

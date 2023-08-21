@@ -56,6 +56,10 @@ public:
 
   child_range children() { return child_range(&HandlerBlock, &HandlerBlock+1); }
 
+  const_child_range children() const {
+    return const_child_range(&HandlerBlock, &HandlerBlock + 1);
+  }
+
   friend class ASTStmtReader;
 };
 
@@ -113,6 +117,10 @@ public:
 
   child_range children() {
     return child_range(getStmts(), getStmts() + getNumHandlers() + 1);
+  }
+
+  const_child_range children() const {
+    return const_child_range(getStmts(), getStmts() + getNumHandlers() + 1);
   }
 };
 
@@ -208,6 +216,10 @@ public:
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[END]);
   }
+
+  const_child_range children() const {
+    return const_child_range(&SubExprs[0], &SubExprs[END]);
+  }
 };
 
 /// Representation of a Microsoft __if_exists or __if_not_exists
@@ -290,6 +302,10 @@ public:
     return child_range(&SubStmt, &SubStmt+1);
   }
 
+  const_child_range children() const {
+    return const_child_range(&SubStmt, &SubStmt + 1);
+  }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MSDependentExistsStmtClass;
   }
@@ -311,7 +327,6 @@ class CoroutineBodyStmt final
     Allocate,      ///< Coroutine frame memory allocation.
     Deallocate,    ///< Coroutine frame memory deallocation.
     ReturnValue,   ///< Return value for thunk function: p.get_return_object().
-    ResultDecl,    ///< Declaration holding the result of get_return_object.
     ReturnStmt,    ///< Return statement for the thunk function.
     ReturnStmtOnAllocFailure, ///< Return statement if allocation failed.
     FirstParamMove ///< First offset for move construction of parameter copies.
@@ -338,7 +353,6 @@ public:
     Expr *Allocate = nullptr;
     Expr *Deallocate = nullptr;
     Expr *ReturnValue = nullptr;
-    Stmt *ResultDecl = nullptr;
     Stmt *ReturnStmt = nullptr;
     Stmt *ReturnStmtOnAllocFailure = nullptr;
     ArrayRef<Stmt *> ParamMoves;
@@ -393,7 +407,11 @@ public:
   Expr *getReturnValueInit() const {
     return cast<Expr>(getStoredStmts()[SubStmt::ReturnValue]);
   }
-  Stmt *getResultDecl() const { return getStoredStmts()[SubStmt::ResultDecl]; }
+  Expr *getReturnValue() const {
+    assert(getReturnStmt());
+    auto *RS = cast<clang::ReturnStmt>(getReturnStmt());
+    return RS->getRetValue();
+  }
   Stmt *getReturnStmt() const { return getStoredStmts()[SubStmt::ReturnStmt]; }
   Stmt *getReturnStmtOnAllocFailure() const {
     return getStoredStmts()[SubStmt::ReturnStmtOnAllocFailure];
@@ -413,6 +431,12 @@ public:
   child_range children() {
     return child_range(getStoredStmts(),
                        getStoredStmts() + SubStmt::FirstParamMove + NumParams);
+  }
+
+  const_child_range children() const {
+    return const_child_range(getStoredStmts(), getStoredStmts() +
+                                                   SubStmt::FirstParamMove +
+                                                   NumParams);
   }
 
   static bool classof(const Stmt *T) {
@@ -473,10 +497,11 @@ public:
   }
 
   child_range children() {
-    if (!getOperand())
-      return child_range(SubStmts + SubStmt::PromiseCall,
-                         SubStmts + SubStmt::Count);
     return child_range(SubStmts, SubStmts + SubStmt::Count);
+  }
+
+  const_child_range children() const {
+    return const_child_range(SubStmts, SubStmts + SubStmt::Count);
   }
 
   static bool classof(const Stmt *T) {

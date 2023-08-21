@@ -11,7 +11,7 @@
 
 #include "lldb/lldb-enumerations.h"
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace lldb_private {
 
@@ -23,11 +23,11 @@ static union EndianTest {
 } const endianTest = {0x01020304};
 
 inline lldb::ByteOrder InlHostByteOrder() {
-  return (lldb::ByteOrder)endianTest.bytes[0];
+  return static_cast<lldb::ByteOrder>(endianTest.bytes[0]);
 }
 
 //    ByteOrder const InlHostByteOrder = (ByteOrder)endianTest.bytes[0];
 }
 }
 
-#endif // liblldb_host_endian_h_
+#endif // LLDB_UTILITY_ENDIAN_H

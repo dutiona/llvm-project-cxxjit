@@ -46,32 +46,33 @@ static void normalizePathSegment(std::string &Segment) {
   if (seg.front() != '/') {
     Segment = "/" + seg.str();
   } else {
-    Segment = seg;
+    Segment = std::string(seg);
   }
 }
 
 Multilib::Multilib(StringRef GCCSuffix, StringRef OSSuffix,
-                   StringRef IncludeSuffix)
-    : GCCSuffix(GCCSuffix), OSSuffix(OSSuffix), IncludeSuffix(IncludeSuffix) {
+                   StringRef IncludeSuffix, int Priority)
+    : GCCSuffix(GCCSuffix), OSSuffix(OSSuffix), IncludeSuffix(IncludeSuffix),
+      Priority(Priority) {
   normalizePathSegment(this->GCCSuffix);
   normalizePathSegment(this->OSSuffix);
   normalizePathSegment(this->IncludeSuffix);
 }
 
 Multilib &Multilib::gccSuffix(StringRef S) {
-  GCCSuffix = S;
+  GCCSuffix = std::string(S);
   normalizePathSegment(GCCSuffix);
   return *this;
 }
 
 Multilib &Multilib::osSuffix(StringRef S) {
-  OSSuffix = S;
+  OSSuffix = std::string(S);
   normalizePathSegment(OSSuffix);
   return *this;
 }
 
 Multilib &Multilib::includeSuffix(StringRef S) {
-  IncludeSuffix = S;
+  IncludeSuffix = std::string(S);
   normalizePathSegment(IncludeSuffix);
   return *this;
 }
@@ -265,8 +266,18 @@ bool MultilibSet::select(const Multilib::flags_list &Flags, Multilib &M) const {
     return true;
   }
 
-  // TODO: pick the "best" multlib when more than one is suitable
-  assert(false);
+  // Sort multilibs by priority and select the one with the highest priority.
+  llvm::sort(Filtered, [](const Multilib &a, const Multilib &b) -> bool {
+    return a.priority() > b.priority();
+  });
+
+  if (Filtered[0].priority() > Filtered[1].priority()) {
+    M = Filtered[0];
+    return true;
+  }
+
+  // TODO: We should consider returning llvm::Error rather than aborting.
+  assert(false && "More than one multilib with the same priority");
   return false;
 }
 
@@ -287,7 +298,7 @@ MultilibSet::multilib_list MultilibSet::filterCopy(FilterCallback F,
 }
 
 void MultilibSet::filterInPlace(FilterCallback F, multilib_list &Ms) {
-  Ms.erase(std::remove_if(Ms.begin(), Ms.end(), F), Ms.end());
+  llvm::erase_if(Ms, F);
 }
 
 raw_ostream &clang::driver::operator<<(raw_ostream &OS, const MultilibSet &MS) {

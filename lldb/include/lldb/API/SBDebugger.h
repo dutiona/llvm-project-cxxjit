@@ -6,13 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBDebugger_h_
-#define LLDB_SBDebugger_h_
+#ifndef LLDB_API_SBDEBUGGER_H
+#define LLDB_API_SBDEBUGGER_H
 
-#include <stdio.h>
+#include <cstdio>
 
 #include "lldb/API/SBDefines.h"
-#include "lldb/API/SBInitializerOptions.h"
 #include "lldb/API/SBPlatform.h"
 
 namespace lldb {
@@ -22,18 +21,24 @@ public:
   SBInputReader() = default;
   ~SBInputReader() = default;
 
-  SBError Initialize(lldb::SBDebugger &,
-                     unsigned long (*)(void *, lldb::SBInputReader *,
-                                       lldb::InputReaderAction, char const *,
-                                       unsigned long),
-                     void *, lldb::InputReaderGranularity, char const *,
-                     char const *, bool);
+  SBError Initialize(lldb::SBDebugger &sb_debugger,
+                     unsigned long (*callback)(void *, lldb::SBInputReader *,
+                                               lldb::InputReaderAction,
+                                               char const *, unsigned long),
+                     void *a, lldb::InputReaderGranularity b, char const *c,
+                     char const *d, bool e);
   void SetIsDone(bool);
   bool IsActive() const;
 };
 
 class LLDB_API SBDebugger {
 public:
+  FLAGS_ANONYMOUS_ENUM(){
+      eBroadcastBitProgress = (1 << 0),
+      eBroadcastBitWarning = (1 << 1),
+      eBroadcastBitError = (1 << 2),
+  };
+
   SBDebugger();
 
   SBDebugger(const lldb::SBDebugger &rhs);
@@ -42,10 +47,54 @@ public:
 
   ~SBDebugger();
 
+  static const char *GetBroadcasterClass();
+
+  lldb::SBBroadcaster GetBroadcaster();
+
+  /// Get progress data from a SBEvent whose type is eBroadcastBitProgress.
+  ///
+  /// \param [in] event
+  ///   The event to extract the progress information from.
+  ///
+  /// \param [out] progress_id
+  ///   The unique integer identifier for the progress to report.
+  ///
+  /// \param [out] completed
+  ///   The amount of work completed. If \a completed is zero, then this event
+  ///   is a progress started event. If \a completed is equal to \a total, then
+  ///   this event is a progress end event. Otherwise completed indicates the
+  ///   current progress update.
+  ///
+  /// \param [out] total
+  ///   The total amount of work units that need to be completed. If this value
+  ///   is UINT64_MAX, then an indeterminate progress indicator should be
+  ///   displayed.
+  ///
+  /// \param [out] is_debugger_specific
+  ///   Set to true if this progress is specific to this debugger only. Many
+  ///   progress events are not specific to a debugger instance, like any
+  ///   progress events for loading information in modules since LLDB has a
+  ///   global module cache that all debuggers use.
+  ///
+  /// \return The message for the progress. If the returned value is NULL, then
+  ///   \a event was not a eBroadcastBitProgress event.
+  static const char *GetProgressFromEvent(const lldb::SBEvent &event,
+                                          uint64_t &progress_id,
+                                          uint64_t &completed, uint64_t &total,
+                                          bool &is_debugger_specific);
+
+  static lldb::SBStructuredData
+  GetDiagnosticFromEvent(const lldb::SBEvent &event);
+
   lldb::SBDebugger &operator=(const lldb::SBDebugger &rhs);
 
   static void Initialize();
-  static lldb::SBError Initialize(SBInitializerOptions &options);
+
+  static lldb::SBError InitializeWithErrorHandling();
+
+  static void PrintStackTraceOnError();
+
+  static void PrintDiagnosticsOnError();
 
   static void Terminate();
 
@@ -62,9 +111,26 @@ public:
 
   static void MemoryPressureDetected();
 
+  explicit operator bool() const;
+
   bool IsValid() const;
 
   void Clear();
+
+  /// Getting a specific setting value into SBStructuredData format.
+  /// Client can specify empty string or null to get all settings.
+  ///
+  /// Example usages:
+  /// lldb::SBStructuredData settings = debugger.GetSetting();
+  /// lldb::SBStructuredData settings = debugger.GetSetting(nullptr);
+  /// lldb::SBStructuredData settings = debugger.GetSetting("");
+  /// lldb::SBStructuredData settings = debugger.GetSetting("target.arg0");
+  /// lldb::SBStructuredData settings = debugger.GetSetting("target");
+  ///
+  /// \param[out] setting
+  ///   Property setting path to retrieve values. e.g "target.source-map"
+  ///
+  lldb::SBStructuredData GetSetting(const char *setting = nullptr);
 
   void SetAsync(bool b);
 
@@ -86,6 +152,26 @@ public:
 
   FILE *GetErrorFileHandle();
 
+  SBError SetInputString(const char *data);
+
+  SBError SetInputFile(SBFile file);
+
+  SBError SetOutputFile(SBFile file);
+
+  SBError SetErrorFile(SBFile file);
+
+  SBError SetInputFile(FileSP file);
+
+  SBError SetOutputFile(FileSP file);
+
+  SBError SetErrorFile(FileSP file);
+
+  SBFile GetInputFile();
+
+  SBFile GetOutputFile();
+
+  SBFile GetErrorFile();
+
   void SaveInputTerminalState();
 
   void RestoreInputTerminalState();
@@ -97,7 +183,14 @@ public:
   lldb::SBListener GetListener();
 
   void HandleProcessEvent(const lldb::SBProcess &process,
-                          const lldb::SBEvent &event, FILE *out, FILE *err);
+                          const lldb::SBEvent &event, FILE *out,
+                          FILE *err); // DEPRECATED
+
+  void HandleProcessEvent(const lldb::SBProcess &process,
+                          const lldb::SBEvent &event, SBFile out, SBFile err);
+
+  void HandleProcessEvent(const lldb::SBProcess &process,
+                          const lldb::SBEvent &event, FileSP out, FileSP err);
 
   lldb::SBTarget CreateTarget(const char *filename, const char *target_triple,
                               const char *platform_name,
@@ -149,7 +242,7 @@ public:
 
   /// Get the name and description of one of the available platforms.
   ///
-  /// @param[in] idx
+  /// \param[in] idx
   ///     Zero-based index of the platform for which info should be retrieved,
   ///     must be less than the value returned by GetNumAvailablePlatforms().
   lldb::SBStructuredData GetAvailablePlatformInfoAtIndex(uint32_t idx);
@@ -172,11 +265,17 @@ public:
 
   bool GetUseColor() const;
 
+  bool SetUseSourceCache(bool use_source_cache);
+
+  bool GetUseSourceCache() const;
+
   static bool GetDefaultArchitecture(char *arch_name, size_t arch_name_len);
 
   static bool SetDefaultArchitecture(const char *arch_name);
 
   lldb::ScriptLanguage GetScriptingLanguage(const char *script_language_name);
+
+  SBStructuredData GetScriptInterpreterInfo(ScriptLanguage);
 
   static const char *GetVersionString();
 
@@ -233,6 +332,10 @@ public:
 
   void SetScriptLanguage(lldb::ScriptLanguage script_lang);
 
+  lldb::LanguageType GetREPLLanguage() const;
+
+  void SetREPLLanguage(lldb::LanguageType repl_lang);
+
   bool GetCloseInputOnEOF() const;
 
   void SetCloseInputOnEOF(bool b);
@@ -253,24 +356,68 @@ public:
 
   SBTypeFormat GetFormatForType(SBTypeNameSpecifier);
 
-#ifndef LLDB_DISABLE_PYTHON
   SBTypeSummary GetSummaryForType(SBTypeNameSpecifier);
-#endif
 
   SBTypeFilter GetFilterForType(SBTypeNameSpecifier);
 
-#ifndef LLDB_DISABLE_PYTHON
   SBTypeSynthetic GetSyntheticForType(SBTypeNameSpecifier);
-#endif
 
+  /// Run the command interpreter.
+  ///
+  /// \param[in] auto_handle_events
+  ///     If true, automatically handle resulting events. This takes precedence
+  ///     and overrides the corresponding option in
+  ///     SBCommandInterpreterRunOptions.
+  ///
+  /// \param[in] spawn_thread
+  ///     If true, start a new thread for IO handling. This takes precedence
+  ///     and overrides the corresponding option in
+  ///     SBCommandInterpreterRunOptions.
   void RunCommandInterpreter(bool auto_handle_events, bool spawn_thread);
 
+  /// Run the command interpreter.
+  ///
+  /// \param[in] auto_handle_events
+  ///     If true, automatically handle resulting events. This takes precedence
+  ///     and overrides the corresponding option in
+  ///     SBCommandInterpreterRunOptions.
+  ///
+  /// \param[in] spawn_thread
+  ///     If true, start a new thread for IO handling. This takes precedence
+  ///     and overrides the corresponding option in
+  ///     SBCommandInterpreterRunOptions.
+  ///
+  /// \param[in] options
+  ///     Parameter collection of type SBCommandInterpreterRunOptions.
+  ///
+  /// \param[out] num_errors
+  ///     The number of errors.
+  ///
+  /// \param[out] quit_requested
+  ///     Whether a quit was requested.
+  ///
+  /// \param[out] stopped_for_crash
+  ///     Whether the interpreter stopped for a crash.
   void RunCommandInterpreter(bool auto_handle_events, bool spawn_thread,
                              SBCommandInterpreterRunOptions &options,
                              int &num_errors, bool &quit_requested,
                              bool &stopped_for_crash);
 
+  SBCommandInterpreterRunResult
+  RunCommandInterpreter(const SBCommandInterpreterRunOptions &options);
+
   SBError RunREPL(lldb::LanguageType language, const char *repl_options);
+
+  /// Load a trace from a trace description file and create Targets,
+  /// Processes and Threads based on the contents of such file.
+  ///
+  /// \param[out] error
+  ///   An error if the trace could not be created.
+  ///
+  /// \param[in] trace_description_file
+  ///   The file containing the necessary information to load the trace.
+  SBTrace LoadTraceFromFile(SBError &error,
+                            const SBFileSpec &trace_description_file);
 
 private:
   friend class SBCommandInterpreter;
@@ -279,6 +426,7 @@ private:
   friend class SBProcess;
   friend class SBSourceManager;
   friend class SBTarget;
+  friend class SBTrace;
 
   lldb::SBTarget FindTargetWithLLDBProcess(const lldb::ProcessSP &processSP);
 
@@ -296,4 +444,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBDebugger_h_
+#endif // LLDB_API_SBDEBUGGER_H

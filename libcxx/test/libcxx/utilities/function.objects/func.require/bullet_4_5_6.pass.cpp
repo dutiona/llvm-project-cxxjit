@@ -6,6 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// FIXME(EricWF): Make this test pass in C++03 with Clang once the transition
+// has gotten far enough that __invoke works.
+// XFAIL: c++03
+
 // <functional>
 
 // INVOKE (f, t1, t2, ..., tN)
@@ -191,20 +195,8 @@ private:
             Expect e = std::__invoke(M, std::forward<T>(obj));
             assert(&e == expect);
         }
-#if TEST_STD_VER >= 11
-        {
-            static_assert((std::is_same<
-                decltype(std::__invoke_constexpr(M, std::forward<T>(obj))), Expect
-              >::value), "");
-            Expect e = std::__invoke_constexpr(M, std::forward<T>(obj));
-            assert(&e == expect);
-        }
-#endif
     }
 };
-
-
-
 
 int main(int, char**) {
     TestCase<ArgType>::run();

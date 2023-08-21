@@ -6,23 +6,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CoreFoundationCPP_CFMutableDictionary_h_
-#define CoreFoundationCPP_CFMutableDictionary_h_
+#ifndef LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEDICTIONARY_H
+#define LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEDICTIONARY_H
 
 #include "CFCReleaser.h"
 
 class CFCMutableDictionary : public CFCReleaser<CFMutableDictionaryRef> {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   CFCMutableDictionary(CFMutableDictionaryRef s = NULL);
   CFCMutableDictionary(const CFCMutableDictionary &rhs);
-  virtual ~CFCMutableDictionary();
+  ~CFCMutableDictionary() override;
 
-  //------------------------------------------------------------------
   // Operators
-  //------------------------------------------------------------------
   const CFCMutableDictionary &operator=(const CFCMutableDictionary &rhs);
 
   CFIndex GetCount() const;
@@ -61,14 +57,10 @@ public:
   CFMutableDictionaryRef Dictionary(bool can_create);
 
 protected:
-  //------------------------------------------------------------------
   // Classes that inherit from CFCMutableDictionary can see and modify these
-  //------------------------------------------------------------------
 
 private:
-  //------------------------------------------------------------------
   // For CFCMutableDictionary only
-  //------------------------------------------------------------------
 };
 
-#endif // CoreFoundationCPP_CFMutableDictionary_h_
+#endif // LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEDICTIONARY_H

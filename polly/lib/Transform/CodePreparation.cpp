@@ -17,13 +17,12 @@
 
 #include "polly/CodePreparation.h"
 #include "polly/LinkAllPasses.h"
-#include "polly/ScopDetection.h"
 #include "polly/Support/ScopHelper.h"
 #include "llvm/Analysis/DominanceFrontier.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/RegionInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Transforms/Utils/Local.h"
+#include "llvm/InitializePasses.h"
 
 using namespace llvm;
 using namespace polly;
@@ -32,7 +31,7 @@ namespace {
 
 /// Prepare the IR for the scop detection.
 ///
-class CodePreparation : public FunctionPass {
+class CodePreparation final : public FunctionPass {
   CodePreparation(const CodePreparation &) = delete;
   const CodePreparation &operator=(const CodePreparation &) = delete;
 
@@ -49,10 +48,10 @@ public:
 
   /// @name FunctionPass interface.
   //@{
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-  virtual void releaseMemory();
-  virtual bool runOnFunction(Function &F);
-  virtual void print(raw_ostream &OS, const Module *) const;
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  void releaseMemory() override;
+  bool runOnFunction(Function &F) override;
+  void print(raw_ostream &OS, const Module *) const override;
   //@}
 };
 } // namespace

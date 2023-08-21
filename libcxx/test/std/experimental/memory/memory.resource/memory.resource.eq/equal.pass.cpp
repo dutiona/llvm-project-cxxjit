@@ -6,18 +6,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
+
+// test_memory_resource requires RTTI for dynamic_cast
+// UNSUPPORTED: no-rtti
 
 // <experimental/memory_resource>
 
 // bool operator==(memory_resource const &, memory_resource const &) noexcept;
+
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 #include <experimental/memory_resource>
 #include <type_traits>
 #include <cassert>
 
 #include "test_macros.h"
-#include "test_memory_resource.hpp"
+#include "test_memory_resource.h"
 
 namespace ex = std::experimental::pmr;
 

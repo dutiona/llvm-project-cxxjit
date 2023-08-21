@@ -1,4 +1,4 @@
-//===-- SBStructuredData.cpp ------------------------------------*- C++ -*-===//
+//===-- SBStructuredData.cpp ----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/API/SBStructuredData.h"
+#include "lldb/Utility/Instrumentation.h"
 
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
@@ -23,26 +24,38 @@ using namespace lldb_private;
 #pragma mark--
 #pragma mark SBStructuredData
 
-SBStructuredData::SBStructuredData() : m_impl_up(new StructuredDataImpl()) {}
+SBStructuredData::SBStructuredData() : m_impl_up(new StructuredDataImpl()) {
+  LLDB_INSTRUMENT_VA(this);
+}
 
 SBStructuredData::SBStructuredData(const lldb::SBStructuredData &rhs)
-    : m_impl_up(new StructuredDataImpl(*rhs.m_impl_up.get())) {}
+    : m_impl_up(new StructuredDataImpl(*rhs.m_impl_up)) {
+  LLDB_INSTRUMENT_VA(this, rhs);
+}
 
 SBStructuredData::SBStructuredData(const lldb::EventSP &event_sp)
-    : m_impl_up(new StructuredDataImpl(event_sp)) {}
+    : m_impl_up(new StructuredDataImpl(event_sp)) {
+  LLDB_INSTRUMENT_VA(this, event_sp);
+}
 
-SBStructuredData::SBStructuredData(lldb_private::StructuredDataImpl *impl)
-    : m_impl_up(impl) {}
+SBStructuredData::SBStructuredData(const lldb_private::StructuredDataImpl &impl)
+    : m_impl_up(new StructuredDataImpl(impl)) {
+  LLDB_INSTRUMENT_VA(this, impl);
+}
 
-SBStructuredData::~SBStructuredData() {}
+SBStructuredData::~SBStructuredData() = default;
 
 SBStructuredData &SBStructuredData::
 operator=(const lldb::SBStructuredData &rhs) {
+  LLDB_INSTRUMENT_VA(this, rhs);
+
   *m_impl_up = *rhs.m_impl_up;
   return *this;
 }
 
 lldb::SBError SBStructuredData::SetFromJSON(lldb::SBStream &stream) {
+  LLDB_INSTRUMENT_VA(this, stream);
+
   lldb::SBError error;
   std::string json_str(stream.GetData());
 
@@ -54,17 +67,41 @@ lldb::SBError SBStructuredData::SetFromJSON(lldb::SBStream &stream) {
   return error;
 }
 
-bool SBStructuredData::IsValid() const { return m_impl_up->IsValid(); }
+lldb::SBError SBStructuredData::SetFromJSON(const char *json) {
+  LLDB_INSTRUMENT_VA(this, json);
+  lldb::SBStream s;
+  s.Print(json);
+  return SetFromJSON(s);
+}
 
-void SBStructuredData::Clear() { m_impl_up->Clear(); }
+bool SBStructuredData::IsValid() const {
+  LLDB_INSTRUMENT_VA(this);
+  return this->operator bool();
+}
+
+SBStructuredData::operator bool() const {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_impl_up->IsValid();
+}
+
+void SBStructuredData::Clear() {
+  LLDB_INSTRUMENT_VA(this);
+
+  m_impl_up->Clear();
+}
 
 SBError SBStructuredData::GetAsJSON(lldb::SBStream &stream) const {
+  LLDB_INSTRUMENT_VA(this, stream);
+
   SBError error;
   error.SetError(m_impl_up->GetAsJSON(stream.ref()));
   return error;
 }
 
 lldb::SBError SBStructuredData::GetDescription(lldb::SBStream &stream) const {
+  LLDB_INSTRUMENT_VA(this, stream);
+
   Status error = m_impl_up->GetDescription(stream.ref());
   SBError sb_error;
   sb_error.SetError(error);
@@ -72,20 +109,23 @@ lldb::SBError SBStructuredData::GetDescription(lldb::SBStream &stream) const {
 }
 
 StructuredDataType SBStructuredData::GetType() const {
-  return (m_impl_up ? m_impl_up->GetType() : eStructuredDataTypeInvalid);
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_impl_up->GetType();
 }
 
 size_t SBStructuredData::GetSize() const {
-  return (m_impl_up ? m_impl_up->GetSize() : 0);
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_impl_up->GetSize();
 }
 
 bool SBStructuredData::GetKeys(lldb::SBStringList &keys) const {
-  if (!m_impl_up)
-    return false;
-  
+  LLDB_INSTRUMENT_VA(this, keys);
+
   if (GetType() != eStructuredDataTypeDictionary)
     return false;
-  
+
   StructuredData::ObjectSP obj_sp = m_impl_up->GetObjectSP();
   if (!obj_sp)
     return false;
@@ -97,7 +137,7 @@ bool SBStructuredData::GetKeys(lldb::SBStringList &keys) const {
   StructuredData::ObjectSP array_sp = dict->GetKeys();
   StructuredData::Array *key_arr = array_sp->GetAsArray();
   assert(key_arr);
-  
+
   key_arr->ForEach([&keys] (StructuredData::Object *object) -> bool {
     llvm::StringRef key = object->GetStringValue("");
     keys.AppendString(key.str().c_str());
@@ -107,8 +147,7 @@ bool SBStructuredData::GetKeys(lldb::SBStringList &keys) const {
 }
 
 lldb::SBStructuredData SBStructuredData::GetValueForKey(const char *key) const {
-  if (!m_impl_up)
-    return SBStructuredData();
+  LLDB_INSTRUMENT_VA(this, key);
 
   SBStructuredData result;
   result.m_impl_up->SetObjectSP(m_impl_up->GetValueForKey(key));
@@ -116,8 +155,7 @@ lldb::SBStructuredData SBStructuredData::GetValueForKey(const char *key) const {
 }
 
 lldb::SBStructuredData SBStructuredData::GetItemAtIndex(size_t idx) const {
-  if (!m_impl_up)
-    return SBStructuredData();
+  LLDB_INSTRUMENT_VA(this, idx);
 
   SBStructuredData result;
   result.m_impl_up->SetObjectSP(m_impl_up->GetItemAtIndex(idx));
@@ -125,17 +163,25 @@ lldb::SBStructuredData SBStructuredData::GetItemAtIndex(size_t idx) const {
 }
 
 uint64_t SBStructuredData::GetIntegerValue(uint64_t fail_value) const {
-  return (m_impl_up ? m_impl_up->GetIntegerValue(fail_value) : fail_value);
+  LLDB_INSTRUMENT_VA(this, fail_value);
+
+  return m_impl_up->GetIntegerValue(fail_value);
 }
 
 double SBStructuredData::GetFloatValue(double fail_value) const {
-  return (m_impl_up ? m_impl_up->GetFloatValue(fail_value) : fail_value);
+  LLDB_INSTRUMENT_VA(this, fail_value);
+
+  return m_impl_up->GetFloatValue(fail_value);
 }
 
 bool SBStructuredData::GetBooleanValue(bool fail_value) const {
-  return (m_impl_up ? m_impl_up->GetBooleanValue(fail_value) : fail_value);
+  LLDB_INSTRUMENT_VA(this, fail_value);
+
+  return m_impl_up->GetBooleanValue(fail_value);
 }
 
 size_t SBStructuredData::GetStringValue(char *dst, size_t dst_len) const {
-  return (m_impl_up ? m_impl_up->GetStringValue(dst, dst_len) : 0);
+  LLDB_INSTRUMENT_VA(this, dst, dst_len);
+
+  return m_impl_up->GetStringValue(dst, dst_len);
 }

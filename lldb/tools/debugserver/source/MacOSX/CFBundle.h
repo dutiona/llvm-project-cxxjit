@@ -10,16 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __CFBundle_h__
-#define __CFBundle_h__
+#ifndef LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFBUNDLE_H
+#define LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFBUNDLE_H
 
 #include "CFUtils.h"
 
 class CFBundle : public CFReleaser<CFBundleRef> {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   CFBundle(const char *path = NULL);
   CFBundle(const CFBundle &rhs);
   CFBundle &operator=(const CFBundle &rhs);
@@ -34,4 +32,4 @@ protected:
   CFReleaser<CFURLRef> m_bundle_url;
 };
 
-#endif // #ifndef __CFBundle_h__
+#endif // LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFBUNDLE_H

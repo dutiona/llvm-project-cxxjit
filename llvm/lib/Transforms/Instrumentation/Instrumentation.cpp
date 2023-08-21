@@ -24,10 +24,12 @@ using namespace llvm;
 /// Moves I before IP. Returns new insert point.
 static BasicBlock::iterator moveBeforeInsertPoint(BasicBlock::iterator I, BasicBlock::iterator IP) {
   // If I is IP, move the insert point down.
-  if (I == IP)
-    return ++IP;
-  // Otherwise, move I before IP and return IP.
-  I->moveBefore(&*IP);
+  if (I == IP) {
+    ++IP;
+  } else {
+    // Otherwise, move I before IP and return IP.
+    I->moveBefore(&*IP);
+  }
   return IP;
 }
 
@@ -66,60 +68,23 @@ GlobalVariable *llvm::createPrivateGlobalForString(Module &M, StringRef Str,
                          GlobalValue::PrivateLinkage, StrConst, NamePrefix);
   if (AllowMerging)
     GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-  GV->setAlignment(1);  // Strings may not be merged w/o setting align 1.
+  GV->setAlignment(Align(1)); // Strings may not be merged w/o setting
+                              // alignment explicitly.
   return GV;
 }
 
-Comdat *llvm::GetOrCreateFunctionComdat(Function &F, Triple &T,
-                                        const std::string &ModuleId) {
+Comdat *llvm::getOrCreateFunctionComdat(Function &F, Triple &T) {
   if (auto Comdat = F.getComdat()) return Comdat;
   assert(F.hasName());
   Module *M = F.getParent();
-  std::string Name = F.getName();
-
-  // Make a unique comdat name for internal linkage things on ELF. On COFF, the
-  // name of the comdat group identifies the leader symbol of the comdat group.
-  // The linkage of the leader symbol is considered during comdat resolution,
-  // and internal symbols with the same name from different objects will not be
-  // merged.
-  if (T.isOSBinFormatELF() && F.hasLocalLinkage()) {
-    if (ModuleId.empty())
-      return nullptr;
-    Name += ModuleId;
-  }
 
   // Make a new comdat for the function. Use the "no duplicates" selection kind
-  // for non-weak symbols if the object file format supports it.
-  Comdat *C = M->getOrInsertComdat(Name);
-  if (T.isOSBinFormatCOFF() && !F.isWeakForLinker())
-    C->setSelectionKind(Comdat::NoDuplicates);
+  // if the object file format supports it. For COFF we restrict it to non-weak
+  // symbols.
+  Comdat *C = M->getOrInsertComdat(F.getName());
+  if (T.isOSBinFormatELF() || (T.isOSBinFormatCOFF() && !F.isWeakForLinker()))
+    C->setSelectionKind(Comdat::NoDeduplicate);
   F.setComdat(C);
   return C;
 }
 
-/// initializeInstrumentation - Initialize all passes in the TransformUtils
-/// library.
-void llvm::initializeInstrumentation(PassRegistry &Registry) {
-  initializeAddressSanitizerLegacyPassPass(Registry);
-  initializeModuleAddressSanitizerLegacyPassPass(Registry);
-  initializeBoundsCheckingLegacyPassPass(Registry);
-  initializeControlHeightReductionLegacyPassPass(Registry);
-  initializeGCOVProfilerLegacyPassPass(Registry);
-  initializePGOInstrumentationGenLegacyPassPass(Registry);
-  initializePGOInstrumentationUseLegacyPassPass(Registry);
-  initializePGOIndirectCallPromotionLegacyPassPass(Registry);
-  initializePGOMemOPSizeOptLegacyPassPass(Registry);
-  initializeInstrProfilingLegacyPassPass(Registry);
-  initializeMemorySanitizerLegacyPassPass(Registry);
-  initializeHWAddressSanitizerPass(Registry);
-  initializeThreadSanitizerLegacyPassPass(Registry);
-  initializeSanitizerCoverageModulePass(Registry);
-  initializeDataFlowSanitizerPass(Registry);
-  initializeEfficiencySanitizerPass(Registry);
-}
-
-/// LLVMInitializeInstrumentation - C binding for
-/// initializeInstrumentation.
-void LLVMInitializeInstrumentation(LLVMPassRegistryRef R) {
-  initializeInstrumentation(*unwrap(R));
-}

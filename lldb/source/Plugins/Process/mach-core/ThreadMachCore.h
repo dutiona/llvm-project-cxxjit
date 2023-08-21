@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ThreadMachCore_h_
-#define liblldb_ThreadMachCore_h_
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_MACH_CORE_THREADMACHCORE_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_MACH_CORE_THREADMACHCORE_H
 
 #include <string>
 
@@ -52,18 +52,14 @@ public:
 protected:
   friend class ProcessMachCore;
 
-  //------------------------------------------------------------------
   // Member variables.
-  //------------------------------------------------------------------
   std::string m_thread_name;
   std::string m_dispatch_queue_name;
   lldb::addr_t m_thread_dispatch_qaddr;
   lldb::RegisterContextSP m_thread_reg_ctx_sp;
 
-  //------------------------------------------------------------------
   // Protected member functions.
-  //------------------------------------------------------------------
   bool CalculateStopInfo() override;
 };
 
-#endif // liblldb_ThreadMachCore_h_
+#endif // LLDB_SOURCE_PLUGINS_PROCESS_MACH_CORE_THREADMACHCORE_H

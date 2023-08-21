@@ -35,6 +35,7 @@
 #include <iterator>
 #include <type_traits>
 
+#include "test_macros.h"
 #include "test_traits.h"
 #include "test_allocator.h"
 #include "min_allocator.h"
@@ -73,7 +74,9 @@ test()
 int main(int, char**)
 {
     test<test_traits<char>, test_allocator<char> >();
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     test<std::char_traits<wchar_t>, std::allocator<wchar_t> >();
+#endif
     static_assert((std::is_same<std::basic_string<char>::traits_type,
                                 std::char_traits<char> >::value), "");
     static_assert((std::is_same<std::basic_string<char>::allocator_type,

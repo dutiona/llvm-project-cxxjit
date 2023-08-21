@@ -9,13 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USE_EQUALS_DEFAULT_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USE_EQUALS_DEFAULT_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
-/// \brief Replace default bodies of special member functions with '= default;'.
+/// Replace default bodies of special member functions with '= default;'.
 /// \code
 ///   struct A {
 ///     A() {}
@@ -33,10 +31,13 @@ namespace modernize {
 /// \endcode
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/modernize-use-equals-default.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/modernize/use-equals-default.html
 class UseEqualsDefaultCheck : public ClangTidyCheck {
 public:
   UseEqualsDefaultCheck(StringRef Name, ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus11;
+  }
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
@@ -45,8 +46,6 @@ private:
   const bool IgnoreMacros;
 };
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USE_EQUALS_DEFAULT_H

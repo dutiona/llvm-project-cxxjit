@@ -12,11 +12,13 @@
 
 // auto_ptr(auto_ptr_ref<X> r) throw();
 
-// REQUIRES: c++98 || c++03 || c++11 || c++14
+// REQUIRES: c++03 || c++11 || c++14
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 #include <memory>
 #include <cassert>
 
+#include "test_macros.h"
 #include "../AB.h"
 
 void

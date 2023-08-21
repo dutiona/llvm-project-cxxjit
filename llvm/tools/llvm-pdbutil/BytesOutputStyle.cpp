@@ -8,7 +8,6 @@
 
 #include "BytesOutputStyle.h"
 
-#include "FormatUtil.h"
 #include "StreamUtil.h"
 #include "llvm-pdbutil.h"
 
@@ -17,6 +16,7 @@
 #include "llvm/DebugInfo/MSF/MSFCommon.h"
 #include "llvm/DebugInfo/MSF/MappedBlockStream.h"
 #include "llvm/DebugInfo/PDB/Native/DbiStream.h"
+#include "llvm/DebugInfo/PDB/Native/FormatUtil.h"
 #include "llvm/DebugInfo/PDB/Native/InfoStream.h"
 #include "llvm/DebugInfo/PDB/Native/ModuleDebugStream.h"
 #include "llvm/DebugInfo/PDB/Native/PDBFile.h"
@@ -83,13 +83,13 @@ static void printHeader(LinePrinter &P, const Twine &S) {
 }
 
 BytesOutputStyle::BytesOutputStyle(PDBFile &File)
-    : File(File), P(2, false, outs()) {}
+    : File(File), P(2, false, outs(), opts::Filters) {}
 
 Error BytesOutputStyle::dump() {
 
-  if (opts::bytes::DumpBlockRange.hasValue()) {
+  if (opts::bytes::DumpBlockRange) {
     auto &R = *opts::bytes::DumpBlockRange;
-    uint32_t Max = R.Max.getValueOr(R.Min);
+    uint32_t Max = R.Max.value_or(R.Min);
 
     if (Max < R.Min)
       return make_error<StringError>(
@@ -104,9 +104,9 @@ Error BytesOutputStyle::dump() {
     P.NewLine();
   }
 
-  if (opts::bytes::DumpByteRange.hasValue()) {
+  if (opts::bytes::DumpByteRange) {
     auto &R = *opts::bytes::DumpByteRange;
-    uint32_t Max = R.Max.getValueOr(File.getFileSize());
+    uint32_t Max = R.Max.value_or(File.getFileSize());
 
     if (Max < R.Min)
       return make_error<StringError>("Invalid byte range specified.  Max < Min",
@@ -340,9 +340,7 @@ static void iterateOneModule(PDBFile &File, LinePrinter &P,
   if (ModiStream == kInvalidStreamIndex)
     return;
 
-  auto ModStreamData = MappedBlockStream::createIndexedStream(
-      File.getMsfLayout(), File.getMsfBuffer(), ModiStream,
-      File.getAllocator());
+  auto ModStreamData = File.createIndexedStream(ModiStream);
   ModuleDebugStreamRef ModStream(Modi, std::move(ModStreamData));
   if (auto EC = ModStream.reload()) {
     P.formatLine("Could not parse debug information.");
@@ -459,7 +457,7 @@ BytesOutputStyle::initializeTypes(uint32_t StreamIdx) {
   uint32_t Count = Tpi->getNumTypeRecords();
   auto Offsets = Tpi->getTypeIndexOffsets();
   TypeCollection =
-      llvm::make_unique<LazyRandomTypeCollection>(Types, Count, Offsets);
+      std::make_unique<LazyRandomTypeCollection>(Types, Count, Offsets);
 
   return *TypeCollection;
 }

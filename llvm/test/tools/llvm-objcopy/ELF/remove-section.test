@@ -1,4 +1,4 @@
-# RUN: yaml2obj %s > %t
+# RUN: yaml2obj %s -o %t
 # RUN: cp %t %t1
 
 # RUN: llvm-objcopy -R .test2 %t %t2
@@ -13,7 +13,6 @@
 
 # RUN: llvm-objcopy --regex --remove-section='.test[0-9]+' %t %t4
 # RUN: llvm-readobj --file-headers --sections %t4 | FileCheck %s --check-prefix=REGEX
-
 
 !ELF
 FileHeader:
@@ -31,6 +30,7 @@ Sections:
   - Name:            .test3
     Type:            SHT_PROGBITS
     Flags:           [ ]
+Symbols: []
 
 # CHECK: SectionHeaderCount: 6
 

@@ -24,6 +24,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "llvm/ADT/SmallSet.h"
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -55,7 +56,7 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
 
   const Decl *D = nullptr;
   CFG *C = nullptr;
-  ParentMap *PM = nullptr;
+  const ParentMap *PM = nullptr;
   const LocationContext *LC = nullptr;
   // Iterate over ExplodedGraph
   for (ExplodedGraph::node_iterator I = G.nodes_begin(), E = G.nodes_end();
@@ -74,7 +75,7 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
     if (!PM)
       PM = &LC->getParentMap();
 
-    if (Optional<BlockEntrance> BE = P.getAs<BlockEntrance>()) {
+    if (std::optional<BlockEntrance> BE = P.getAs<BlockEntrance>()) {
       const CFGBlock *CB = BE->getBlock();
       reachable.insert(CB->getBlockID());
     }
@@ -129,7 +130,7 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
       bool foundUnreachable = false;
       for (CFGBlock::const_iterator ci = CB->begin(), ce = CB->end();
            ci != ce; ++ci) {
-        if (Optional<CFGStmt> S = (*ci).getAs<CFGStmt>())
+        if (std::optional<CFGStmt> S = (*ci).getAs<CFGStmt>())
           if (const CallExpr *CE = dyn_cast<CallExpr>(S->getStmt())) {
             if (CE->getBuiltinCallee() == Builtin::BI__builtin_unreachable ||
                 CE->isBuiltinAssumeFalse(Eng.getContext())) {
@@ -169,7 +170,7 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
     if (SM.isInSystemHeader(SL) || SM.isInExternCSystemHeader(SL))
       continue;
 
-    B.EmitBasicReport(D, this, "Unreachable code", "Dead code",
+    B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
                       "This statement is never executed", DL, SR);
   }
 }
@@ -199,12 +200,12 @@ void UnreachableCodeChecker::FindUnreachableEntryPoints(const CFGBlock *CB,
 // Find the Stmt* in a CFGBlock for reporting a warning
 const Stmt *UnreachableCodeChecker::getUnreachableStmt(const CFGBlock *CB) {
   for (CFGBlock::const_iterator I = CB->begin(), E = CB->end(); I != E; ++I) {
-    if (Optional<CFGStmt> S = I->getAs<CFGStmt>()) {
+    if (std::optional<CFGStmt> S = I->getAs<CFGStmt>()) {
       if (!isa<DeclStmt>(S->getStmt()))
         return S->getStmt();
     }
   }
-  if (const Stmt *S = CB->getTerminator())
+  if (const Stmt *S = CB->getTerminatorStmt())
     return S;
   else
     return nullptr;
@@ -250,13 +251,13 @@ bool UnreachableCodeChecker::isInvalidPath(const CFGBlock *CB,
 bool UnreachableCodeChecker::isEmptyCFGBlock(const CFGBlock *CB) {
   return CB->getLabel() == nullptr // No labels
       && CB->size() == 0           // No statements
-      && !CB->getTerminator();     // No terminator
+      && !CB->getTerminatorStmt(); // No terminator
 }
 
 void ento::registerUnreachableCodeChecker(CheckerManager &mgr) {
   mgr.registerChecker<UnreachableCodeChecker>();
 }
 
-bool ento::shouldRegisterUnreachableCodeChecker(const LangOptions &LO) {
+bool ento::shouldRegisterUnreachableCodeChecker(const CheckerManager &mgr) {
   return true;
 }

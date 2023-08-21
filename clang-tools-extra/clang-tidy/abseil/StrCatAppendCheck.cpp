@@ -12,9 +12,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace abseil {
+namespace clang::tidy::abseil {
 
 namespace {
 // Skips any combination of temporary materialization, temporary binding and
@@ -24,7 +22,7 @@ AST_MATCHER_P(Stmt, IgnoringTemporaries, ast_matchers::internal::Matcher<Stmt>,
   const Stmt *E = &Node;
   while (true) {
     if (const auto *MTE = dyn_cast<MaterializeTemporaryExpr>(E))
-      E = MTE->getTemporary();
+      E = MTE->getSubExpr();
     if (const auto *BTE = dyn_cast<CXXBindTemporaryExpr>(E))
       E = BTE->getSubExpr();
     if (const auto *ICE = dyn_cast<ImplicitCastExpr>(E))
@@ -42,8 +40,6 @@ AST_MATCHER_P(Stmt, IgnoringTemporaries, ast_matchers::internal::Matcher<Stmt>,
 //       str.append(StrCat(...))
 
 void StrCatAppendCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-  	return;
   const auto StrCat = functionDecl(hasName("::absl::StrCat"));
   // The arguments of absl::StrCat are implicitly converted to AlphaNum. This 
   // matches to the arguments because of that behavior. 
@@ -60,14 +56,17 @@ void StrCatAppendCheck::registerMatchers(MatchFinder *Finder) {
   // StrCat on the RHS. The first argument of the StrCat call should be the same
   // as the LHS. Ignore calls from template instantiations.
   Finder->addMatcher(
-      cxxOperatorCallExpr(
-          unless(isInTemplateInstantiation()), hasOverloadedOperatorName("="),
-          hasArgument(0, declRefExpr(to(decl().bind("LHS")))),
-          hasArgument(1, IgnoringTemporaries(
-                             callExpr(callee(StrCat), hasArgument(0, AlphaNum),
-                                      unless(HasAnotherReferenceToLhs))
-                                 .bind("Call"))))
-          .bind("Op"),
+      traverse(TK_AsIs,
+               cxxOperatorCallExpr(
+                   unless(isInTemplateInstantiation()),
+                   hasOverloadedOperatorName("="),
+                   hasArgument(0, declRefExpr(to(decl().bind("LHS")))),
+                   hasArgument(
+                       1, IgnoringTemporaries(
+                              callExpr(callee(StrCat), hasArgument(0, AlphaNum),
+                                       unless(HasAnotherReferenceToLhs))
+                                  .bind("Call"))))
+                   .bind("Op")),
       this);
 }
 
@@ -96,6 +95,4 @@ void StrCatAppendCheck::check(const MatchFinder::MatchResult &Result) {
       << FixItHint::CreateInsertion(Call->getArg(0)->getBeginLoc(), "&");
 }
 
-}  // namespace abseil
-}  // namespace tidy
-}  // namespace clang
+} // namespace clang::tidy::abseil

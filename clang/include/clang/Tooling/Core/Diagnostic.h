@@ -26,6 +26,17 @@
 namespace clang {
 namespace tooling {
 
+/// Represents a range within a specific source file.
+struct FileByteRange {
+  FileByteRange() = default;
+
+  FileByteRange(const SourceManager &Sources, CharSourceRange Range);
+
+  std::string FilePath;
+  unsigned FileOffset;
+  unsigned Length;
+};
+
 /// Represents the diagnostic message with the error message associated
 /// and the information on the location of the problem.
 struct DiagnosticMessage {
@@ -39,15 +50,24 @@ struct DiagnosticMessage {
   ///
   DiagnosticMessage(llvm::StringRef Message, const SourceManager &Sources,
                     SourceLocation Loc);
+
   std::string Message;
   std::string FilePath;
   unsigned FileOffset;
+
+  /// Fixes for this diagnostic, grouped by file path.
+  llvm::StringMap<Replacements> Fix;
+
+  /// Extra source ranges associated with the note, in addition to the location
+  /// of the Message itself.
+  llvm::SmallVector<FileByteRange, 1> Ranges;
 };
 
 /// Represents the diagnostic with the level of severity and possible
 /// fixes to be applied.
 struct Diagnostic {
   enum Level {
+    Remark = DiagnosticsEngine::Remark,
     Warning = DiagnosticsEngine::Warning,
     Error = DiagnosticsEngine::Error
   };
@@ -58,7 +78,6 @@ struct Diagnostic {
              StringRef BuildDirectory);
 
   Diagnostic(llvm::StringRef DiagnosticName, const DiagnosticMessage &Message,
-             const llvm::StringMap<Replacements> &Fix,
              const SmallVector<DiagnosticMessage, 1> &Notes, Level DiagLevel,
              llvm::StringRef BuildDirectory);
 
@@ -67,9 +86,6 @@ struct Diagnostic {
 
   /// Message associated to the diagnostic.
   DiagnosticMessage Message;
-
-  /// Fixes to apply, grouped by file path.
-  llvm::StringMap<Replacements> Fix;
 
   /// Potential notes about the diagnostic.
   SmallVector<DiagnosticMessage, 1> Notes;
@@ -93,6 +109,10 @@ struct TranslationUnitDiagnostics {
   std::string MainSourceFile;
   std::vector<Diagnostic> Diagnostics;
 };
+
+/// Get the first fix to apply for this diagnostic.
+/// \returns nullptr if no fixes are attached to the diagnostic.
+const llvm::StringMap<Replacements> *selectFirstFix(const Diagnostic& D);
 
 } // end namespace tooling
 } // end namespace clang

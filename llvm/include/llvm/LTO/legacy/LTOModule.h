@@ -10,13 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LTO_LTOMODULE_H
-#define LLVM_LTO_LTOMODULE_H
+#ifndef LLVM_LTO_LEGACY_LTOMODULE_H
+#define LLVM_LTO_LEGACY_LTOMODULE_H
 
 #include "llvm-c/lto.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/Module.h"
+#include "llvm/LTO/LTO.h"
 #include "llvm/Object/IRObjectFile.h"
 #include "llvm/Object/ModuleSymbolTable.h"
 #include "llvm/Target/TargetMachine.h"
@@ -39,8 +40,8 @@ private:
   struct NameAndAttributes {
     StringRef name;
     uint32_t           attributes = 0;
-    bool               isFunction = 0;
-    const GlobalValue *symbol = 0;
+    bool               isFunction = false;
+    const GlobalValue *symbol = nullptr;
   };
 
   std::unique_ptr<LLVMContext> OwnedContext;
@@ -155,9 +156,25 @@ public:
 
   const std::vector<StringRef> &getAsmUndefinedRefs() { return _asm_undefines; }
 
+  static lto::InputFile *createInputFile(const void *buffer, size_t buffer_size,
+                                         const char *path, std::string &out_error);
+
+  static size_t getDependentLibraryCount(lto::InputFile *input);
+
+  static const char *getDependentLibrary(lto::InputFile *input, size_t index, size_t *size);
+
+  Expected<uint32_t> getMachOCPUType() const;
+
+  Expected<uint32_t> getMachOCPUSubType() const;
+
+  /// Returns true if the module has either the @llvm.global_ctors or the
+  /// @llvm.global_dtors symbol. Otherwise returns false.
+  bool hasCtorDtor() const;
+
 private:
   /// Parse metadata from the module
   // FIXME: it only parses "llvm.linker.options" metadata at the moment
+  // FIXME: can't access metadata in lazily loaded modules
   void parseMetadata();
 
   /// Parse the symbols from the module and model-level ASM and add them to

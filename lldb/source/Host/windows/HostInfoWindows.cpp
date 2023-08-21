@@ -1,4 +1,4 @@
-//===-- HostInfoWindows.cpp -------------------------------------*- C++ -*-===//
+//===-- HostInfoWindows.cpp -----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,23 +11,38 @@
 #include <objbase.h>
 
 #include <mutex>
+#include <optional>
 
 #include "lldb/Host/windows/HostInfoWindows.h"
 #include "lldb/Host/windows/PosixApi.h"
+#include "lldb/Utility/UserIDResolver.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace lldb_private;
 
+namespace {
+class WindowsUserIDResolver : public UserIDResolver {
+protected:
+  std::optional<std::string> DoGetUserName(id_t uid) override {
+    return std::nullopt;
+  }
+  std::optional<std::string> DoGetGroupName(id_t gid) override {
+    return std::nullopt;
+  }
+};
+} // namespace
+
 FileSpec HostInfoWindows::m_program_filespec;
 
-void HostInfoWindows::Initialize() {
+void HostInfoWindows::Initialize(SharedLibraryDirectoryHelper *helper) {
   ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  HostInfoBase::Initialize();
+  HostInfoBase::Initialize(helper);
 }
 
 void HostInfoWindows::Terminate() {
@@ -60,19 +75,16 @@ llvm::VersionTuple HostInfoWindows::GetOSVersion() {
                             info.wServicePackMajor);
 }
 
-bool HostInfoWindows::GetOSBuildString(std::string &s) {
-  s.clear();
+std::optional<std::string> HostInfoWindows::GetOSBuildString() {
   llvm::VersionTuple version = GetOSVersion();
   if (version.empty())
-    return false;
+    return std::nullopt;
 
-  llvm::raw_string_ostream stream(s);
-  stream << "Windows NT " << version.getAsString();
-  return true;
+  return "Windows NT " + version.getAsString();
 }
 
-bool HostInfoWindows::GetOSKernelDescription(std::string &s) {
-  return GetOSBuildString(s);
+std::optional<std::string> HostInfoWindows::GetOSKernelDescription() {
+  return GetOSBuildString();
 }
 
 bool HostInfoWindows::GetHostname(std::string &s) {
@@ -81,6 +93,8 @@ bool HostInfoWindows::GetHostname(std::string &s) {
   if (!::GetComputerNameW(buffer, &dwSize))
     return false;
 
+  // The conversion requires an empty string.
+  s.clear();
   return llvm::convertWideToUTF8(buffer, s);
 }
 
@@ -116,4 +130,10 @@ bool HostInfoWindows::GetEnvironmentVar(const std::string &var_name,
   if (const wchar_t *wvar = _wgetenv(wvar_name.c_str()))
     return llvm::convertWideToUTF8(wvar, var);
   return false;
+}
+
+static llvm::ManagedStatic<WindowsUserIDResolver> g_user_id_resolver;
+
+UserIDResolver &HostInfoWindows::GetUserIDResolver() {
+  return *g_user_id_resolver;
 }

@@ -40,7 +40,6 @@ class LLVM_LIBRARY_VISIBILITY MipsTargetInfo : public TargetInfo {
       resetDataLayout(("e-" + Layout).str());
   }
 
-  static const Builtin::Info BuiltinInfo[];
   std::string CPU;
   bool IsMips16;
   bool IsMicromips;
@@ -180,6 +179,8 @@ public:
       CPU = getCPU();
     if (CPU == "octeon")
       Features["mips64r2"] = Features["cnmips"] = true;
+    else if (CPU == "octeon+")
+      Features["mips64r2"] = Features["cnmips"] = Features["cnmipsp"] = true;
     else
       Features[CPU] = true;
     return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
@@ -224,7 +225,7 @@ public:
         "$msair", "$msacsr", "$msaaccess", "$msasave", "$msamodify",
         "$msarequest", "$msamap", "$msaunmap"
     };
-    return llvm::makeArrayRef(GCCRegNames);
+    return llvm::ArrayRef(GCCRegNames);
   }
 
   bool validateAsmConstraint(const char *&Name,
@@ -393,8 +394,8 @@ public:
         {{"ra"}, "$31"}
     };
     if (ABI == "o32")
-      return llvm::makeArrayRef(O32RegAliases);
-    return llvm::makeArrayRef(NewABIRegAliases);
+      return llvm::ArrayRef(O32RegAliases);
+    return llvm::ArrayRef(NewABIRegAliases);
   }
 
   bool hasInt128Type() const override {
@@ -404,6 +405,7 @@ public:
   unsigned getUnwindWordWidth() const override;
 
   bool validateTarget(DiagnosticsEngine &Diags) const override;
+  bool hasBitIntType() const override { return true; }
 };
 } // namespace targets
 } // namespace clang

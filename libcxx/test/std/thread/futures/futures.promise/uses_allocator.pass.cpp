@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <future>
 
@@ -17,6 +17,7 @@
 //      : true_type { };
 
 #include <future>
+#include "test_macros.h"
 #include "test_allocator.h"
 
 int main(int, char**)

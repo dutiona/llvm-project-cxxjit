@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 // <vector>
 
@@ -14,10 +14,11 @@
 
 #include <vector>
 #include <cassert>
+#include "test_macros.h"
 #include "test_allocator.h"
 #include "min_allocator.h"
 
-int main(int, char**)
+TEST_CONSTEXPR_CXX20 bool tests()
 {
     {
         std::vector<bool, test_allocator<bool> > l(test_allocator<bool>(5));
@@ -30,7 +31,7 @@ int main(int, char**)
         std::vector<bool, test_allocator<bool> > l2(test_allocator<bool>(5));
         l2 = std::move(l);
         assert(l2 == lo);
-        assert(l.empty());
+        LIBCPP_ASSERT(l.empty());
         assert(l2.get_allocator() == lo.get_allocator());
     }
     {
@@ -76,5 +77,14 @@ int main(int, char**)
         assert(l2.get_allocator() == lo.get_allocator());
     }
 
-  return 0;
+    return true;
+}
+
+int main(int, char**)
+{
+    tests();
+#if TEST_STD_VER > 17
+    static_assert(tests());
+#endif
+    return 0;
 }

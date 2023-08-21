@@ -16,6 +16,7 @@
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
+#include <optional>
 
 namespace clang {
 namespace ento {
@@ -84,6 +85,8 @@ public:
     return Eng.getContext();
   }
 
+  const ASTContext &getASTContext() const { return Eng.getContext(); }
+
   const LangOptions &getLangOpts() const {
     return Eng.getContext().getLangOpts();
   }
@@ -103,9 +106,11 @@ public:
     return Eng.getBugReporter();
   }
 
-  SourceManager &getSourceManager() {
+  const SourceManager &getSourceManager() {
     return getBugReporter().getSourceManager();
   }
+
+  Preprocessor &getPreprocessor() { return getBugReporter().getPreprocessor(); }
 
   SValBuilder &getSValBuilder() {
     return Eng.getSValBuilder();
@@ -135,7 +140,7 @@ public:
   /// example, for finding variables that the given symbol was assigned to.
   static const MemRegion *getLocationRegionIfPostStore(const ExplodedNode *N) {
     ProgramPoint L = N->getLocation();
-    if (Optional<PostStore> PSL = L.getAs<PostStore>())
+    if (std::optional<PostStore> PSL = L.getAs<PostStore>())
       return reinterpret_cast<const MemRegion*>(PSL->getLocationValue());
     return nullptr;
   }
@@ -173,8 +178,7 @@ public:
   /// @param Pred The transition will be generated from the specified Pred node
   ///             to the newly generated node.
   /// @param Tag The tag to uniquely identify the creation site.
-  ExplodedNode *addTransition(ProgramStateRef State,
-                              ExplodedNode *Pred,
+  ExplodedNode *addTransition(ProgramStateRef State, ExplodedNode *Pred,
                               const ProgramPointTag *Tag = nullptr) {
     return addTransitionImpl(State, false, Pred, Tag);
   }
@@ -187,6 +191,14 @@ public:
     return addTransitionImpl(State ? State : getState(), true, Pred, Tag);
   }
 
+  /// Add a sink node to the current path of execution, halting analysis.
+  void addSink(ProgramStateRef State = nullptr,
+               const ProgramPointTag *Tag = nullptr) {
+    if (!State)
+      State = getState();
+    addTransition(State, generateSink(State, getPredecessor()));
+  }
+
   /// Generate a transition to a node that will be used to report
   /// an error. This node will be a sink. That is, it will stop exploration of
   /// the given path.
@@ -195,6 +207,22 @@ public:
   /// @param Tag The tag to uniquely identify the creation site. If null,
   ///        the default tag for the checker will be used.
   ExplodedNode *generateErrorNode(ProgramStateRef State = nullptr,
+                                  const ProgramPointTag *Tag = nullptr) {
+    return generateSink(State, Pred,
+                       (Tag ? Tag : Location.getTag()));
+  }
+
+  /// Generate a transition to a node that will be used to report
+  /// an error. This node will be a sink. That is, it will stop exploration of
+  /// the given path.
+  ///
+  /// @param State The state of the generated node.
+  /// @param Pred The transition will be generated from the specified Pred node
+  ///             to the newly generated node.
+  /// @param Tag The tag to uniquely identify the creation site. If null,
+  ///        the default tag for the checker will be used.
+  ExplodedNode *generateErrorNode(ProgramStateRef State,
+                                  ExplodedNode *Pred,
                                   const ProgramPointTag *Tag = nullptr) {
     return generateSink(State, Pred,
                        (Tag ? Tag : Location.getTag()));
@@ -213,10 +241,104 @@ public:
     return addTransition(State, (Tag ? Tag : Location.getTag()));
   }
 
+  /// Generate a transition to a node that will be used to report
+  /// an error. This node will not be a sink. That is, exploration will
+  /// continue along this path.
+  ///
+  /// @param State The state of the generated node.
+  /// @param Pred The transition will be generated from the specified Pred node
+  ///             to the newly generated node.
+  /// @param Tag The tag to uniquely identify the creation site. If null,
+  ///        the default tag for the checker will be used.
+  ExplodedNode *
+  generateNonFatalErrorNode(ProgramStateRef State,
+                            ExplodedNode *Pred,
+                            const ProgramPointTag *Tag = nullptr) {
+    return addTransition(State, Pred, (Tag ? Tag : Location.getTag()));
+  }
+
   /// Emit the diagnostics report.
   void emitReport(std::unique_ptr<BugReport> R) {
     Changed = true;
     Eng.getBugReporter().emitReport(std::move(R));
+  }
+
+  /// Produce a program point tag that displays an additional path note
+  /// to the user. This is a lightweight alternative to the
+  /// BugReporterVisitor mechanism: instead of visiting the bug report
+  /// node-by-node to restore the sequence of events that led to discovering
+  /// a bug, you can add notes as you add your transitions.
+  ///
+  /// @param Cb Callback with 'BugReporterContext &, BugReport &' parameters.
+  /// @param IsPrunable Whether the note is prunable. It allows BugReporter
+  ///        to omit the note from the report if it would make the displayed
+  ///        bug path significantly shorter.
+  LLVM_ATTRIBUTE_RETURNS_NONNULL
+  const NoteTag *getNoteTag(NoteTag::Callback &&Cb, bool IsPrunable = false) {
+    return Eng.getDataTags().make<NoteTag>(std::move(Cb), IsPrunable);
+  }
+
+  /// A shorthand version of getNoteTag that doesn't require you to accept
+  /// the 'BugReporterContext' argument when you don't need it.
+  ///
+  /// @param Cb Callback only with 'BugReport &' parameter.
+  /// @param IsPrunable Whether the note is prunable. It allows BugReporter
+  ///        to omit the note from the report if it would make the displayed
+  ///        bug path significantly shorter.
+  const NoteTag
+  *getNoteTag(std::function<std::string(PathSensitiveBugReport &)> &&Cb,
+              bool IsPrunable = false) {
+    return getNoteTag(
+        [Cb](BugReporterContext &,
+             PathSensitiveBugReport &BR) { return Cb(BR); },
+        IsPrunable);
+  }
+
+  /// A shorthand version of getNoteTag that doesn't require you to accept
+  /// the arguments when you don't need it.
+  ///
+  /// @param Cb Callback without parameters.
+  /// @param IsPrunable Whether the note is prunable. It allows BugReporter
+  ///        to omit the note from the report if it would make the displayed
+  ///        bug path significantly shorter.
+  const NoteTag *getNoteTag(std::function<std::string()> &&Cb,
+                            bool IsPrunable = false) {
+    return getNoteTag([Cb](BugReporterContext &,
+                           PathSensitiveBugReport &) { return Cb(); },
+                      IsPrunable);
+  }
+
+  /// A shorthand version of getNoteTag that accepts a plain note.
+  ///
+  /// @param Note The note.
+  /// @param IsPrunable Whether the note is prunable. It allows BugReporter
+  ///        to omit the note from the report if it would make the displayed
+  ///        bug path significantly shorter.
+  const NoteTag *getNoteTag(StringRef Note, bool IsPrunable = false) {
+    return getNoteTag(
+        [Note](BugReporterContext &,
+               PathSensitiveBugReport &) { return std::string(Note); },
+        IsPrunable);
+  }
+
+  /// A shorthand version of getNoteTag that accepts a lambda with stream for
+  /// note.
+  ///
+  /// @param Cb Callback with 'BugReport &' and 'llvm::raw_ostream &'.
+  /// @param IsPrunable Whether the note is prunable. It allows BugReporter
+  ///        to omit the note from the report if it would make the displayed
+  ///        bug path significantly shorter.
+  const NoteTag *getNoteTag(
+      std::function<void(PathSensitiveBugReport &BR, llvm::raw_ostream &OS)> &&Cb,
+      bool IsPrunable = false) {
+    return getNoteTag(
+        [Cb](PathSensitiveBugReport &BR) -> std::string {
+          llvm::SmallString<128> Str;
+          llvm::raw_svector_ostream OS(Str);
+          Cb(BR, OS);
+          return std::string(OS.str());
+        },
+        IsPrunable);
   }
 
   /// Returns the word that should be used to refer to the declaration

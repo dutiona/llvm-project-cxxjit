@@ -9,9 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANGD_FS_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANGD_FS_H
 
+#include "support/Path.h"
 #include "clang/Basic/LLVM.h"
-#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/VirtualFileSystem.h"
+#include <optional>
 
 namespace clang {
 namespace clangd {
@@ -42,7 +44,7 @@ public:
   void update(const llvm::vfs::FileSystem &FS, llvm::vfs::Status S);
 
   /// \p Path is a path stored in preamble.
-  llvm::Optional<llvm::vfs::Status> lookup(llvm::StringRef Path) const;
+  std::optional<llvm::vfs::Status> lookup(llvm::StringRef Path) const;
 
   /// Returns a VFS that collects file status.
   /// Only cache stats for files that exist because
@@ -64,6 +66,13 @@ private:
   std::string MainFilePath;
   llvm::StringMap<llvm::vfs::Status> StatCache;
 };
+
+/// Returns a version of \p File that doesn't contain dots and dot dots.
+/// e.g /a/b/../c -> /a/c
+///     /a/b/./c -> /a/b/c
+/// FIXME: We should avoid encountering such paths in clangd internals by
+/// filtering everything we get over LSP, CDB, etc.
+Path removeDots(PathRef File);
 
 } // namespace clangd
 } // namespace clang

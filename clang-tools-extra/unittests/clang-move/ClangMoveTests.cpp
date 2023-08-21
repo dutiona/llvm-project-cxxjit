@@ -1,4 +1,4 @@
-//===-- ClangMoveTest.cpp - clang-move unit tests -------------------------===//
+//===-- ClangMoveTests.cpp - clang-move unit tests ------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ClangMove.h"
+#include "Move.h"
 #include "unittests/Tooling/RewriterTestContext.h"
 #include "clang/Format/Format.h"
 #include "clang/Frontend/FrontendActions.h"
@@ -208,7 +208,9 @@ runClangMoveOnCode(const move::MoveDefinitionSpec &Spec,
                    DeclarationReporter *const Reporter = nullptr) {
   clang::RewriterTestContext Context;
 
-  Context.InMemoryFileSystem->setCurrentWorkingDirectory(WorkingDir);
+  llvm::SmallString<16> Dir(WorkingDir);
+  llvm::sys::path::native(Dir);
+  Context.InMemoryFileSystem->setCurrentWorkingDirectory(Dir);
 
   std::map<llvm::StringRef, clang::FileID> FileToFileID;
 
@@ -224,13 +226,12 @@ runClangMoveOnCode(const move::MoveDefinitionSpec &Spec,
   CreateFiles(TestCCName, CC);
 
   std::map<std::string, tooling::Replacements> FileToReplacements;
-  ClangMoveContext MoveContext = {Spec, FileToReplacements, WorkingDir, "LLVM",
+  ClangMoveContext MoveContext = {Spec, FileToReplacements, Dir.c_str(), "LLVM",
                                   Reporter != nullptr};
 
-  auto Factory = llvm::make_unique<clang::move::ClangMoveActionFactory>(
+  auto Factory = std::make_unique<clang::move::ClangMoveActionFactory>(
       &MoveContext, Reporter);
 
- // std::string IncludeArg = Twine("-I" + WorkingDir;
   tooling::runToolOnCodeWithArgs(
       Factory->create(), CC, Context.InMemoryFileSystem,
       {"-std=c++11", "-fparse-all-comments", "-I."}, TestCCName, "clang-move",
@@ -636,5 +637,5 @@ TEST(ClangMove, DumpDecls) {
 }
 
 } // namespace
-} // namespce move
+} // namespace move
 } // namespace clang

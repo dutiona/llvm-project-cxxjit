@@ -7,16 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_CommandObjectApropos_h_
-#define liblldb_CommandObjectApropos_h_
+#ifndef LLDB_SOURCE_COMMANDS_COMMANDOBJECTAPROPOS_H
+#define LLDB_SOURCE_COMMANDS_COMMANDOBJECTAPROPOS_H
 
 #include "lldb/Interpreter/CommandObject.h"
 
 namespace lldb_private {
 
-//-------------------------------------------------------------------------
 // CommandObjectApropos
-//-------------------------------------------------------------------------
 
 class CommandObjectApropos : public CommandObjectParsed {
 public:
@@ -30,4 +28,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_CommandObjectApropos_h_
+#endif // LLDB_SOURCE_COMMANDS_COMMANDOBJECTAPROPOS_H

@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBTypeFormat_h_
-#define LLDB_SBTypeFormat_h_
+#ifndef LLDB_API_SBTYPEFORMAT_H
+#define LLDB_API_SBTYPEFORMAT_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -27,6 +27,8 @@ public:
   SBTypeFormat(const lldb::SBTypeFormat &rhs);
 
   ~SBTypeFormat();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -73,4 +75,4 @@ protected:
 
 } // namespace lldb
 
-#endif // LLDB_SBTypeFormat_h_
+#endif // LLDB_API_SBTYPEFORMAT_H

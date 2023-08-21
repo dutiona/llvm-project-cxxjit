@@ -6,12 +6,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // Class bad_function_call
 
 // bad_function_call();
 
 #include <functional>
 #include <type_traits>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

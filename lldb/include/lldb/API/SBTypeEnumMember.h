@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBTypeEnumMember_h_
-#define LLDB_SBTypeEnumMember_h_
+#ifndef LLDB_API_SBTYPEENUMMEMBER_H
+#define LLDB_API_SBTYPEENUMMEMBER_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -23,6 +23,8 @@ public:
   ~SBTypeEnumMember();
 
   SBTypeEnumMember &operator=(const SBTypeEnumMember &rhs);
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -62,6 +64,8 @@ public:
 
   SBTypeEnumMemberList &operator=(const SBTypeEnumMemberList &rhs);
 
+  explicit operator bool() const;
+
   bool IsValid();
 
   void Append(SBTypeEnumMember entry);
@@ -76,4 +80,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBTypeEnumMember_h_
+#endif // LLDB_API_SBTYPEENUMMEMBER_H

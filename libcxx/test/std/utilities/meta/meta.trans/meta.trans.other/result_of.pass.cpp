@@ -10,9 +10,13 @@
 
 // result_of<Fn(ArgTypes...)>
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 #include <type_traits>
-#include <memory>
 #include <cassert>
+#include <functional>
+#include <memory>
 #include "test_macros.h"
 
 struct S
@@ -52,7 +56,7 @@ struct test_invoke_result<Fn(Args...), Ret>
     {
         static_assert(std::is_invocable<Fn, Args...>::value, "");
         static_assert(std::is_invocable_r<Ret, Fn, Args...>::value, "");
-        static_assert((std::is_same<typename std::invoke_result<Fn, Args...>::type, Ret>::value), "");
+        ASSERT_SAME_TYPE(Ret, typename std::invoke_result<Fn, Args...>::type);
     }
 };
 #endif
@@ -60,7 +64,7 @@ struct test_invoke_result<Fn(Args...), Ret>
 template <class T, class U>
 void test_result_of()
 {
-    static_assert((std::is_same<typename std::result_of<T>::type, U>::value), "");
+    ASSERT_SAME_TYPE(U, typename std::result_of<T>::type);
 #if TEST_STD_VER > 14
     test_invoke_result<T, U>::call();
 #endif

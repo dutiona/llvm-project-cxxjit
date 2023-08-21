@@ -9,13 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_THROW_BY_VALUE_CATCH_BY_REFERENCE_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_THROW_BY_VALUE_CATCH_BY_REFERENCE_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace misc {
+namespace clang::tidy::misc {
 
-///\brief checks for locations that do not throw by value
+///checks for locations that do not throw by value
 // or catch by reference.
 // The check is C++ only. It checks that all throw locations
 // throw by value and not by pointer. Additionally it
@@ -29,22 +27,26 @@ namespace misc {
 class ThrowByValueCatchByReferenceCheck : public ClangTidyCheck {
 public:
   ThrowByValueCatchByReferenceCheck(StringRef Name, ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
 private:
-  void diagnoseThrowLocations(const CXXThrowExpr *throwExpr);
-  void diagnoseCatchLocations(const CXXCatchStmt *catchStmt,
-                              ASTContext &context);
-  bool isFunctionParameter(const DeclRefExpr *declRefExpr);
-  bool isCatchVariable(const DeclRefExpr *declRefExpr);
-  bool isFunctionOrCatchVar(const DeclRefExpr *declRefExpr);
+  void diagnoseThrowLocations(const CXXThrowExpr *ThrowExpr);
+  void diagnoseCatchLocations(const CXXCatchStmt *CatchStmt,
+                              ASTContext &Context);
+  bool isFunctionParameter(const DeclRefExpr *DeclRefExpr);
+  bool isCatchVariable(const DeclRefExpr *DeclRefExpr);
+  bool isFunctionOrCatchVar(const DeclRefExpr *DeclRefExpr);
   const bool CheckAnonymousTemporaries;
+  const bool WarnOnLargeObject;
+  const uint64_t MaxSizeOptions; // The raw value read from the options.
+  uint64_t MaxSize; // No `const` because we have to set it in two steps.
 };
 
-} // namespace misc
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::misc
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_THROW_BY_VALUE_CATCH_BY_REFERENCE_H

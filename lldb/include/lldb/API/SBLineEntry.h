@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBLineEntry_h_
-#define LLDB_SBLineEntry_h_
+#ifndef LLDB_API_SBLINEENTRY_H
+#define LLDB_API_SBLINEENTRY_H
 
 #include "lldb/API/SBAddress.h"
 #include "lldb/API/SBDefines.h"
@@ -28,6 +28,8 @@ public:
   lldb::SBAddress GetStartAddress() const;
 
   lldb::SBAddress GetEndAddress() const;
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -73,4 +75,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBLineEntry_h_
+#endif // LLDB_API_SBLINEENTRY_H

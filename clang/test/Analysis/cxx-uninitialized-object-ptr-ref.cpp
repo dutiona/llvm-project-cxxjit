@@ -1,10 +1,10 @@
-// RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.cplusplus.UninitializedObject \
-// RUN:   -analyzer-config alpha.cplusplus.UninitializedObject:Pedantic=true -DPEDANTIC \
-// RUN:   -analyzer-config alpha.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
+// RUN: %clang_analyze_cc1 -analyzer-checker=core,optin.cplusplus.UninitializedObject \
+// RUN:   -analyzer-config optin.cplusplus.UninitializedObject:Pedantic=true -DPEDANTIC \
+// RUN:   -analyzer-config optin.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
 // RUN:   -std=c++11 -verify  %s
 
-// RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.cplusplus.UninitializedObject \
-// RUN:   -analyzer-config alpha.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
+// RUN: %clang_analyze_cc1 -analyzer-checker=core,optin.cplusplus.UninitializedObject \
+// RUN:   -analyzer-config optin.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
 // RUN:   -std=c++11 -verify  %s
 
 //===----------------------------------------------------------------------===//
@@ -71,6 +71,9 @@ struct UntypedAllocaTest {
   void *allocaPtr;
   int dontGetFilteredByNonPedanticMode = 0;
 
+  // expected-warning-re@+3 {{Address of stack memory allocated by call to \
+alloca() on line {{[0-9]+}} is still referred to by a temporary object on the \
+stack upon returning to the caller.  This will be a dangling reference}}
   UntypedAllocaTest() : allocaPtr(__builtin_alloca(sizeof(int))) {
     // All good!
   }
@@ -86,6 +89,9 @@ struct TypedAllocaTest1 {
 
   TypedAllocaTest1() // expected-warning{{1 uninitialized field}}
       : allocaPtr(static_cast<int *>(__builtin_alloca(sizeof(int)))) {}
+  // expected-warning-re@-2 {{Address of stack memory allocated by call to \
+alloca() on line {{[0-9]+}} is still referred to by a temporary object on the \
+stack upon returning to the caller.  This will be a dangling reference}}
 };
 
 void fTypedAllocaTest1() {
@@ -96,6 +102,9 @@ struct TypedAllocaTest2 {
   int *allocaPtr;
   int dontGetFilteredByNonPedanticMode = 0;
 
+  // expected-warning-re@+5 {{Address of stack memory allocated by call to \
+alloca() on line {{[0-9]+}} is still referred to by a temporary object on the \
+stack upon returning to the caller.  This will be a dangling reference}}
   TypedAllocaTest2()
       : allocaPtr(static_cast<int *>(__builtin_alloca(sizeof(int)))) {
     *allocaPtr = 55555;
@@ -256,6 +265,29 @@ void fCharPointerTest() {
   CharPointerTest();
 }
 
+struct VectorSizePointer {
+  VectorSizePointer() {} // expected-warning{{1 uninitialized field}}
+  __attribute__((__vector_size__(8))) int *x; // expected-note{{uninitialized pointer 'this->x'}}
+  int dontGetFilteredByNonPedanticMode = 0;
+};
+
+void __vector_size__PointerTest() {
+  VectorSizePointer v;
+}
+
+struct VectorSizePointee {
+  using MyVectorType = __attribute__((__vector_size__(8))) int;
+  MyVectorType *x;
+
+  VectorSizePointee(decltype(x) x) : x(x) {}
+};
+
+void __vector_size__PointeeTest() {
+  VectorSizePointee::MyVectorType i;
+  // TODO: Report v.x's pointee.
+  VectorSizePointee v(&i);
+}
+
 struct CyclicPointerTest1 {
   int *ptr; // expected-note{{object references itself 'this->ptr'}}
   int dontGetFilteredByNonPedanticMode = 0;
@@ -318,6 +350,9 @@ class VoidPointerRRefTest1 {
   void *&&vptrrref; // expected-note {{here}}
 
 public:
+  // expected-warning@+3 {{Address of stack memory associated with local \
+variable 'vptr' is still referred to by a temporary object on the stack \
+upon returning to the caller.  This will be a dangling reference}}
   VoidPointerRRefTest1(void *vptr, char) : vptrrref(static_cast<void *&&>(vptr)) { // expected-warning {{binding reference member 'vptrrref' to stack allocated parameter 'vptr'}}
     // All good!
   }
@@ -332,6 +367,9 @@ class VoidPointerRRefTest2 {
   void **&&vpptrrref; // expected-note {{here}}
 
 public:
+  // expected-warning@+3 {{Address of stack memory associated with local \
+variable 'vptr' is still referred to by a temporary object on the stack \
+upon returning to the caller.  This will be a dangling reference}}
   VoidPointerRRefTest2(void **vptr, char) : vpptrrref(static_cast<void **&&>(vptr)) { // expected-warning {{binding reference member 'vpptrrref' to stack allocated parameter 'vptr'}}
     // All good!
   }
@@ -346,6 +384,9 @@ class VoidPointerLRefTest {
   void *&vptrrref; // expected-note {{here}}
 
 public:
+  // expected-warning@+3 {{Address of stack memory associated with local \
+variable 'vptr' is still referred to by a temporary object on the stack \
+upon returning to the caller.  This will be a dangling reference}}
   VoidPointerLRefTest(void *vptr, char) : vptrrref(static_cast<void *&>(vptr)) { // expected-warning {{binding reference member 'vptrrref' to stack allocated parameter 'vptr'}}
     // All good!
   }

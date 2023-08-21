@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
+// UNSUPPORTED: c++03, c++11, c++14
 
 // <utility>
 
@@ -29,12 +29,10 @@
 // template <size_t I>
 //   inline constexpr in_place_index_t<I> in_place_index{};
 
-#include <utility>
 #include <cassert>
 #include <memory>
-
-#include "test_macros.h"
-#include "type_id.h"
+#include <type_traits>
+#include <utility>
 
 template <class Tp, class Up>
 constexpr bool check_tag(Up) {

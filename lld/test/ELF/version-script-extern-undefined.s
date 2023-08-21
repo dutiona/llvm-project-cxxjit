@@ -2,10 +2,10 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
 # RUN: echo "FOO { global: extern \"C++\" { \"abb(int)\"; }; };" > %t.script
-# RUN: ld.lld --version-script %t.script -shared %t.o -o %t.so
+# RUN: ld.lld --version-script %t.script --undefined-version -shared %t.o -o %t.so
 # RUN: llvm-readobj -V %t.so | FileCheck %s
 
-# CHECK:      Symbols [
+# CHECK:      VersionSymbols [
 # CHECK-NEXT:   Symbol {
 # CHECK-NEXT:     Version: 0
 # CHECK-NEXT:     Name:

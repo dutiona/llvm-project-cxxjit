@@ -1,4 +1,5 @@
-; RUN: llc < %s -filetype=obj -o - | llvm-readobj - -codeview | FileCheck %s
+; RUN: llc < %s -filetype=obj -o - | llvm-readobj - --codeview | FileCheck %s
+; RUN: llc < %s -o - | llvm-mc -filetype=obj --triple=i386-windows | llvm-readobj - --codeview | FileCheck %s
 
 ; C++ source to regenerate:
 ; $ cat t.cpp
@@ -174,9 +175,9 @@ target triple = "i386-pc-windows-msvc19.0.23918"
 %struct.A = type { i8 }
 
 ; Function Attrs: nounwind readnone
-define x86_thiscallcc void @"\01?thiscallcc@A@@QAEXXZ"(%struct.A* nocapture %this) #0 align 2 !dbg !6 {
+define x86_thiscallcc void @"\01?thiscallcc@A@@QAEXXZ"(ptr nocapture %this) #0 align 2 !dbg !6 {
 entry:
-  tail call void @llvm.dbg.value(metadata %struct.A* %this, metadata !14, metadata !16), !dbg !17
+  tail call void @llvm.dbg.value(metadata ptr %this, metadata !14, metadata !16), !dbg !17
   ret void, !dbg !18
 }
 
@@ -207,8 +208,8 @@ entry:
 ; Function Attrs: nounwind readnone
 declare void @llvm.dbg.value(metadata, metadata, metadata) #2
 
-attributes #0 = { nounwind readnone "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="pentium4" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
-attributes #1 = { norecurse nounwind readnone "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="pentium4" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { nounwind readnone "disable-tail-calls"="false" "less-precise-fpmad"="false" "frame-pointer"="none" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="pentium4" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { norecurse nounwind readnone "disable-tail-calls"="false" "less-precise-fpmad"="false" "frame-pointer"="none" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="pentium4" "target-features"="+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { nounwind readnone }
 
 !llvm.dbg.cu = !{!0}

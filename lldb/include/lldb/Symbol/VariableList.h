@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_VariableList_h_
-#define liblldb_VariableList_h_
+#ifndef LLDB_SYMBOL_VARIABLELIST_H
+#define LLDB_SYMBOL_VARIABLELIST_H
 
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/Variable.h"
@@ -16,10 +16,10 @@
 namespace lldb_private {
 
 class VariableList {
+  typedef std::vector<lldb::VariableSP> collection;
+
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   //  VariableList(const SymbolContext &symbol_context);
   VariableList();
   virtual ~VariableList();
@@ -38,10 +38,10 @@ public:
 
   lldb::VariableSP RemoveVariableAtIndex(size_t idx);
 
-  lldb::VariableSP FindVariable(const ConstString &name,
+  lldb::VariableSP FindVariable(ConstString name,
                                 bool include_static_members = true);
 
-  lldb::VariableSP FindVariable(const ConstString &name,
+  lldb::VariableSP FindVariable(ConstString name,
                                 lldb::ValueType value_type,
                                 bool include_static_members = true);
 
@@ -67,20 +67,23 @@ public:
   size_t GetSize() const;
   bool Empty() const { return m_variables.empty(); }
 
-protected:
-  typedef std::vector<lldb::VariableSP> collection;
   typedef collection::iterator iterator;
   typedef collection::const_iterator const_iterator;
 
+  iterator begin() { return m_variables.begin(); }
+  iterator end() { return m_variables.end(); }
+  const_iterator begin() const { return m_variables.begin(); }
+  const_iterator end() const { return m_variables.end(); }
+
+protected:
   collection m_variables;
 
 private:
-  //------------------------------------------------------------------
   // For VariableList only
-  //------------------------------------------------------------------
-  DISALLOW_COPY_AND_ASSIGN(VariableList);
+  VariableList(const VariableList &) = delete;
+  const VariableList &operator=(const VariableList &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_VariableList_h_
+#endif // LLDB_SYMBOL_VARIABLELIST_H

@@ -2,15 +2,13 @@
 
 ; Test that phis are lowered.
 
-target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 target triple = "wasm32-unknown-unknown"
 
 ; Basic phi triangle.
 
 ; CHECK-LABEL: test0:
-; CHECK: return $0
-; CHECK: div_s $push[[NUM0:[0-9]+]]=, $0, $pop[[NUM1:[0-9]+]]{{$}}
-; CHECK: return $pop[[NUM0]]{{$}}
+; CHECK: div_s $[[NUM0:[0-9]+]]=, $0, $pop[[NUM1:[0-9]+]]{{$}}
+; CHECK: return $[[NUM0]]{{$}}
 define i32 @test0(i32 %p) {
 entry:
   %t = icmp slt i32 %p, 0
@@ -26,7 +24,7 @@ done:
 ; Swap phis.
 
 ; CHECK-LABEL: test1:
-; CHECK: .LBB1_1:
+; CHECK: .LBB{{[0-9]+}}_1:
 ; CHECK: local.copy $[[NUM0:[0-9]+]]=, $[[NUM1:[0-9]+]]{{$}}
 ; CHECK: local.copy $[[NUM1]]=, $[[NUM2:[0-9]+]]{{$}}
 ; CHECK: local.copy $[[NUM2]]=, $[[NUM0]]{{$}}

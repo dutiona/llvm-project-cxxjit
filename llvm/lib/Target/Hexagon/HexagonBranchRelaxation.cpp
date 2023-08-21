@@ -6,8 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "hexagon-brelax"
-
 #include "Hexagon.h"
 #include "HexagonInstrInfo.h"
 #include "HexagonSubtarget.h"
@@ -29,12 +27,15 @@
 #include <cstdlib>
 #include <iterator>
 
+#define DEBUG_TYPE "hexagon-brelax"
+
 using namespace llvm;
 
 // Since we have no exact knowledge of code layout, allow some safety buffer
 // for jump target. This is measured in bytes.
-static cl::opt<uint32_t> BranchRelaxSafetyBuffer("branch-relax-safety-buffer",
-  cl::init(200), cl::Hidden, cl::ZeroOrMore, cl::desc("safety buffer size"));
+static cl::opt<uint32_t>
+    BranchRelaxSafetyBuffer("branch-relax-safety-buffer", cl::init(200),
+                            cl::Hidden, cl::desc("safety buffer size"));
 
 namespace llvm {
 
@@ -105,12 +106,11 @@ void HexagonBranchRelaxation::computeOffset(MachineFunction &MF,
   // offset of the current instruction from the start.
   unsigned InstOffset = 0;
   for (auto &B : MF) {
-    if (B.getAlignment()) {
+    if (B.getAlignment() != Align(1)) {
       // Although we don't know the exact layout of the final code, we need
       // to account for alignment padding somehow. This heuristic pads each
       // aligned basic block according to the alignment value.
-      int ByteAlign = (1u << B.getAlignment()) - 1;
-      InstOffset = (InstOffset + ByteAlign) & ~(ByteAlign);
+      InstOffset = alignTo(InstOffset, B.getAlignment());
     }
     OffsetMap[&B] = InstOffset;
     for (auto &MI : B.instrs()) {

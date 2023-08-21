@@ -6,12 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_TOOLING_REFACTOR_AST_SELECTION_H
-#define LLVM_CLANG_TOOLING_REFACTOR_AST_SELECTION_H
+#ifndef LLVM_CLANG_TOOLING_REFACTORING_ASTSELECTION_H
+#define LLVM_CLANG_TOOLING_REFACTORING_ASTSELECTION_H
 
 #include "clang/AST/ASTTypeTraits.h"
+#include "clang/AST/Stmt.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
+#include "llvm/Support/raw_ostream.h"
+#include <optional>
 #include <vector>
 
 namespace clang {
@@ -47,12 +50,11 @@ enum class SourceSelectionKind {
 /// actually be selected, e.g. a statement in macro whose child is in a macro
 /// argument.
 struct SelectedASTNode {
-  ast_type_traits::DynTypedNode Node;
+  DynTypedNode Node;
   SourceSelectionKind SelectionKind;
   std::vector<SelectedASTNode> Children;
 
-  SelectedASTNode(const ast_type_traits::DynTypedNode &Node,
-                  SourceSelectionKind SelectionKind)
+  SelectedASTNode(const DynTypedNode &Node, SourceSelectionKind SelectionKind)
       : Node(Node), SelectionKind(SelectionKind) {}
   SelectedASTNode(SelectedASTNode &&) = default;
   SelectedASTNode &operator=(SelectedASTNode &&) = default;
@@ -64,10 +66,10 @@ struct SelectedASTNode {
 
 /// Traverses the given ASTContext and creates a tree of selected AST nodes.
 ///
-/// \returns None if no nodes are selected in the AST, or a selected AST node
-/// that corresponds to the TranslationUnitDecl otherwise.
-Optional<SelectedASTNode> findSelectedASTNodes(const ASTContext &Context,
-                                               SourceRange SelectionRange);
+/// \returns std::nullopt if no nodes are selected in the AST, or a selected AST
+/// node that corresponds to the TranslationUnitDecl otherwise.
+std::optional<SelectedASTNode> findSelectedASTNodes(const ASTContext &Context,
+                                                    SourceRange SelectionRange);
 
 /// An AST selection value that corresponds to a selection of a set of
 /// statements that belong to one body of code (like one function).
@@ -129,7 +131,7 @@ public:
   /// declaration doesn't exist.
   const Decl *getFunctionLikeNearestParent() const;
 
-  static Optional<CodeRangeASTSelection>
+  static std::optional<CodeRangeASTSelection>
   create(SourceRange SelectionRange, const SelectedASTNode &ASTSelection);
 
 private:
@@ -151,4 +153,4 @@ private:
 } // end namespace tooling
 } // end namespace clang
 
-#endif // LLVM_CLANG_TOOLING_REFACTOR_AST_SELECTION_H
+#endif // LLVM_CLANG_TOOLING_REFACTORING_ASTSELECTION_H

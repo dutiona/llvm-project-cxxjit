@@ -49,6 +49,10 @@ public:
   /// Get the assembler object this is a layout for.
   MCAssembler &getAssembler() const { return Assembler; }
 
+  /// \returns whether the offset of fragment \p F can be obtained via
+  /// getFragmentOffset.
+  bool canGetFragmentOffset(const MCFragment *F) const;
+
   /// Invalidate the fragments starting with F because it has been
   /// resized. The fragment's size should have already been updated, but
   /// its bundle padding will be recomputed.
@@ -79,8 +83,8 @@ public:
   /// @{
 
   /// Get the address space size of the given section, as it effects
-  /// layout. This may differ from the size reported by \see getSectionSize() by
-  /// not including section tail padding.
+  /// layout. This may differ from the size reported by \see
+  /// getSectionFileSize() by not including section tail padding.
   uint64_t getSectionAddressSize(const MCSection *Sec) const;
 
   /// Get the data size of the given section, as emitted to the object

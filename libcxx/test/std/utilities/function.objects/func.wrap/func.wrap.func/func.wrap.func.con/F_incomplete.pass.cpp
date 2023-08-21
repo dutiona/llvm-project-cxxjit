@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
@@ -16,6 +18,8 @@
 
 #include <functional>
 #include <cassert>
+
+#include "test_macros.h"
 
 struct X{
     typedef std::function<void(X&)> callback_type;

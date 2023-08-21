@@ -10,9 +10,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace boost {
+namespace clang::tidy::boost {
 
 namespace {
 AST_MATCHER(Type, isStrictlyInteger) {
@@ -22,9 +20,6 @@ AST_MATCHER(Type, isStrictlyInteger) {
 } // namespace
 
 void UseToStringCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   Finder->addMatcher(
       callExpr(
           hasDeclaration(functionDecl(
@@ -69,6 +64,4 @@ void UseToStringCheck::check(const MatchFinder::MatchResult &Result) {
       (llvm::Twine("std::to_") + StringType + "(").str());
 }
 
-} // namespace boost
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::boost

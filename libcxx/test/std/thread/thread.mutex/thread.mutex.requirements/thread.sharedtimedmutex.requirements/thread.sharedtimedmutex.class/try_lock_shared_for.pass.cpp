@@ -6,10 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
-// UNSUPPORTED: c++98, c++03, c++11
+// UNSUPPORTED: no-threads
+// UNSUPPORTED: c++03, c++11
 
-// FLAKY_TEST.
+// ALLOW_RETRIES: 3
+
+// shared_timed_mutex was introduced in macosx10.12
+// UNSUPPORTED: use_system_cxx_lib && target={{.+}}-apple-macosx10.{{9|10|11}}
 
 // <shared_mutex>
 
@@ -24,6 +27,7 @@
 #include <cstdlib>
 #include <cassert>
 
+#include "make_test_thread.h"
 #include "test_macros.h"
 
 std::shared_timed_mutex m;
@@ -39,7 +43,7 @@ ms WaitTime = ms(250);
 // Thread sanitizer causes more overhead and will sometimes cause this test
 // to fail. To prevent this we give Thread sanitizer more time to complete the
 // test.
-#if !defined(TEST_HAS_SANITIZERS)
+#if !defined(TEST_IS_EXECUTED_IN_A_SLOW_ENVIRONMENT)
 ms Tolerance = ms(50);
 #else
 ms Tolerance = ms(50 * 5);
@@ -70,7 +74,7 @@ int main(int, char**)
         m.lock();
         std::vector<std::thread> v;
         for (int i = 0; i < 5; ++i)
-            v.push_back(std::thread(f1));
+            v.push_back(support::make_test_thread(f1));
         std::this_thread::sleep_for(WaitTime);
         m.unlock();
         for (auto& t : v)
@@ -80,7 +84,7 @@ int main(int, char**)
         m.lock();
         std::vector<std::thread> v;
         for (int i = 0; i < 5; ++i)
-            v.push_back(std::thread(f2));
+            v.push_back(support::make_test_thread(f2));
         std::this_thread::sleep_for(WaitTime + Tolerance);
         m.unlock();
         for (auto& t : v)

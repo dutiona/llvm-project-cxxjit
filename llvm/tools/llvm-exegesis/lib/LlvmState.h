@@ -16,6 +16,7 @@
 
 #include "MCInstrDescView.h"
 #include "RegisterAliasing.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -24,6 +25,8 @@
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
 #include <string>
+
+static constexpr llvm::StringLiteral kNoRegister("%noreg");
 
 namespace llvm {
 namespace exegesis {
@@ -35,29 +38,29 @@ struct PfmCountersInfo;
 // measurements.
 class LLVMState {
 public:
-  // Uses the host triple. If CpuName is empty, uses the host CPU.
-  LLVMState(const std::string &CpuName);
+  // Factory function.
+  // If `Triple` is empty, uses the host triple.
+  // If `CpuName` is empty, uses the host CPU.
+  // `Features` is intended for tests.
+  static Expected<LLVMState> Create(std::string TripleName, std::string CpuName,
+                                    StringRef Features = "");
 
-  LLVMState(const std::string &Triple,
-            const std::string &CpuName,
-            const std::string &Features = ""); // For tests.
-
-  const llvm::TargetMachine &getTargetMachine() const { return *TargetMachine; }
-  std::unique_ptr<llvm::LLVMTargetMachine> createTargetMachine() const;
+  const TargetMachine &getTargetMachine() const { return *TheTargetMachine; }
+  std::unique_ptr<LLVMTargetMachine> createTargetMachine() const;
 
   const ExegesisTarget &getExegesisTarget() const { return *TheExegesisTarget; }
 
-  bool canAssemble(const llvm::MCInst &mc_inst) const;
+  bool canAssemble(const MCInst &mc_inst) const;
 
   // For convenience:
-  const llvm::MCInstrInfo &getInstrInfo() const {
-    return *TargetMachine->getMCInstrInfo();
+  const MCInstrInfo &getInstrInfo() const {
+    return *TheTargetMachine->getMCInstrInfo();
   }
-  const llvm::MCRegisterInfo &getRegInfo() const {
-    return *TargetMachine->getMCRegisterInfo();
+  const MCRegisterInfo &getRegInfo() const {
+    return *TheTargetMachine->getMCRegisterInfo();
   }
-  const llvm::MCSubtargetInfo &getSubtargetInfo() const {
-    return *TargetMachine->getMCSubtargetInfo();
+  const MCSubtargetInfo &getSubtargetInfo() const {
+    return *TheTargetMachine->getMCSubtargetInfo();
   }
 
   const RegisterAliasingTrackerCache &getRATC() const { return *RATC; }
@@ -65,12 +68,34 @@ public:
 
   const PfmCountersInfo &getPfmCounters() const { return *PfmCounters; }
 
+  const DenseMap<StringRef, unsigned> &getOpcodeNameToOpcodeIdxMapping() const {
+    assert(OpcodeNameToOpcodeIdxMapping);
+    return *OpcodeNameToOpcodeIdxMapping;
+  };
+
+  const DenseMap<StringRef, unsigned> &getRegNameToRegNoMapping() const {
+    assert(RegNameToRegNoMapping);
+    return *RegNameToRegNoMapping;
+  }
+
 private:
+  std::unique_ptr<const DenseMap<StringRef, unsigned>>
+  createOpcodeNameToOpcodeIdxMapping() const;
+
+  std::unique_ptr<const DenseMap<StringRef, unsigned>>
+  createRegNameToRegNoMapping() const;
+
+  LLVMState(std::unique_ptr<const TargetMachine> TM, const ExegesisTarget *ET,
+            StringRef CpuName);
+
   const ExegesisTarget *TheExegesisTarget;
-  std::unique_ptr<const llvm::TargetMachine> TargetMachine;
+  std::unique_ptr<const TargetMachine> TheTargetMachine;
   std::unique_ptr<const RegisterAliasingTrackerCache> RATC;
   std::unique_ptr<const InstructionsCache> IC;
   const PfmCountersInfo *PfmCounters;
+  std::unique_ptr<const DenseMap<StringRef, unsigned>>
+      OpcodeNameToOpcodeIdxMapping;
+  std::unique_ptr<const DenseMap<StringRef, unsigned>> RegNameToRegNoMapping;
 };
 
 } // namespace exegesis

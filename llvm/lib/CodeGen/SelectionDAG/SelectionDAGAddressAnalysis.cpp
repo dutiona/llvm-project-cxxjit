@@ -7,13 +7,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/SelectionDAGAddressAnalysis.h"
+#include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/TargetLowering.h"
+#include "llvm/IR/GlobalAlias.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include <cstdint>
 
 using namespace llvm;
@@ -24,8 +27,10 @@ bool BaseIndexOffset::equalBaseIndex(const BaseIndexOffset &Other,
   // Conservatively fail if we a match failed..
   if (!Base.getNode() || !Other.Base.getNode())
     return false;
+  if (!hasValidOffset() || !Other.hasValidOffset())
+    return false;
   // Initial Offset difference.
-  Off = Other.Offset - Offset;
+  Off = *Other.Offset - *Offset;
 
   if ((Other.Index == Index) && (Other.IsIndexSignExt == IsIndexSignExt)) {
     // Trivial match.
@@ -79,9 +84,114 @@ bool BaseIndexOffset::equalBaseIndex(const BaseIndexOffset &Other,
   return false;
 }
 
+bool BaseIndexOffset::computeAliasing(const SDNode *Op0,
+                                      const std::optional<int64_t> NumBytes0,
+                                      const SDNode *Op1,
+                                      const std::optional<int64_t> NumBytes1,
+                                      const SelectionDAG &DAG, bool &IsAlias) {
+
+  BaseIndexOffset BasePtr0 = match(Op0, DAG);
+  BaseIndexOffset BasePtr1 = match(Op1, DAG);
+
+  if (!(BasePtr0.getBase().getNode() && BasePtr1.getBase().getNode()))
+    return false;
+  int64_t PtrDiff;
+  if (NumBytes0 && NumBytes1 &&
+      BasePtr0.equalBaseIndex(BasePtr1, DAG, PtrDiff)) {
+    // If the size of memory access is unknown, do not use it to analysis.
+    // One example of unknown size memory access is to load/store scalable
+    // vector objects on the stack.
+    // BasePtr1 is PtrDiff away from BasePtr0. They alias if none of the
+    // following situations arise:
+    if (PtrDiff >= 0 &&
+        *NumBytes0 != static_cast<int64_t>(MemoryLocation::UnknownSize)) {
+      // [----BasePtr0----]
+      //                         [---BasePtr1--]
+      // ========PtrDiff========>
+      IsAlias = !(*NumBytes0 <= PtrDiff);
+      return true;
+    }
+    if (PtrDiff < 0 &&
+        *NumBytes1 != static_cast<int64_t>(MemoryLocation::UnknownSize)) {
+      //                     [----BasePtr0----]
+      // [---BasePtr1--]
+      // =====(-PtrDiff)====>
+      IsAlias = !((PtrDiff + *NumBytes1) <= 0);
+      return true;
+    }
+    return false;
+  }
+  // If both BasePtr0 and BasePtr1 are FrameIndexes, we will not be
+  // able to calculate their relative offset if at least one arises
+  // from an alloca. However, these allocas cannot overlap and we
+  // can infer there is no alias.
+  if (auto *A = dyn_cast<FrameIndexSDNode>(BasePtr0.getBase()))
+    if (auto *B = dyn_cast<FrameIndexSDNode>(BasePtr1.getBase())) {
+      MachineFrameInfo &MFI = DAG.getMachineFunction().getFrameInfo();
+      // If the base are the same frame index but the we couldn't find a
+      // constant offset, (indices are different) be conservative.
+      if (A != B && (!MFI.isFixedObjectIndex(A->getIndex()) ||
+                     !MFI.isFixedObjectIndex(B->getIndex()))) {
+        IsAlias = false;
+        return true;
+      }
+    }
+
+  bool IsFI0 = isa<FrameIndexSDNode>(BasePtr0.getBase());
+  bool IsFI1 = isa<FrameIndexSDNode>(BasePtr1.getBase());
+  bool IsGV0 = isa<GlobalAddressSDNode>(BasePtr0.getBase());
+  bool IsGV1 = isa<GlobalAddressSDNode>(BasePtr1.getBase());
+  bool IsCV0 = isa<ConstantPoolSDNode>(BasePtr0.getBase());
+  bool IsCV1 = isa<ConstantPoolSDNode>(BasePtr1.getBase());
+
+  if ((IsFI0 || IsGV0 || IsCV0) && (IsFI1 || IsGV1 || IsCV1)) {
+    // We can derive NoAlias In case of mismatched base types.
+    if (IsFI0 != IsFI1 || IsGV0 != IsGV1 || IsCV0 != IsCV1) {
+      IsAlias = false;
+      return true;
+    }
+    if (IsGV0 && IsGV1) {
+      auto *GV0 = cast<GlobalAddressSDNode>(BasePtr0.getBase())->getGlobal();
+      auto *GV1 = cast<GlobalAddressSDNode>(BasePtr1.getBase())->getGlobal();
+      // It doesn't make sense to access one global value using another globals
+      // values address, so we can assume that there is no aliasing in case of
+      // two different globals (unless we have symbols that may indirectly point
+      // to each other).
+      // FIXME: This is perhaps a bit too defensive. We could try to follow the
+      // chain with aliasee information for GlobalAlias variables to find out if
+      // we indirect symbols may alias or not.
+      if (GV0 != GV1 && !isa<GlobalAlias>(GV0) && !isa<GlobalAlias>(GV1)) {
+        IsAlias = false;
+        return true;
+      }
+    }
+  }
+  return false; // Cannot determine whether the pointers alias.
+}
+
+bool BaseIndexOffset::contains(const SelectionDAG &DAG, int64_t BitSize,
+                               const BaseIndexOffset &Other,
+                               int64_t OtherBitSize, int64_t &BitOffset) const {
+  int64_t Offset;
+  if (!equalBaseIndex(Other, DAG, Offset))
+    return false;
+  if (Offset >= 0) {
+    // Other is after *this:
+    // [-------*this---------]
+    //            [---Other--]
+    // ==Offset==>
+    BitOffset = 8 * Offset;
+    return BitOffset + OtherBitSize <= BitSize;
+  }
+  // Other starts strictly before *this, it cannot be fully contained.
+  //    [-------*this---------]
+  // [--Other--]
+  return false;
+}
+
 /// Parses tree in Ptr for base, index, offset addresses.
-BaseIndexOffset BaseIndexOffset::match(const LSBaseSDNode *N,
-                                       const SelectionDAG &DAG) {
+static BaseIndexOffset matchLSNode(const LSBaseSDNode *N,
+                                   const SelectionDAG &DAG) {
   SDValue Ptr = N->getBasePtr();
 
   // (((B + I*M) + c)) + c ...
@@ -183,6 +293,18 @@ BaseIndexOffset BaseIndexOffset::match(const LSBaseSDNode *N,
   return BaseIndexOffset(Base, Index, Offset, IsIndexSignExt);
 }
 
+BaseIndexOffset BaseIndexOffset::match(const SDNode *N,
+                                       const SelectionDAG &DAG) {
+  if (const auto *LS0 = dyn_cast<LSBaseSDNode>(N))
+    return matchLSNode(LS0, DAG);
+  if (const auto *LN = dyn_cast<LifetimeSDNode>(N)) {
+    if (LN->hasOffset())
+      return BaseIndexOffset(LN->getOperand(1), SDValue(), LN->getOffset(),
+                             false);
+    return BaseIndexOffset(LN->getOperand(1), SDValue(), false);
+  }
+  return BaseIndexOffset();
+}
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 

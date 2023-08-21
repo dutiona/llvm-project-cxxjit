@@ -18,7 +18,7 @@
 #include "min_allocator.h"
 
 
-int main(int, char**)
+TEST_CONSTEXPR_CXX20 bool tests()
 {
     {
         std::vector<int> c;
@@ -38,5 +38,26 @@ int main(int, char**)
     }
 #endif
 
-  return 0;
+    { // LWG 526
+        int arr[] = {0, 1, 2, 3, 4};
+        int sz = 5;
+        std::vector<int> c(arr, arr+sz);
+        while (c.size() < c.capacity())
+            c.push_back(sz++);
+        c.push_back(c.front());
+        assert(c.back() == 0);
+        for (int i = 0; i < sz; ++i)
+            assert(c[i] == i);
+    }
+
+    return true;
+}
+
+int main(int, char**)
+{
+    tests();
+#if TEST_STD_VER > 17
+    static_assert(tests());
+#endif
+    return 0;
 }

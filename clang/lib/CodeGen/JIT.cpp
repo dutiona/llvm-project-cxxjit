@@ -6,10 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/CodeGen/CodeGenAction.h"
+#include "CGCXXABI.h"
 #include "CodeGenModule.h"
 #include "CoverageMappingGen.h"
-#include "CGCXXABI.h"
 #include "MacroPPCallbacks.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
@@ -22,11 +21,11 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemOptions.h"
 #include "clang/Basic/LLVM.h"
-#include "clang/Basic/MemoryBufferCache.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/CodeGen/BackendUtil.h"
+#include "clang/CodeGen/CodeGenAction.h"
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
@@ -49,6 +48,7 @@
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
 #include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/InMemoryModuleCache.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SmallString.h"
@@ -61,7 +61,6 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -88,18 +87,17 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/MutexGuard.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/YAMLTraits.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/IPO/Internalize.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 #include <cassert>
 #include <cstdlib> // ::getenv
@@ -107,9 +105,9 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <unordered_map>
 using namespace clang;
 using namespace llvm;
 
@@ -194,7 +192,7 @@ private:
     //
     // FIXME: We shouldn't need to do this, the target should be immutable once
     // created. This complexity should be lifted elsewhere.
-    Target->adjust(LangOpt);
+    Target->adjust(PP.getDiagnostics(), LangOpt);
 
     // Initialize the preprocessor.
     PP.Initialize(*Target);
@@ -215,9 +213,7 @@ private:
   }
 };
 
-void fatal() {
-  report_fatal_error("Clang JIT failed!");
-}
+void fatal() { report_fatal_error("Clang JIT failed!"); }
 
 // This is a variant of ORC's LegacyLookupFnResolver with a cutomized
 // getResponsibilitySet behavior allowing us to claim responsibility for weak
@@ -231,8 +227,7 @@ public:
   using ErrorReporter = std::function<void(Error)>;
 
   ClangLookupFnResolver(llvm::orc::ExecutionSession &ES,
-                              LegacyLookupFn LegacyLookup,
-                              ErrorReporter ReportError)
+                        LegacyLookupFn LegacyLookup, ErrorReporter ReportError)
       : ES(ES), LegacyLookup(std::move(LegacyLookup)),
         ReportError(std::move(ReportError)) {}
 
@@ -258,7 +253,7 @@ public:
 
   llvm::orc::SymbolNameSet
   lookup(std::shared_ptr<llvm::orc::AsynchronousSymbolQuery> Query,
-                         llvm::orc::SymbolNameSet Symbols) final {
+         llvm::orc::SymbolNameSet Symbols) final {
     return llvm::orc::lookupWithLegacyFn(ES, *Query, Symbols, LegacyLookup);
   }
 
@@ -280,15 +275,14 @@ createClangLookupResolver(llvm::orc::ExecutionSession &ES,
 class ClangJIT {
 public:
   using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
-  using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, llvm::orc::SimpleCompiler>;
+  using CompileLayerT =
+      llvm::orc::LegacyIRCompileLayer<ObjLayerT, llvm::orc::SimpleCompiler>;
 
   ClangJIT(DenseMap<StringRef, const void *> &LocalSymAddrs)
       : LocalSymAddrs(LocalSymAddrs),
         Resolver(createClangLookupResolver(
             ES,
-            [this](const std::string &Name) {
-              return findMangledSymbol(Name);
-            },
+            [this](const std::string &Name) { return findMangledSymbol(Name); },
             [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
         TM(EngineBuilder().selectTarget()), DL(TM->createDataLayout()),
         ObjectLayer(ES,
@@ -330,8 +324,8 @@ public:
 
     // Run the static constructors, and save the static destructor runner for
     // execution when the JIT is torn down.
-    llvm::orc::LegacyCtorDtorRunner<CompileLayerT>
-      CtorRunner(std::move(CtorNames), K);
+    llvm::orc::LegacyCtorDtorRunner<CompileLayerT> CtorRunner(
+        std::move(CtorNames), K);
     if (auto Err = CtorRunner.runViaLayer(CompileLayer)) {
       llvm::errs() << Err << "\n";
       fatal();
@@ -392,7 +386,7 @@ private:
     return nullptr;
   }
 
-  DenseMap<StringRef, const void *> &LocalSymAddrs; 
+  DenseMap<StringRef, const void *> &LocalSymAddrs;
   llvm::orc::ExecutionSession ES;
   std::shared_ptr<llvm::orc::SymbolResolver> Resolver;
   std::unique_ptr<llvm::TargetMachine> TM;
@@ -403,7 +397,7 @@ private:
 
   llvm::orc::LegacyLocalCXXRuntimeOverrides CXXRuntimeOverrides;
   std::vector<llvm::orc::LegacyCtorDtorRunner<CompileLayerT>>
-    IRStaticDestructorRunners;
+      IRStaticDestructorRunners;
 };
 
 class BackendConsumer : public ASTConsumer {
@@ -443,7 +437,7 @@ public:
         CodeGenOpts(CodeGenOpts), TargetOpts(TargetOpts), LangOpts(LangOpts),
         AsmOutStream(std::move(OS)), Context(nullptr), InFile(InFile),
         PPOpts(PPOpts), C(C), DevLinkMods(DevLinkMods),
-        CoverageInfo(CoverageInfo) { }
+        CoverageInfo(CoverageInfo) {}
 
   llvm::Module *getModule() const { return Gen->GetModule(); }
   std::unique_ptr<llvm::Module> takeModule() {
@@ -471,12 +465,10 @@ public:
     Gen->HandleInlineFunctionDefinition(D);
   }
 
-  void HandleInterestingDecl(DeclGroupRef D) override {
-    HandleTopLevelDecl(D);
-  }
+  void HandleInterestingDecl(DeclGroupRef D) override { HandleTopLevelDecl(D); }
 
   void HandleTranslationUnit(ASTContext &C) override {
-      Gen->HandleTranslationUnit(C);
+    Gen->HandleTranslationUnit(C);
 
     // Silently ignore if we weren't initialized for some reason.
     if (!getModule())
@@ -491,17 +483,16 @@ public:
         Gen->CGM().AddDefaultFnAttrs(F);
 
       bool Err = Linker::linkModules(
-              *getModule(), std::move(M), llvm::Linker::Flags::LinkOnlyNeeded,
-              [](llvm::Module &M, const llvm::StringSet<> &GVS) {
-                internalizeModule(M, [&GVS](const llvm::GlobalValue &GV) {
-                  return !GV.hasName() || (GVS.count(GV.getName()) == 0);
-                });
-              });
+          *getModule(), std::move(M), llvm::Linker::Flags::LinkOnlyNeeded,
+          [](llvm::Module &M, const llvm::StringSet<> &GVS) {
+            internalizeModule(M, [&GVS](const llvm::GlobalValue &GV) {
+              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+            });
+          });
 
       if (Err)
         fatal();
     }
-
   }
 
   void HandleTagDeclDefinition(TagDecl *D) override {
@@ -520,15 +511,13 @@ public:
     Gen->AssignInheritanceModel(RD);
   }
 
-  void HandleVTable(CXXRecordDecl *RD) override {
-    Gen->HandleVTable(RD);
-  }
+  void HandleVTable(CXXRecordDecl *RD) override { Gen->HandleVTable(RD); }
 
   void EmitOptimized() {
     EmitBackendOutput(Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts,
                       LangOpts, Context->getTargetInfo().getDataLayout(),
                       getModule(), Action,
-                      llvm::make_unique<llvm::buffer_ostream>(*AsmOutStream));
+                      std::make_unique<llvm::buffer_ostream>(*AsmOutStream));
   }
 };
 
@@ -536,8 +525,7 @@ class JFIMapDeclVisitor : public RecursiveASTVisitor<JFIMapDeclVisitor> {
   DenseMap<unsigned, FunctionDecl *> &Map;
 
 public:
-  explicit JFIMapDeclVisitor(DenseMap<unsigned, FunctionDecl *> &M)
-    : Map(M) { }
+  explicit JFIMapDeclVisitor(DenseMap<unsigned, FunctionDecl *> &M) : Map(M) {}
 
   bool shouldVisitTemplateInstantiations() const { return true; }
 
@@ -554,12 +542,12 @@ class JFICSMapDeclVisitor : public RecursiveASTVisitor<JFICSMapDeclVisitor> {
 
 public:
   explicit JFICSMapDeclVisitor(DenseMap<unsigned, FunctionDecl *> &M)
-    : Map(M) { }
+      : Map(M) {}
 
   bool TraverseFunctionDecl(FunctionDecl *FD) {
     CurrentFD.push_back(FD);
     bool Continue =
-      RecursiveASTVisitor<JFICSMapDeclVisitor>::TraverseFunctionDecl(FD);
+        RecursiveASTVisitor<JFICSMapDeclVisitor>::TraverseFunctionDecl(FD);
     CurrentFD.pop_back();
 
     return Continue;
@@ -603,54 +591,52 @@ struct DevData {
 };
 
 struct CompilerData {
-  std::unique_ptr<CompilerInvocation>     Invocation;
-  std::unique_ptr<llvm::opt::OptTable>    Opts;
-  IntrusiveRefCntPtr<DiagnosticOptions>   DiagOpts;
-  std::unique_ptr<TextDiagnosticPrinter>  DiagnosticPrinter;
+  std::unique_ptr<CompilerInvocation> Invocation;
+  std::unique_ptr<llvm::opt::OptTable> Opts;
+  IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts;
+  std::unique_ptr<TextDiagnosticPrinter> DiagnosticPrinter;
   llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> InMemoryFileSystem;
-  IntrusiveRefCntPtr<DiagnosticsEngine>   Diagnostics;
-  IntrusiveRefCntPtr<FileManager>         FileMgr;
-  IntrusiveRefCntPtr<SourceManager>       SourceMgr;
-  IntrusiveRefCntPtr<MemoryBufferCache>   PCMCache;
-  std::unique_ptr<HeaderSearch>           HeaderInfo;
-  std::unique_ptr<PCHContainerReader>     PCHContainerRdr;
-  IntrusiveRefCntPtr<TargetInfo>          Target;
-  std::shared_ptr<Preprocessor>           PP;
-  IntrusiveRefCntPtr<ASTContext>          Ctx;
-  std::shared_ptr<clang::TargetOptions>   TargetOpts;
-  std::shared_ptr<HeaderSearchOptions>    HSOpts;
-  std::shared_ptr<PreprocessorOptions>    PPOpts;
-  IntrusiveRefCntPtr<ASTReader>           Reader;
-  std::unique_ptr<BackendConsumer>        Consumer;
-  std::unique_ptr<Sema>                   S;
-  TrivialModuleLoader                     ModuleLoader;
-  std::unique_ptr<llvm::Module>           RunningMod;
+  IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics;
+  IntrusiveRefCntPtr<FileManager> FileMgr;
+  IntrusiveRefCntPtr<SourceManager> SourceMgr;
+  IntrusiveRefCntPtr<InMemoryModuleCache> PCMCache;
+  std::unique_ptr<HeaderSearch> HeaderInfo;
+  std::unique_ptr<PCHContainerReader> PCHContainerRdr;
+  IntrusiveRefCntPtr<TargetInfo> Target;
+  std::shared_ptr<Preprocessor> PP;
+  IntrusiveRefCntPtr<ASTContext> Ctx;
+  std::shared_ptr<clang::TargetOptions> TargetOpts;
+  std::shared_ptr<HeaderSearchOptions> HSOpts;
+  std::shared_ptr<PreprocessorOptions> PPOpts;
+  IntrusiveRefCntPtr<ASTReader> Reader;
+  std::unique_ptr<BackendConsumer> Consumer;
+  std::unique_ptr<Sema> S;
+  TrivialModuleLoader ModuleLoader;
+  std::unique_ptr<llvm::Module> RunningMod;
 
-  DenseMap<StringRef, const void *>       LocalSymAddrs;
-  DenseMap<StringRef, ValueDecl *>        NewLocalSymDecls;
-  std::unique_ptr<ClangJIT>               CJ;
+  DenseMap<StringRef, const void *> LocalSymAddrs;
+  DenseMap<StringRef, ValueDecl *> NewLocalSymDecls;
+  std::unique_ptr<ClangJIT> CJ;
 
-  DenseMap<unsigned, FunctionDecl *>      FuncMap;
+  DenseMap<unsigned, FunctionDecl *> FuncMap;
 
   // A map of each instantiation to the containing function. These might not be
   // unique, but should be unique for any place where it matters
   // (instantiations with from-string types).
-  DenseMap<unsigned, FunctionDecl *>      CSFuncMap;
+  DenseMap<unsigned, FunctionDecl *> CSFuncMap;
 
-  std::unique_ptr<CompilerData>           DevCD;
-  SmallString<1>                          DevAsm;
+  std::unique_ptr<CompilerData> DevCD;
+  SmallString<1> DevAsm;
   std::vector<std::unique_ptr<llvm::Module>> DevLinkMods;
 
-  CompilerData(const void *CmdArgs, unsigned CmdArgsLen,
-               const void *ASTBuffer, size_t ASTBufferSize,
-               const void *IRBuffer, size_t IRBufferSize,
+  CompilerData(const void *CmdArgs, unsigned CmdArgsLen, const void *ASTBuffer,
+               size_t ASTBufferSize, const void *IRBuffer, size_t IRBufferSize,
                const void **LocalPtrs, unsigned LocalPtrsCnt,
                const void **LocalDbgPtrs, unsigned LocalDbgPtrsCnt,
-               const DevData *DeviceData, unsigned DevCnt,
-               int ForDev = -1) {
+               const DevData *DeviceData, unsigned DevCnt, int ForDev = -1) {
     bool IsForDev = (ForDev != -1);
 
-    StringRef CombinedArgv((const char *) CmdArgs, CmdArgsLen);
+    StringRef CombinedArgv((const char *)CmdArgs, CmdArgsLen);
     SmallVector<StringRef, 32> Argv;
     CombinedArgv.split(Argv, '\0', /*MaxSplit*/ -1, false);
 
@@ -660,25 +646,25 @@ struct CompilerData {
 
     unsigned MissingArgIndex, MissingArgCount;
     Opts = driver::createDriverOptTable();
-    llvm::opt::InputArgList ParsedArgs = Opts->ParseArgs(
-      CC1Args, MissingArgIndex, MissingArgCount);
+    llvm::opt::InputArgList ParsedArgs =
+        Opts->ParseArgs(CC1Args, MissingArgIndex, MissingArgCount);
 
     DiagOpts = new DiagnosticOptions();
     ParseDiagnosticArgs(*DiagOpts, ParsedArgs);
-    DiagnosticPrinter.reset(new TextDiagnosticPrinter(
-      llvm::errs(), &*DiagOpts));
+    DiagnosticPrinter.reset(
+        new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts));
     Diagnostics = new DiagnosticsEngine(
-      IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
-      DiagnosticPrinter.get(), false);
+        IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
+        DiagnosticPrinter.get(), false);
 
     // Note that LangOpts, TargetOpts can also be read from the AST, but
     // CodeGenOpts need to come from the stored command line.
 
     Invocation.reset(new CompilerInvocation);
-    CompilerInvocation::CreateFromArgs(*Invocation,
-                                 const_cast<const char **>(CC1Args.data()),
-                                 const_cast<const char **>(CC1Args.data()) +
-                                 CC1Args.size(), *Diagnostics);
+    CompilerInvocation::CreateFromArgs(
+        *Invocation, const_cast<const char **>(CC1Args.data()),
+        const_cast<const char **>(CC1Args.data()) + CC1Args.size(),
+        *Diagnostics);
     Invocation->getFrontendOpts().DisableFree = false;
     Invocation->getCodeGenOpts().DisableFree = false;
 
@@ -686,30 +672,28 @@ struct CompilerData {
     FileMgr = new FileManager(FileSystemOptions(), InMemoryFileSystem);
 
     const char *Filename = "__clang_jit.pcm";
-    StringRef ASTBufferSR((const char *) ASTBuffer, ASTBufferSize);
-    InMemoryFileSystem->addFile(Filename, 0,
-                                llvm::MemoryBuffer::getMemBufferCopy(ASTBufferSR));
+    StringRef ASTBufferSR((const char *)ASTBuffer, ASTBufferSize);
+    InMemoryFileSystem->addFile(
+        Filename, 0, llvm::MemoryBuffer::getMemBufferCopy(ASTBufferSR));
 
     PCHContainerRdr.reset(new RawPCHContainerReader);
     SourceMgr = new SourceManager(*Diagnostics, *FileMgr,
                                   /*UserFilesAreVolatile*/ false);
-    PCMCache = new MemoryBufferCache;
+    PCMCache = new InMemoryModuleCache;
     HSOpts = std::make_shared<HeaderSearchOptions>();
     HSOpts->ModuleFormat = PCHContainerRdr->getFormat();
-    HeaderInfo.reset(new HeaderSearch(HSOpts,
-                                      *SourceMgr,
-                                      *Diagnostics,
+    HeaderInfo.reset(new HeaderSearch(HSOpts, *SourceMgr, *Diagnostics,
                                       *Invocation->getLangOpts(),
                                       /*Target=*/nullptr));
     PPOpts = std::make_shared<PreprocessorOptions>();
 
     unsigned Counter;
 
-    PP = std::make_shared<Preprocessor>(
-        PPOpts, *Diagnostics, *Invocation->getLangOpts(),
-        *SourceMgr, *PCMCache, *HeaderInfo, ModuleLoader,
-        /*IILookup=*/nullptr,
-        /*OwnsHeaderSearch=*/false);
+    PP = std::make_shared<Preprocessor>(PPOpts, *Diagnostics,
+                                        *Invocation->getLangOpts(), *SourceMgr,
+                                        *PCMCache, *HeaderInfo, ModuleLoader,
+                                        /*IILookup=*/nullptr,
+                                        /*OwnsHeaderSearch=*/false);
 
     // For parsing type names in strings later, we'll need to have Preprocessor
     // keep the Lexer around even after it hits the end of the each file (used
@@ -722,12 +706,12 @@ struct CompilerData {
 
     Reader = new ASTReader(*PP, Ctx.get(), *PCHContainerRdr, {},
                            /*isysroot=*/"",
-                           /*DisableValidation=*/ false,
+                           /*DisableValidation=*/false,
                            /*AllowPCHWithCompilerErrors*/ false);
 
-    Reader->setListener(llvm::make_unique<ASTInfoCollector>(
-      *PP, Ctx.get(), *HSOpts, *PPOpts, *Invocation->getLangOpts(),
-      TargetOpts, Target, Counter));
+    Reader->setListener(std::make_unique<ASTInfoCollector>(
+        *PP, Ctx.get(), *HSOpts, *PPOpts, *Invocation->getLangOpts(),
+        TargetOpts, Target, Counter));
 
     Ctx->setExternalSource(Reader);
 
@@ -749,7 +733,8 @@ struct CompilerData {
 
     PP->setCounterValue(Counter);
 
-    // Now that we've read the language options from the AST file, change the JIT mode.
+    // Now that we've read the language options from the AST file, change the
+    // JIT mode.
     Invocation->getLangOpts()->setCPlusPlusJIT(LangOptions::JITMode::JM_IsJIT);
 
     // Keep externally available functions, etc.
@@ -759,15 +744,15 @@ struct CompilerData {
     std::unique_ptr<raw_pwrite_stream> OS(new llvm::raw_null_ostream);
 
     if (IsForDev) {
-       BA = Backend_EmitAssembly;
-       OS.reset(new raw_svector_ostream(DevAsm));
+      BA = Backend_EmitAssembly;
+      OS.reset(new raw_svector_ostream(DevAsm));
     }
 
     Consumer.reset(new BackendConsumer(
         BA, *Diagnostics, Invocation->getHeaderSearchOpts(),
         Invocation->getPreprocessorOpts(), Invocation->getCodeGenOpts(),
-        Invocation->getTargetOpts(), *Invocation->getLangOpts(), false, Filename,
-        std::move(OS), *LCtx, DevLinkMods));
+        Invocation->getTargetOpts(), *Invocation->getLangOpts(), false,
+        Filename, std::move(OS), *LCtx, DevLinkMods));
 
     // Create a semantic analysis object and tell the AST reader about it.
     S.reset(new Sema(*PP, *Ctx, *Consumer));
@@ -782,9 +767,9 @@ struct CompilerData {
 
     if (IRBufferSize) {
       llvm::SMDiagnostic Err;
-      StringRef IRBufferSR((const char *) IRBuffer, IRBufferSize);
-      RunningMod = parseIR(
-        *llvm::MemoryBuffer::getMemBufferCopy(IRBufferSR), Err, *LCtx);
+      StringRef IRBufferSR((const char *)IRBuffer, IRBufferSize);
+      RunningMod = parseIR(*llvm::MemoryBuffer::getMemBufferCopy(IRBufferSR),
+                           Err, *LCtx);
 
       for (auto &F : RunningMod->functions())
         if (!F.isDeclaration())
@@ -805,37 +790,37 @@ struct CompilerData {
 
     Consumer->Initialize(*Ctx);
 
-    for (unsigned Idx = 0; Idx < 2*LocalPtrsCnt; Idx += 2) {
-      const char *Name = (const char *) LocalPtrs[Idx];
-      const void *Ptr = LocalPtrs[Idx+1];
+    for (unsigned Idx = 0; Idx < 2 * LocalPtrsCnt; Idx += 2) {
+      const char *Name = (const char *)LocalPtrs[Idx];
+      const void *Ptr = LocalPtrs[Idx + 1];
       LocalSymAddrs[Name] = Ptr;
     }
 
-    for (unsigned Idx = 0; Idx < 2*LocalDbgPtrsCnt; Idx += 2) {
-      const char *Name = (const char *) LocalDbgPtrs[Idx];
-      const void *Ptr = LocalDbgPtrs[Idx+1];
+    for (unsigned Idx = 0; Idx < 2 * LocalDbgPtrsCnt; Idx += 2) {
+      const char *Name = (const char *)LocalDbgPtrs[Idx];
+      const void *Ptr = LocalDbgPtrs[Idx + 1];
       LocalSymAddrs[Name] = Ptr;
     }
 
     if (!IsForDev)
-      CJ = llvm::make_unique<ClangJIT>(LocalSymAddrs);
+      CJ = std::make_unique<ClangJIT>(LocalSymAddrs);
 
     if (IsForDev)
       for (unsigned i = 0; i < DeviceData[ForDev].FileDataCnt; ++i) {
         StringRef FileBufferSR(
-                    (const char *) DeviceData[ForDev].FileData[i].Data,
-                    DeviceData[ForDev].FileData[i].DataSize);
+            (const char *)DeviceData[ForDev].FileData[i].Data,
+            DeviceData[ForDev].FileData[i].DataSize);
 
         llvm::SMDiagnostic Err;
         DevLinkMods.push_back(parseIR(
-          *llvm::MemoryBuffer::getMemBufferCopy(FileBufferSR), Err, *LCtx));
+            *llvm::MemoryBuffer::getMemBufferCopy(FileBufferSR), Err, *LCtx));
       }
 
     if (!IsForDev && Invocation->getLangOpts()->CUDA) {
       typedef int (*cudaGetDevicePtr)(int *);
       auto cudaGetDevice =
-        (cudaGetDevicePtr) RTDyldMemoryManager::getSymbolAddressInProcess(
-                                                     "cudaGetDevice");
+          (cudaGetDevicePtr)RTDyldMemoryManager::getSymbolAddressInProcess(
+              "cudaGetDevice");
       if (!cudaGetDevice) {
         llvm::errs() << "Could not find CUDA API functions; "
                         "did you forget to link with -lcudart?\n";
@@ -844,8 +829,8 @@ struct CompilerData {
 
       typedef int (*cudaGetDeviceCountPtr)(int *);
       auto cudaGetDeviceCount =
-        (cudaGetDeviceCountPtr) RTDyldMemoryManager::getSymbolAddressInProcess(
-                                                     "cudaGetDeviceCount");
+          (cudaGetDeviceCountPtr)RTDyldMemoryManager::getSymbolAddressInProcess(
+              "cudaGetDeviceCount");
 
       int SysDevCnt;
       if (cudaGetDeviceCount(&SysDevCnt)) {
@@ -854,9 +839,9 @@ struct CompilerData {
       }
 
       typedef int (*cudaDeviceGetAttributePtr)(int *, int, int);
-      auto cudaDeviceGetAttribute =
-        (cudaDeviceGetAttributePtr) RTDyldMemoryManager::getSymbolAddressInProcess(
-                                      "cudaDeviceGetAttribute");
+      auto cudaDeviceGetAttribute = (cudaDeviceGetAttributePtr)
+          RTDyldMemoryManager::getSymbolAddressInProcess(
+              "cudaDeviceGetAttribute");
 
       if (SysDevCnt) {
         int CDev;
@@ -865,10 +850,10 @@ struct CompilerData {
 
         int CLMajor, CLMinor;
         if (cudaDeviceGetAttribute(
-              &CLMajor, /*cudaDevAttrComputeCapabilityMajor*/ 75, CDev))
+                &CLMajor, /*cudaDevAttrComputeCapabilityMajor*/ 75, CDev))
           fatal();
         if (cudaDeviceGetAttribute(
-              &CLMinor, /*cudaDevAttrComputeCapabilityMinor*/ 76, CDev))
+                &CLMinor, /*cudaDevAttrComputeCapabilityMinor*/ 76, CDev))
           fatal();
 
         SmallString<6> EffArch;
@@ -885,23 +870,24 @@ struct CompilerData {
 
         std::sort(DevArchs.begin(), DevArchs.end());
         auto ArchI =
-          std::upper_bound(DevArchs.begin(), DevArchs.end(), EffArch);
+            std::upper_bound(DevArchs.begin(), DevArchs.end(), EffArch);
         if (ArchI == DevArchs.begin()) {
-          llvm::errs() << "No JIT device configuration supports " <<
-                          EffArch << "\n";
+          llvm::errs() << "No JIT device configuration supports " << EffArch
+                       << "\n";
           fatal();
         }
 
         auto BestDevArch = *--ArchI;
         int BestDevIdx = 0;
-        for (; BestDevIdx < (int) DevCnt; ++BestDevIdx) {
+        for (; BestDevIdx < (int)DevCnt; ++BestDevIdx) {
           if (!Triple(DeviceData[BestDevIdx].Triple).isNVPTX())
             continue;
           if (DeviceData[BestDevIdx].Arch == BestDevArch)
             break;
         }
 
-        assert(BestDevIdx != (int) DevCnt && "Didn't find the chosen device data?");
+        assert(BestDevIdx != (int)DevCnt &&
+               "Didn't find the chosen device data?");
 
         if (!InitializedDevTarget) {
           // In theory, we only need to initialize the NVPTX target here,
@@ -922,8 +908,9 @@ struct CompilerData {
 
         DevCD.reset(new CompilerData(
             DeviceData[BestDevIdx].CmdArgs, DeviceData[BestDevIdx].CmdArgsLen,
-            DeviceData[BestDevIdx].ASTBuffer, DeviceData[BestDevIdx].ASTBufferSize,
-            nullptr, 0, nullptr, 0, nullptr, 0, DeviceData, DevCnt, BestDevIdx));
+            DeviceData[BestDevIdx].ASTBuffer,
+            DeviceData[BestDevIdx].ASTBufferSize, nullptr, 0, nullptr, 0,
+            nullptr, 0, DeviceData, DevCnt, BestDevIdx));
       }
     }
   }
@@ -953,32 +940,27 @@ struct CompilerData {
 
     // Reenter template scopes from outermost to innermost.
     for (ContainingDC CDC : reverse(DeclContextsToReenter)) {
-      (void) S->ActOnReenterTemplateScope(S->getCurScope(),
-                                           cast<Decl>(CDC.getDC()));
+      (void)S->ActOnReenterTemplateScope(S->getCurScope(),
+                                         cast<Decl>(CDC.getDC()));
       if (CDC.shouldPushDC())
         S->PushDeclContext(S->getCurScope(), CDC.getDC());
     }
   }
 
-  std::string instantiateTemplate(const void *NTTPValues, const char **TypeStrings,
-                                  unsigned Idx) {
+  std::string instantiateTemplate(const void *NTTPValues,
+                                  const char **TypeStrings, unsigned Idx) {
     FunctionDecl *FD = FuncMap[Idx];
     if (!FD)
       fatal();
 
-    RecordDecl *RD =
-      Ctx->buildImplicitRecord(llvm::Twine("__clang_jit_args_")
-                               .concat(llvm::Twine(Idx))
-                               .concat(llvm::Twine("_t"))
-                               .str());
+    RecordDecl *RD = Ctx->buildImplicitRecord(llvm::Twine("__clang_jit_args_")
+                                                  .concat(llvm::Twine(Idx))
+                                                  .concat(llvm::Twine("_t"))
+                                                  .str());
 
     RD->startDefinition();
 
-    enum TASaveKind {
-      TASK_None,
-      TASK_Type,
-      TASK_Value
-    };
+    enum TASaveKind { TASK_None, TASK_Type, TASK_Value };
 
     SmallVector<TASaveKind, 8> TAIsSaved;
 
@@ -999,8 +981,8 @@ struct CompilerData {
         SmallVector<PartialDiagnosticAt, 8> Notes;
         Expr::EvalResult Eval;
         Eval.Diag = &Notes;
-        if (TA.getAsExpr()->
-              EvaluateAsConstantExpr(Eval, Expr::EvaluateForMangling, *Ctx)) {
+        if (TA.getAsExpr()->EvaluateAsConstantExpr(
+                Eval, *Ctx, ConstantExprKind::NonClassTemplateArgument)) {
           TAIsSaved.push_back(TASK_None);
           return;
         }
@@ -1046,7 +1028,7 @@ struct CompilerData {
           PP->setPredefines(TypeStrings[TSIdx]);
           PP->EnterMainSourceFile();
 
-          Parser P(*PP, *S, /*SkipFunctionBodies*/true, /*JITTypes*/true);
+          Parser P(*PP, *S, /*SkipFunctionBodies*/ true, /*JITTypes*/ true);
 
           // Reset this to nullptr so that when we call
           // Parser::Initialize it has the clean slate it expects.
@@ -1058,9 +1040,9 @@ struct CompilerData {
 
           auto CSFMI = CSFuncMap.find(Idx);
           if (CSFMI != CSFuncMap.end()) {
-	  // Note that this restores the context of the function in which the
-	  // template was instantiated, but not the state *within* the
-	  // function, so local types will remain unavailable.
+            // Note that this restores the context of the function in which the
+            // template was instantiated, but not the state *within* the
+            // function, so local types will remain unavailable.
 
             auto *FunD = CSFMI->second;
             restoreFuncDeclContext(FunD);
@@ -1100,9 +1082,9 @@ struct CompilerData {
 
         unsigned NumIntWords = llvm::alignTo<8>(Size);
         SmallVector<uint64_t, 2> IntWords(NumIntWords, 0);
-        std::memcpy((char *) IntWords.data(),
-                    ((const char *) NTTPValues) + Offset, Size);
-        llvm::APInt IntVal(Size*8, IntWords);
+        std::memcpy((char *)IntWords.data(),
+                    ((const char *)NTTPValues) + Offset, Size);
+        llvm::APInt IntVal(Size * 8, IntWords);
 
         QualType CanonFieldTy = Ctx->getCanonicalType(FieldTy);
 
@@ -1114,31 +1096,33 @@ struct CompilerData {
           assert(FieldTy->isPointerType() || FieldTy->isReferenceType() ||
                  FieldTy->isNullPtrType());
           if (IntVal.isNullValue()) {
-            Builder.push_back(TemplateArgument(CanonFieldTy, /*isNullPtr*/true));
+            Builder.push_back(
+                TemplateArgument(CanonFieldTy, /*isNullPtr*/ true));
           } else {
-	  // Note: We always generate a new global for pointer values here.
-	  // This provides a new potential way to introduce an ODR violation:
-	  // If you also generate an instantiation using the same pointer value
-	  // using some other symbol name, this will generate a different
-	  // instantiation.
+            // Note: We always generate a new global for pointer values here.
+            // This provides a new potential way to introduce an ODR violation:
+            // If you also generate an instantiation using the same pointer
+            // value using some other symbol name, this will generate a
+            // different instantiation.
 
-	  // As we guarantee that the template parameters are not allowed to
-	  // point to subobjects, this is useful for optimization because each
-	  // of these resolve to distinct underlying objects.
+            // As we guarantee that the template parameters are not allowed to
+            // point to subobjects, this is useful for optimization because each
+            // of these resolve to distinct underlying objects.
 
             llvm::SmallString<256> GlobalName("__clang_jit_symbol_");
             IntVal.toString(GlobalName, 16, false);
 
-	  // To this base name we add the mangled type. Stack/heap addresses
-	  // can be reused with variables of different type, and these should
-	  // have different names even if they share the same address;
+            // To this base name we add the mangled type. Stack/heap addresses
+            // can be reused with variables of different type, and these should
+            // have different names even if they share the same address;
             auto &CGM = Consumer->getCodeGenerator()->CGM();
             llvm::raw_svector_ostream MOut(GlobalName);
-            CGM.getCXXABI().getMangleContext().mangleTypeName(CanonFieldTy, MOut);
+            CGM.getCXXABI().getMangleContext().mangleTypeName(CanonFieldTy,
+                                                              MOut);
 
             auto NLDSI = NewLocalSymDecls.find(GlobalName);
             if (NLDSI != NewLocalSymDecls.end()) {
-                Builder.push_back(TemplateArgument(NLDSI->second, CanonFieldTy));
+              Builder.push_back(TemplateArgument(NLDSI->second, CanonFieldTy));
             } else {
               Sema::ContextRAII TUContext(*S, Ctx->getTranslationUnitDecl());
               SourceLocation Loc = FTSI->getPointOfInstantiation();
@@ -1147,19 +1131,19 @@ struct CompilerData {
               auto &II = PP->getIdentifierTable().get(GlobalName);
 
               if (STy->isFunctionType()) {
-                auto *TAFD =
-                  FunctionDecl::Create(*Ctx, S->CurContext, Loc, Loc, &II,
-                                       STy, /*TInfo=*/nullptr, SC_Extern, false,
-                                       STy->isFunctionProtoType());
+                auto *TAFD = FunctionDecl::Create(
+                    *Ctx, S->CurContext, Loc, Loc, &II, STy, /*TInfo=*/nullptr,
+                    SC_Extern, false, STy->isFunctionProtoType());
                 TAFD->setImplicit();
 
-                if (const FunctionProtoType *FT = dyn_cast<FunctionProtoType>(STy)) {
-                  SmallVector<ParmVarDecl*, 16> Params;
+                if (const FunctionProtoType *FT =
+                        dyn_cast<FunctionProtoType>(STy)) {
+                  SmallVector<ParmVarDecl *, 16> Params;
                   for (unsigned i = 0, e = FT->getNumParams(); i != e; ++i) {
-                    ParmVarDecl *Parm =
-                      ParmVarDecl::Create(*Ctx, TAFD, SourceLocation(), SourceLocation(),
-                                          nullptr, FT->getParamType(i), /*TInfo=*/nullptr,
-                                          SC_None, nullptr);
+                    ParmVarDecl *Parm = ParmVarDecl::Create(
+                        *Ctx, TAFD, SourceLocation(), SourceLocation(), nullptr,
+                        FT->getParamType(i), /*TInfo=*/nullptr, SC_None,
+                        nullptr);
                     Parm->setScopeInfo(0, i);
                     Params.push_back(Parm);
                   }
@@ -1173,24 +1157,28 @@ struct CompilerData {
                 bool MadeArray = false;
                 auto *TPL = FTSI->getTemplate()->getTemplateParameters();
                 if (TPL->size() >= TAIdx) {
-                  auto *Param = TPL->getParam(TAIdx-1);
+                  auto *Param = TPL->getParam(TAIdx - 1);
                   if (NonTypeTemplateParmDecl *NTTP =
-                        dyn_cast<NonTypeTemplateParmDecl>(Param)) {
+                          dyn_cast<NonTypeTemplateParmDecl>(Param)) {
                     QualType OrigTy = NTTP->getType()->getPointeeType();
                     OrigTy = OrigTy.getDesugaredType(*Ctx);
 
                     bool IsArray = false;
                     llvm::APInt Sz;
                     QualType ElemTy;
-                    if (const auto *DAT = dyn_cast<DependentSizedArrayType>(OrigTy)) {
-                      Expr* SzExpr = DAT->getSizeExpr();
+                    if (const auto *DAT =
+                            dyn_cast<DependentSizedArrayType>(OrigTy)) {
+                      Expr *SzExpr = DAT->getSizeExpr();
 
-                      // Get the already-processed arguments for potential substitution.
-                      auto *NewTAL = TemplateArgumentList::CreateCopy(*Ctx, Builder);
+                      // Get the already-processed arguments for potential
+                      // substitution.
+                      auto *NewTAL =
+                          TemplateArgumentList::CreateCopy(*Ctx, Builder);
                       MultiLevelTemplateArgumentList SubstArgs(*NewTAL);
 
                       SmallVector<Expr *, 1> NewSzExprVec;
-                      if (!S->SubstExprs(SzExpr, /*IsCall*/ false, SubstArgs, NewSzExprVec)) {
+                      if (!S->SubstExprs(SzExpr, /*IsCall*/ false, SubstArgs,
+                                         NewSzExprVec)) {
                         Expr::EvalResult NewSzResult;
                         if (NewSzExprVec[0]->EvaluateAsInt(NewSzResult, *Ctx)) {
                           Sz = NewSzResult.Val.getInt();
@@ -1198,52 +1186,57 @@ struct CompilerData {
                           IsArray = true;
                         }
                       }
-                    } else if (const auto *CAT = dyn_cast<ConstantArrayType>(OrigTy)) {
+                    } else if (const auto *CAT =
+                                   dyn_cast<ConstantArrayType>(OrigTy)) {
                       Sz = CAT->getSize();
                       ElemTy = CAT->getElementType();
                       IsArray = true;
                     }
 
-                    if (IsArray && (ElemTy->isIntegerType() ||
-                                    ElemTy->isFloatingType())) {
-                      QualType ArrTy =
-                        Ctx->getConstantArrayType(ElemTy,
-                                                  Sz, clang::ArrayType::Normal, 0);
+                    if (IsArray &&
+                        (ElemTy->isIntegerType() || ElemTy->isFloatingType())) {
+                      QualType ArrTy = Ctx->getConstantArrayType(
+                          ElemTy, Sz, clang::ArrayType::Normal, 0);
 
                       SmallVector<Expr *, 16> Vals;
-                      unsigned ElemSize = Ctx->getTypeSizeInChars(ElemTy).getQuantity();
+                      unsigned ElemSize =
+                          Ctx->getTypeSizeInChars(ElemTy).getQuantity();
                       unsigned ElemNumIntWords = llvm::alignTo<8>(ElemSize);
-                      const char *Elem = (const char *) IntVal.getZExtValue();
+                      const char *Elem = (const char *)IntVal.getZExtValue();
                       for (unsigned i = 0; i < Sz.getZExtValue(); ++i) {
-                        SmallVector<uint64_t, 2> ElemIntWords(ElemNumIntWords, 0);
+                        SmallVector<uint64_t, 2> ElemIntWords(ElemNumIntWords,
+                                                              0);
 
-                        std::memcpy((char *) ElemIntWords.data(), Elem, ElemSize);
+                        std::memcpy((char *)ElemIntWords.data(), Elem,
+                                    ElemSize);
                         Elem += ElemSize;
 
-                        llvm::APInt ElemVal(ElemSize*8, ElemIntWords);
+                        llvm::APInt ElemVal(ElemSize * 8, ElemIntWords);
                         if (ElemTy->isIntegerType()) {
                           Vals.push_back(new (*Ctx) IntegerLiteral(
-                            *Ctx, ElemVal, ElemTy, Loc));
+                              *Ctx, ElemVal, ElemTy, Loc));
                         } else {
-                          llvm::APFloat ElemValFlt(Ctx->getFloatTypeSemantics(ElemTy), ElemVal);
-                          Vals.push_back(FloatingLiteral::Create(*Ctx, ElemValFlt,
-                                                                 false, ElemTy, Loc));
+                          llvm::APFloat ElemValFlt(
+                              Ctx->getFloatTypeSemantics(ElemTy), ElemVal);
+                          Vals.push_back(FloatingLiteral::Create(
+                              *Ctx, ElemValFlt, false, ElemTy, Loc));
                         }
                       }
 
-                      InitListExpr *InitL = new (*Ctx) InitListExpr(*Ctx, Loc, Vals, Loc);
+                      InitListExpr *InitL =
+                          new (*Ctx) InitListExpr(*Ctx, Loc, Vals, Loc);
                       InitL->setType(ArrTy);
 
-                      auto *TAVD =
-                        VarDecl::Create(*Ctx, S->CurContext, Loc, Loc, &II,
-                                        ArrTy, Ctx->getTrivialTypeSourceInfo(ArrTy, Loc),
-                                        SC_Extern);
+                      auto *TAVD = VarDecl::Create(
+                          *Ctx, S->CurContext, Loc, Loc, &II, ArrTy,
+                          Ctx->getTrivialTypeSourceInfo(ArrTy, Loc), SC_Extern);
                       TAVD->setImplicit();
                       TAVD->setConstexpr(true);
                       TAVD->setInit(InitL);
 
                       NewLocalSymDecls[II.getName()] = TAVD;
-                      Builder.push_back(TemplateArgument(TAVD, Ctx->getLValueReferenceType(ArrTy)));
+                      Builder.push_back(TemplateArgument(
+                          TAVD, Ctx->getLValueReferenceType(ArrTy)));
 
                       MadeArray = true;
                     }
@@ -1251,10 +1244,9 @@ struct CompilerData {
                 }
 
                 if (!MadeArray) {
-                  auto *TAVD =
-                    VarDecl::Create(*Ctx, S->CurContext, Loc, Loc, &II,
-                                    STy, Ctx->getTrivialTypeSourceInfo(STy, Loc),
-                                    SC_Extern);
+                  auto *TAVD = VarDecl::Create(
+                      *Ctx, S->CurContext, Loc, Loc, &II, STy,
+                      Ctx->getTrivialTypeSourceInfo(STy, Loc), SC_Extern);
                   TAVD->setImplicit();
 
                   NewLocalSymDecls[II.getName()] = TAVD;
@@ -1262,7 +1254,7 @@ struct CompilerData {
                 }
               }
 
-              LocalSymAddrs[II.getName()] = (const void *) IntVal.getZExtValue();
+              LocalSymAddrs[II.getName()] = (const void *)IntVal.getZExtValue();
             }
           }
         }
@@ -1293,22 +1285,26 @@ struct CompilerData {
     sema::TemplateDeductionInfo Info(Loc);
     {
       Sema::InstantiatingTemplate Inst(
-        *S, Loc, FTD, NewTAL->asArray(),
-        Sema::CodeSynthesisContext::ExplicitTemplateArgumentSubstitution, Info);
+          *S, Loc, FTD, NewTAL->asArray(),
+          Sema::CodeSynthesisContext::ExplicitTemplateArgumentSubstitution,
+          Info);
 
-      S->setCurScope(S->TUScope = new Scope(nullptr, Scope::DeclScope, PP->getDiagnostics()));
+      S->setCurScope(S->TUScope = new Scope(nullptr, Scope::DeclScope,
+                                            PP->getDiagnostics()));
 
       Sema::ContextRAII TUContext(*S, Ctx->getTranslationUnitDecl());
 
       auto *Specialization = cast_or_null<FunctionDecl>(
-        S->SubstDecl(FunctionTemplate->getTemplatedDecl(), Owner, SubstArgs));
+          S->SubstDecl(FunctionTemplate->getTemplatedDecl(), Owner, SubstArgs));
       if (!Specialization || Specialization->isInvalidDecl())
         fatal();
 
-      Specialization->setTemplateSpecializationKind(TSK_ExplicitInstantiationDefinition, Loc);
+      Specialization->setTemplateSpecializationKind(
+          TSK_ExplicitInstantiationDefinition, Loc);
       S->InstantiateFunctionDefinition(Loc, Specialization, true, true, true);
 
-      SMName = Consumer->getCodeGenerator()->CGM().getMangledName(Specialization);
+      SMName =
+          Consumer->getCodeGenerator()->CGM().getMangledName(Specialization);
     }
 
     if (Diagnostics->hasErrorOccurred())
@@ -1360,8 +1356,8 @@ struct CompilerData {
         if (CheckExisting && CJ->findSymbol(DeclName))
           continue;
 
-        Decl *D = const_cast<Decl *>(Consumer->getCodeGenerator()->
-                                       GetDeclForMangledName(DeclName));
+        Decl *D = const_cast<Decl *>(
+            Consumer->getCodeGenerator()->GetDeclForMangledName(DeclName));
         if (!D)
           continue;
 
@@ -1379,7 +1375,7 @@ struct CompilerData {
     // Now we know the name of the symbol, check to see if we already have it.
     if (auto SpecSymbol = CJ->findSymbol(SMName))
       if (SpecSymbol.getAddress())
-        return (void *) llvm::cantFail(SpecSymbol.getAddress());
+        return (void *)llvm::cantFail(SpecSymbol.getAddress());
 
     if (DevCD)
       DevCD->instantiateTemplate(NTTPValues, TypeStrings, Idx);
@@ -1393,7 +1389,7 @@ struct CompilerData {
     // generating so that it doesn't get eliminated by the optimizer.
 
     auto *TopGV =
-      cast<GlobalObject>(Consumer->getModule()->getNamedValue(SMName));
+        cast<GlobalObject>(Consumer->getModule()->getNamedValue(SMName));
     assert(TopGV && "Didn't generate the desired top-level symbol?");
 
     TopGV->setLinkage(llvm::GlobalValue::ExternalLinkage);
@@ -1437,8 +1433,8 @@ struct CompilerData {
         uint32_t unknown0c;  // 0x0c
       public:
         FatBinHeader(uint32_t DataSize)
-            : Magic(0xba55ed50), Version(1),
-              HeaderSize(sizeof(*this)), DataSize(DataSize), unknown0c(0) {}
+            : Magic(0xba55ed50), Version(1), HeaderSize(sizeof(*this)),
+              DataSize(DataSize), unknown0c(0) {}
       };
 
       enum FatBinFlags {
@@ -1475,22 +1471,23 @@ struct CompilerData {
             : Kind(1 /*PTX*/), unknown02(0x0101), HeaderSize(sizeof(*this)),
               DataSize(DataSize), unknown0c(0), CompressedSize(0),
               SubHeaderSize(HeaderSize - 8), VersionMinor(2), VersionMajor(4),
-              CudaArch(CudaArch), unknown20(0), unknown24(0), Flags(Flags), unknown2c(0),
-              unknown30(0), unknown34(0), UncompressedSize(0), unknown3c(0),
-              unknown40(0), unknown44(0) {}
+              CudaArch(CudaArch), unknown20(0), unknown24(0), Flags(Flags),
+              unknown2c(0), unknown30(0), unknown34(0), UncompressedSize(0),
+              unknown3c(0), unknown40(0), unknown44(0) {}
       };
 
       uint32_t CudaArch;
       StringRef(DevCD->Invocation->getTargetOpts().CPU)
-        .drop_front(3 /*sm_*/).getAsInteger(10, CudaArch);
+          .drop_front(3 /*sm_*/)
+          .getAsInteger(10, CudaArch);
 
       uint32_t Flags = ProducerCuda;
       if (DevCD->Invocation->getCodeGenOpts().getDebugInfo() >=
-            codegenoptions::LimitedDebugInfo)
+          codegenoptions::LimitedDebugInfo)
         Flags |= HasDebugInfo;
 
       if (Triple(DevCD->Invocation->getTargetOpts().Triple).getArch() ==
-            Triple::nvptx64)
+          Triple::nvptx64)
         Flags |= AddressSize64;
 
       if (Triple(Invocation->getTargetOpts().Triple).isOSWindows())
@@ -1503,18 +1500,18 @@ struct CompilerData {
       FatBinFileHeader FBFHdr(DevCD->DevAsm.size(), CudaArch, Flags);
       FatBinHeader FBHdr(DevCD->DevAsm.size() + FBFHdr.HeaderSize);
 
-      FBOS.write((char *) &FBHdr, FBHdr.HeaderSize);
-      FBOS.write((char *) &FBFHdr, FBFHdr.HeaderSize);
+      FBOS.write((char *)&FBHdr, FBHdr.HeaderSize);
+      FBOS.write((char *)&FBFHdr, FBFHdr.HeaderSize);
       FBOS << DevCD->DevAsm;
 
       if (::getenv("CLANG_JIT_CUDA_DUMP_DYNAMIC_FATBIN")) {
         SmallString<128> Path;
         auto EC = llvm::sys::fs::createUniqueFile(
-                      llvm::Twine("clang-jit-") +
-                      llvm::sys::path::filename(Invocation->getCodeGenOpts().
-                                                  MainFileName) +
-                      llvm::Twine("-%%%%.fatbin"), Path,
-                    llvm::sys::fs::owner_read | llvm::sys::fs::owner_write);
+            llvm::Twine("clang-jit-") +
+                llvm::sys::path::filename(
+                    Invocation->getCodeGenOpts().MainFileName) +
+                llvm::Twine("-%%%%.fatbin"),
+            Path, llvm::sys::fs::owner_read | llvm::sys::fs::owner_write);
         if (!EC) {
           raw_fd_ostream DOS(Path, EC);
           if (!EC)
@@ -1523,7 +1520,7 @@ struct CompilerData {
       }
 
       Consumer->getCodeGenerator()->CGM().getCodeGenOpts().GPUBinForJIT =
-        FatBin;
+          FatBin;
       DevCD->DevAsm.clear();
     }
 
@@ -1622,31 +1619,34 @@ struct CompilerData {
       F.setName(UniqueName);
     }
 
-    if (Linker::linkModules(*Consumer->getModule(), llvm::CloneModule(*RunningMod),
+    if (Linker::linkModules(*Consumer->getModule(),
+                            llvm::CloneModule(*RunningMod),
                             Linker::Flags::OverrideFromSrc))
       fatal();
 
-    // Aliases are not allowed to point to functions with available_externally linkage.
-    // We solve this by replacing these aliases with the definition of the aliasee.
-    // Candidates are identified first, then erased in a second step to avoid invalidating the iterator.
-    auto& LinkedMod = *Consumer->getModule();
-    SmallPtrSet<GlobalAlias*, 4> ToReplace;
-    for (auto& Alias : LinkedMod.aliases()) {
-      // Aliases may point to other aliases but we only need to alter the lowest level one
-      // Only function declarations are relevant
+    // Aliases are not allowed to point to functions with available_externally
+    // linkage. We solve this by replacing these aliases with the definition of
+    // the aliasee. Candidates are identified first, then erased in a second
+    // step to avoid invalidating the iterator.
+    auto &LinkedMod = *Consumer->getModule();
+    SmallPtrSet<GlobalAlias *, 4> ToReplace;
+    for (auto &Alias : LinkedMod.aliases()) {
+      // Aliases may point to other aliases but we only need to alter the lowest
+      // level one Only function declarations are relevant
       auto Aliasee = dyn_cast<Function>(Alias.getAliasee());
       if (!Aliasee || !Aliasee->isDeclarationForLinker()) {
         continue;
       }
-      assert(Aliasee->hasAvailableExternallyLinkage() && "Broken module: alias points to declaration");
+      assert(Aliasee->hasAvailableExternallyLinkage() &&
+             "Broken module: alias points to declaration");
       ToReplace.insert(&Alias);
     }
 
-    for (auto* Alias : ToReplace) {
+    for (auto *Alias : ToReplace) {
       auto Aliasee = cast<Function>(Alias->getAliasee());
 
       llvm::ValueToValueMapTy VMap;
-      Function* AliasReplacement = llvm::CloneFunction(Aliasee, VMap);
+      Function *AliasReplacement = llvm::CloneFunction(Aliasee, VMap);
 
       AliasReplacement->setLinkage(Alias->getLinkage());
       Alias->replaceAllUsesWith(AliasReplacement);
@@ -1656,8 +1656,8 @@ struct CompilerData {
       AliasReplacement->setName(AliasName);
     }
 
-    // Optimize the merged module, containing both the newly generated IR as well as
-    // previously emitted code marked available_externally.
+    // Optimize the merged module, containing both the newly generated IR as
+    // well as previously emitted code marked available_externally.
     Consumer->EmitOptimized();
 
     std::unique_ptr<llvm::Module> ToRunMod =
@@ -1685,7 +1685,8 @@ struct CompilerData {
           GV.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
       }
 
-    // OverrideFromSrc is needed here too, otherwise globals marked available_externally are not considered.
+    // OverrideFromSrc is needed here too, otherwise globals marked
+    // available_externally are not considered.
     if (Linker::linkModules(*RunningMod, Consumer->takeModule(),
                             Linker::Flags::OverrideFromSrc))
       fatal();
@@ -1698,7 +1699,7 @@ struct CompilerData {
     if (!SpecSymbol.getAddress())
       fatal();
 
-    return (void *) llvm::cantFail(SpecSymbol.getAddress());
+    return (void *)llvm::cantFail(SpecSymbol.getAddress());
   }
 };
 
@@ -1707,16 +1708,15 @@ bool InitializedTarget = false;
 llvm::DenseMap<const void *, std::unique_ptr<CompilerData>> TUCompilerData;
 
 struct InstInfo {
-  InstInfo(const char *InstKey, const void *NTTPValues,
-           unsigned NTTPValuesSize, const char **TypeStrings,
-           unsigned TypeStringsCnt)
-    : Key(InstKey),
-      NTArgs(StringRef((const char *) NTTPValues, NTTPValuesSize)) {
+  InstInfo(const char *InstKey, const void *NTTPValues, unsigned NTTPValuesSize,
+           const char **TypeStrings, unsigned TypeStringsCnt)
+      : Key(InstKey),
+        NTArgs(StringRef((const char *)NTTPValues, NTTPValuesSize)) {
     for (unsigned i = 0, e = TypeStringsCnt; i != e; ++i)
       TArgs.push_back(StringRef(TypeStrings[i]));
   }
 
-  InstInfo(const StringRef &R) : Key(R) { }
+  InstInfo(const StringRef &R) : Key(R) {}
 
   // The instantiation key (these are always constants, so we don't need to
   // allocate storage for them).
@@ -1733,8 +1733,9 @@ struct ThisInstInfo {
   ThisInstInfo(const char *InstKey, const void *NTTPValues,
                unsigned NTTPValuesSize, const char **TypeStrings,
                unsigned TypeStringsCnt)
-    : InstKey(InstKey), NTTPValues(NTTPValues), NTTPValuesSize(NTTPValuesSize),
-      TypeStrings(TypeStrings), TypeStringsCnt(TypeStringsCnt) { }
+      : InstKey(InstKey), NTTPValues(NTTPValues),
+        NTTPValuesSize(NTTPValuesSize), TypeStrings(TypeStrings),
+        TypeStringsCnt(TypeStringsCnt) {}
 
   const char *InstKey;
 
@@ -1760,37 +1761,35 @@ struct InstMapInfo {
     using llvm::hash_combine_range;
 
     hash_code h = hash_combine_range(II.Key.begin(), II.Key.end());
-    h = hash_combine(h, hash_combine_range(II.NTArgs.begin(),
-                                           II.NTArgs.end()));
+    h = hash_combine(h, hash_combine_range(II.NTArgs.begin(), II.NTArgs.end()));
     for (auto &TA : II.TArgs)
       h = hash_combine(h, hash_combine_range(TA.begin(), TA.end()));
 
-    return (unsigned) h;
+    return (unsigned)h;
   }
-  
+
   static unsigned getHashValue(const ThisInstInfo &TII) {
     using llvm::hash_code;
     using llvm::hash_combine;
     using llvm::hash_combine_range;
 
     hash_code h =
-      hash_combine_range(TII.InstKey, TII.InstKey + std::strlen(TII.InstKey));
-    h = hash_combine(h, hash_combine_range((const char *) TII.NTTPValues,
-                                           ((const char *) TII.NTTPValues) +
-                                             TII.NTTPValuesSize));
+        hash_combine_range(TII.InstKey, TII.InstKey + std::strlen(TII.InstKey));
+    h = hash_combine(h, hash_combine_range((const char *)TII.NTTPValues,
+                                           ((const char *)TII.NTTPValues) +
+                                               TII.NTTPValuesSize));
     for (unsigned int i = 0, e = TII.TypeStringsCnt; i != e; ++i)
       h = hash_combine(h,
                        hash_combine_range(TII.TypeStrings[i],
                                           TII.TypeStrings[i] +
-                                            std::strlen(TII.TypeStrings[i])));
+                                              std::strlen(TII.TypeStrings[i])));
 
-    return (unsigned) h;
+    return (unsigned)h;
   }
 
   static bool isEqual(const InstInfo &LHS, const InstInfo &RHS) {
-    return LHS.Key    == RHS.Key &&
-           LHS.NTArgs == RHS.NTArgs &&
-           LHS.TArgs  == RHS.TArgs;
+    return LHS.Key == RHS.Key && LHS.NTArgs == RHS.NTArgs &&
+           LHS.TArgs == RHS.TArgs;
   }
 
   static bool isEqual(const ThisInstInfo &LHS, const InstInfo &RHS) {
@@ -1800,8 +1799,8 @@ struct InstMapInfo {
   static bool isEqual(const InstInfo &II, const ThisInstInfo &TII) {
     if (II.Key != StringRef(TII.InstKey))
       return false;
-    if (II.NTArgs != StringRef((const char *) TII.NTTPValues,
-                               TII.NTTPValuesSize))
+    if (II.NTArgs !=
+        StringRef((const char *)TII.NTTPValues, TII.NTTPValuesSize))
       return false;
     if (II.TArgs.size() != TII.TypeStringsCnt)
       return false;
@@ -1809,7 +1808,7 @@ struct InstMapInfo {
       if (II.TArgs[i] != StringRef(TII.TypeStrings[i]))
         return false;
 
-    return true; 
+    return true;
   }
 };
 
@@ -1820,22 +1819,21 @@ llvm::DenseMap<InstInfo, void *, InstMapInfo> Instantiations;
 
 extern "C"
 #ifdef _MSC_VER
-__declspec(dllexport)
+    __declspec(dllexport)
 #endif
-void *__clang_jit(const void *CmdArgs, unsigned CmdArgsLen,
-                  const void *ASTBuffer, size_t ASTBufferSize,
-                  const void *IRBuffer, size_t IRBufferSize,
-                  const void **LocalPtrs, unsigned LocalPtrsCnt,
-                  const void **LocalDbgPtrs, unsigned LocalDbgPtrsCnt,
-                  const DevData *DeviceData, unsigned DevCnt,
-                  const void *NTTPValues, unsigned NTTPValuesSize,
-                  const char **TypeStrings, unsigned TypeStringsCnt,
-                  const char *InstKey, unsigned Idx) {
+        void *__clang_jit(const void *CmdArgs, unsigned CmdArgsLen,
+                          const void *ASTBuffer, size_t ASTBufferSize,
+                          const void *IRBuffer, size_t IRBufferSize,
+                          const void **LocalPtrs, unsigned LocalPtrsCnt,
+                          const void **LocalDbgPtrs, unsigned LocalDbgPtrsCnt,
+                          const DevData *DeviceData, unsigned DevCnt,
+                          const void *NTTPValues, unsigned NTTPValuesSize,
+                          const char **TypeStrings, unsigned TypeStringsCnt,
+                          const char *InstKey, unsigned Idx) {
   {
     llvm::MutexGuard Guard(IMutex);
-    auto II =
-      Instantiations.find_as(ThisInstInfo(InstKey, NTTPValues, NTTPValuesSize,
-                                          TypeStrings, TypeStringsCnt));
+    auto II = Instantiations.find_as(ThisInstInfo(
+        InstKey, NTTPValues, NTTPValuesSize, TypeStrings, TypeStringsCnt));
     if (II != Instantiations.end())
       return II->second;
   }
@@ -1867,10 +1865,9 @@ void *__clang_jit(const void *CmdArgs, unsigned CmdArgsLen,
 
   {
     llvm::MutexGuard Guard(IMutex);
-    Instantiations[InstInfo(InstKey, NTTPValues, NTTPValuesSize,
-                            TypeStrings, TypeStringsCnt)] = FPtr;
+    Instantiations[InstInfo(InstKey, NTTPValues, NTTPValuesSize, TypeStrings,
+                            TypeStringsCnt)] = FPtr;
   }
 
   return FPtr;
 }
-

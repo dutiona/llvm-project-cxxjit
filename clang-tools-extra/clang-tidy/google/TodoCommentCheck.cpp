@@ -9,15 +9,13 @@
 #include "TodoCommentCheck.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/Preprocessor.h"
+#include <optional>
 
-namespace clang {
-namespace tidy {
-namespace google {
-namespace readability {
+namespace clang::tidy::google::readability {
 
 class TodoCommentCheck::TodoCommentHandler : public CommentHandler {
 public:
-  TodoCommentHandler(TodoCommentCheck &Check, llvm::Optional<std::string> User)
+  TodoCommentHandler(TodoCommentCheck &Check, std::optional<std::string> User)
       : Check(Check), User(User ? *User : "unknown"),
         TodoMatch("^// *TODO *(\\(.*\\))?:?( )?(.*)$") {}
 
@@ -52,14 +50,15 @@ private:
 
 TodoCommentCheck::TodoCommentCheck(StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      Handler(llvm::make_unique<TodoCommentHandler>(
+      Handler(std::make_unique<TodoCommentHandler>(
           *this, Context->getOptions().User)) {}
 
-void TodoCommentCheck::registerPPCallbacks(CompilerInstance &Compiler) {
-  Compiler.getPreprocessor().addCommentHandler(Handler.get());
+TodoCommentCheck::~TodoCommentCheck() = default;
+
+void TodoCommentCheck::registerPPCallbacks(const SourceManager &SM,
+                                           Preprocessor *PP,
+                                           Preprocessor *ModuleExpanderPP) {
+  PP->addCommentHandler(Handler.get());
 }
 
-} // namespace readability
-} // namespace google
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::google::readability

@@ -6,15 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_lldb_types_h_
-#define LLDB_lldb_types_h_
+#ifndef LLDB_LLDB_TYPES_H
+#define LLDB_LLDB_TYPES_H
 
 #include "lldb/lldb-enumerations.h"
 #include "lldb/lldb-forward.h"
 
-#include <stdint.h>
+#include <cstdint>
 
-//----------------------------------------------------------------------
 // All host systems must define:
 //  lldb::thread_t          The native thread type for spawned threads on the
 //  system
@@ -27,7 +26,6 @@
 //  #define LLDB_INVALID_PROCESS_ID ...
 //  #define LLDB_INVALID_THREAD_ID ...
 //  #define LLDB_INVALID_HOST_THREAD ...
-//----------------------------------------------------------------------
 
 // TODO: Add a bunch of ifdefs to determine the host system and what
 // things should be defined. Currently MacOSX is being assumed by default since
@@ -54,9 +52,7 @@ typedef void *pipe_t;                             // Host pipe type is HANDLE
 #include <pthread.h>
 
 namespace lldb {
-//----------------------------------------------------------------------
 // MacOSX Types
-//----------------------------------------------------------------------
 typedef pthread_rwlock_t rwlock_t;
 typedef uint64_t process_t; // Process type is just a pid.
 typedef pthread_t thread_t; // Host thread type
@@ -93,6 +89,7 @@ typedef int32_t break_id_t;
 typedef int32_t watch_id_t;
 typedef void *opaque_compiler_type_t;
 typedef uint64_t queue_id_t;
+typedef uint32_t cpu_id_t; // CPU core id
 } // namespace lldb
 
-#endif // LLDB_lldb_types_h_
+#endif // LLDB_LLDB_TYPES_H

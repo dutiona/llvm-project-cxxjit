@@ -1,4 +1,4 @@
-import("//llvm/utils/unittest/unittest.gni")
+import("//third-party/unittest/unittest.gni")
 
 unittest("LinkerTests") {
   deps = [
@@ -6,7 +6,5 @@ unittest("LinkerTests") {
     "//llvm/lib/IR",
     "//llvm/lib/Linker",
   ]
-  sources = [
-    "LinkModulesTest.cpp",
-  ]
+  sources = [ "LinkModulesTest.cpp" ]
 }

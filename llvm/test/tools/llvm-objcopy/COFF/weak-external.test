@@ -1,4 +1,4 @@
-# RUN: yaml2obj %s > %t.in.o
+# RUN: yaml2obj %s -o %t.in.o
 
 # RUN: llvm-objdump -t %t.in.o | FileCheck %s --check-prefixes=SYMBOLS,SYMBOLS-PRE
 
@@ -15,7 +15,7 @@
 # SYMBOLS-POST-NEXT: AUX indx 0
 # SYMBOLS-EMPTY:
 
-# ERROR: Symbol 'foobar' is missing its weak target
+# ERROR: symbol 'foobar' is missing its weak target
 
 --- !COFF
 header:          

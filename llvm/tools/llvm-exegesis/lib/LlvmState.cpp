@@ -13,7 +13,8 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCObjectFileInfo.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -21,57 +22,122 @@
 namespace llvm {
 namespace exegesis {
 
-LLVMState::LLVMState(const std::string &Triple, const std::string &CpuName,
-                     const std::string &Features) {
+Expected<LLVMState> LLVMState::Create(std::string TripleName,
+                                      std::string CpuName,
+                                      const StringRef Features) {
+  if (TripleName.empty())
+    TripleName = Triple::normalize(sys::getDefaultTargetTriple());
+
+  Triple TheTriple(TripleName);
+
+  // Get the target specific parser.
   std::string Error;
-  const llvm::Target *const TheTarget =
-      llvm::TargetRegistry::lookupTarget(Triple, Error);
-  assert(TheTarget && "unknown target for host");
-  const llvm::TargetOptions Options;
-  TargetMachine.reset(
-      static_cast<llvm::LLVMTargetMachine *>(TheTarget->createTargetMachine(
-          Triple, CpuName, Features, Options, llvm::Reloc::Model::Static)));
-  TheExegesisTarget = ExegesisTarget::lookup(TargetMachine->getTargetTriple());
-  if (!TheExegesisTarget) {
-    llvm::errs() << "no exegesis target for " << Triple << ", using default\n";
-    TheExegesisTarget = &ExegesisTarget::getDefault();
+  const Target *TheTarget =
+      TargetRegistry::lookupTarget(/*MArch=*/"", TheTriple, Error);
+  if (!TheTarget) {
+    return llvm::make_error<llvm::StringError>("no LLVM target for triple " +
+                                                   TripleName,
+                                               llvm::inconvertibleErrorCode());
   }
+
+  // Update Triple with the updated triple from the target lookup.
+  TripleName = TheTriple.str();
+
+  if (CpuName == "native")
+    CpuName = std::string(llvm::sys::getHostCPUName());
+
+  std::unique_ptr<MCSubtargetInfo> STI(
+      TheTarget->createMCSubtargetInfo(TripleName, CpuName, ""));
+  assert(STI && "Unable to create subtarget info!");
+  if (!STI->isCPUStringValid(CpuName)) {
+    return llvm::make_error<llvm::StringError>(Twine("invalid CPU name (")
+                                                   .concat(CpuName)
+                                                   .concat(") for triple ")
+                                                   .concat(TripleName),
+                                               llvm::inconvertibleErrorCode());
+  }
+  const TargetOptions Options;
+  std::unique_ptr<const TargetMachine> TM(
+      static_cast<LLVMTargetMachine *>(TheTarget->createTargetMachine(
+          TripleName, CpuName, Features, Options, Reloc::Model::Static)));
+  if (!TM) {
+    return llvm::make_error<llvm::StringError>(
+        "unable to create target machine", llvm::inconvertibleErrorCode());
+  }
+
+  const ExegesisTarget *ET =
+      TripleName.empty() ? &ExegesisTarget::getDefault()
+                         : ExegesisTarget::lookup(TM->getTargetTriple());
+  if (!ET) {
+    return llvm::make_error<llvm::StringError>(
+        "no Exegesis target for triple " + TripleName,
+        llvm::inconvertibleErrorCode());
+  }
+  return LLVMState(std::move(TM), ET, CpuName);
+}
+
+LLVMState::LLVMState(std::unique_ptr<const TargetMachine> TM,
+                     const ExegesisTarget *ET, const StringRef CpuName)
+    : TheExegesisTarget(ET), TheTargetMachine(std::move(TM)),
+      OpcodeNameToOpcodeIdxMapping(createOpcodeNameToOpcodeIdxMapping()),
+      RegNameToRegNoMapping(createRegNameToRegNoMapping()) {
   PfmCounters = &TheExegesisTarget->getPfmCounters(CpuName);
 
-  RATC.reset(new RegisterAliasingTrackerCache(
-      getRegInfo(), getFunctionReservedRegs(getTargetMachine())));
+  BitVector ReservedRegs = getFunctionReservedRegs(getTargetMachine());
+  for (const unsigned Reg : TheExegesisTarget->getUnavailableRegisters())
+    ReservedRegs.set(Reg);
+  RATC.reset(
+      new RegisterAliasingTrackerCache(getRegInfo(), std::move(ReservedRegs)));
   IC.reset(new InstructionsCache(getInstrInfo(), getRATC()));
 }
 
-LLVMState::LLVMState(const std::string &CpuName)
-    : LLVMState(llvm::sys::getProcessTriple(),
-                CpuName.empty() ? llvm::sys::getHostCPUName().str() : CpuName,
-                "") {}
-
-std::unique_ptr<llvm::LLVMTargetMachine>
-LLVMState::createTargetMachine() const {
-  return std::unique_ptr<llvm::LLVMTargetMachine>(
-      static_cast<llvm::LLVMTargetMachine *>(
-          TargetMachine->getTarget().createTargetMachine(
-              TargetMachine->getTargetTriple().normalize(),
-              TargetMachine->getTargetCPU(),
-              TargetMachine->getTargetFeatureString(), TargetMachine->Options,
-              llvm::Reloc::Model::Static)));
+std::unique_ptr<LLVMTargetMachine> LLVMState::createTargetMachine() const {
+  return std::unique_ptr<LLVMTargetMachine>(static_cast<LLVMTargetMachine *>(
+      TheTargetMachine->getTarget().createTargetMachine(
+          TheTargetMachine->getTargetTriple().normalize(),
+          TheTargetMachine->getTargetCPU(),
+          TheTargetMachine->getTargetFeatureString(), TheTargetMachine->Options,
+          Reloc::Model::Static)));
 }
 
-bool LLVMState::canAssemble(const llvm::MCInst &Inst) const {
-  llvm::MCObjectFileInfo ObjectFileInfo;
-  llvm::MCContext Context(TargetMachine->getMCAsmInfo(),
-                          TargetMachine->getMCRegisterInfo(), &ObjectFileInfo);
-  std::unique_ptr<const llvm::MCCodeEmitter> CodeEmitter(
-      TargetMachine->getTarget().createMCCodeEmitter(
-          *TargetMachine->getMCInstrInfo(), *TargetMachine->getMCRegisterInfo(),
-          Context));
-  llvm::SmallVector<char, 16> Tmp;
-  llvm::raw_svector_ostream OS(Tmp);
-  llvm::SmallVector<llvm::MCFixup, 4> Fixups;
+std::unique_ptr<const DenseMap<StringRef, unsigned>>
+LLVMState::createOpcodeNameToOpcodeIdxMapping() const {
+  const MCInstrInfo &InstrInfo = getInstrInfo();
+  auto Map = std::make_unique<DenseMap<StringRef, unsigned>>(
+      InstrInfo.getNumOpcodes());
+  for (unsigned I = 0, E = InstrInfo.getNumOpcodes(); I < E; ++I)
+    (*Map)[InstrInfo.getName(I)] = I;
+  assert(Map->size() == InstrInfo.getNumOpcodes() && "Size prediction failed");
+  return std::move(Map);
+}
+
+std::unique_ptr<const DenseMap<StringRef, unsigned>>
+LLVMState::createRegNameToRegNoMapping() const {
+  const MCRegisterInfo &RegInfo = getRegInfo();
+  auto Map =
+      std::make_unique<DenseMap<StringRef, unsigned>>(RegInfo.getNumRegs());
+  // Special-case RegNo 0, which would otherwise be spelled as ''.
+  (*Map)[kNoRegister] = 0;
+  for (unsigned I = 1, E = RegInfo.getNumRegs(); I < E; ++I)
+    (*Map)[RegInfo.getName(I)] = I;
+  assert(Map->size() == RegInfo.getNumRegs() && "Size prediction failed");
+  return std::move(Map);
+}
+
+bool LLVMState::canAssemble(const MCInst &Inst) const {
+  MCContext Context(TheTargetMachine->getTargetTriple(),
+                    TheTargetMachine->getMCAsmInfo(),
+                    TheTargetMachine->getMCRegisterInfo(),
+                    TheTargetMachine->getMCSubtargetInfo());
+  std::unique_ptr<const MCCodeEmitter> CodeEmitter(
+      TheTargetMachine->getTarget().createMCCodeEmitter(
+          *TheTargetMachine->getMCInstrInfo(), Context));
+  assert(CodeEmitter && "unable to create code emitter");
+  SmallVector<char, 16> Tmp;
+  raw_svector_ostream OS(Tmp);
+  SmallVector<MCFixup, 4> Fixups;
   CodeEmitter->encodeInstruction(Inst, OS, Fixups,
-                                 *TargetMachine->getMCSubtargetInfo());
+                                 *TheTargetMachine->getMCSubtargetInfo());
   return Tmp.size() > 0;
 }
 

@@ -1,5 +1,4 @@
-//===-- SBVariablesOptions.cpp --------------------------------------*- C++
-//-*-===//
+//===-- SBVariablesOptions.cpp --------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,6 +9,7 @@
 #include "lldb/API/SBVariablesOptions.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Utility/Instrumentation.h"
 
 #include "lldb/lldb-private.h"
 
@@ -21,9 +21,7 @@ public:
   VariablesOptionsImpl()
       : m_include_arguments(false), m_include_locals(false),
         m_include_statics(false), m_in_scope_only(false),
-        m_include_runtime_support_values(false),
-        m_include_recognized_arguments(eLazyBoolCalculate),
-        m_use_dynamic(lldb::eNoDynamicValues) {}
+        m_include_runtime_support_values(false) {}
 
   VariablesOptionsImpl(const VariablesOptionsImpl &) = default;
 
@@ -75,81 +73,124 @@ private:
   bool m_include_statics : 1;
   bool m_in_scope_only : 1;
   bool m_include_runtime_support_values : 1;
-  LazyBool m_include_recognized_arguments; // can be overridden with a setting
-  lldb::DynamicValueType m_use_dynamic;
+  LazyBool m_include_recognized_arguments =
+      eLazyBoolCalculate; // can be overridden with a setting
+  lldb::DynamicValueType m_use_dynamic = lldb::eNoDynamicValues;
 };
 
 SBVariablesOptions::SBVariablesOptions()
-    : m_opaque_up(new VariablesOptionsImpl()) {}
+    : m_opaque_up(new VariablesOptionsImpl()) {
+  LLDB_INSTRUMENT_VA(this);
+}
 
 SBVariablesOptions::SBVariablesOptions(const SBVariablesOptions &options)
-    : m_opaque_up(new VariablesOptionsImpl(options.ref())) {}
+    : m_opaque_up(new VariablesOptionsImpl(options.ref())) {
+  LLDB_INSTRUMENT_VA(this, options);
+}
 
 SBVariablesOptions &SBVariablesOptions::
 operator=(const SBVariablesOptions &options) {
-  m_opaque_up.reset(new VariablesOptionsImpl(options.ref()));
+  LLDB_INSTRUMENT_VA(this, options);
+
+  m_opaque_up = std::make_unique<VariablesOptionsImpl>(options.ref());
   return *this;
 }
 
 SBVariablesOptions::~SBVariablesOptions() = default;
 
-bool SBVariablesOptions::IsValid() const { return m_opaque_up != nullptr; }
+bool SBVariablesOptions::IsValid() const {
+  LLDB_INSTRUMENT_VA(this);
+  return this->operator bool();
+}
+SBVariablesOptions::operator bool() const {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up != nullptr;
+}
 
 bool SBVariablesOptions::GetIncludeArguments() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetIncludeArguments();
 }
 
 void SBVariablesOptions::SetIncludeArguments(bool arguments) {
+  LLDB_INSTRUMENT_VA(this, arguments);
+
   m_opaque_up->SetIncludeArguments(arguments);
 }
 
 bool SBVariablesOptions::GetIncludeRecognizedArguments(
     const lldb::SBTarget &target) const {
+  LLDB_INSTRUMENT_VA(this, target);
+
   return m_opaque_up->GetIncludeRecognizedArguments(target.GetSP());
 }
 
 void SBVariablesOptions::SetIncludeRecognizedArguments(bool arguments) {
+  LLDB_INSTRUMENT_VA(this, arguments);
+
   m_opaque_up->SetIncludeRecognizedArguments(arguments);
 }
 
 bool SBVariablesOptions::GetIncludeLocals() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetIncludeLocals();
 }
 
 void SBVariablesOptions::SetIncludeLocals(bool locals) {
+  LLDB_INSTRUMENT_VA(this, locals);
+
   m_opaque_up->SetIncludeLocals(locals);
 }
 
 bool SBVariablesOptions::GetIncludeStatics() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetIncludeStatics();
 }
 
 void SBVariablesOptions::SetIncludeStatics(bool statics) {
+  LLDB_INSTRUMENT_VA(this, statics);
+
   m_opaque_up->SetIncludeStatics(statics);
 }
 
 bool SBVariablesOptions::GetInScopeOnly() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetInScopeOnly();
 }
 
 void SBVariablesOptions::SetInScopeOnly(bool in_scope_only) {
+  LLDB_INSTRUMENT_VA(this, in_scope_only);
+
   m_opaque_up->SetInScopeOnly(in_scope_only);
 }
 
 bool SBVariablesOptions::GetIncludeRuntimeSupportValues() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetIncludeRuntimeSupportValues();
 }
 
 void SBVariablesOptions::SetIncludeRuntimeSupportValues(
     bool runtime_support_values) {
+  LLDB_INSTRUMENT_VA(this, runtime_support_values);
+
   m_opaque_up->SetIncludeRuntimeSupportValues(runtime_support_values);
 }
 
 lldb::DynamicValueType SBVariablesOptions::GetUseDynamic() const {
+  LLDB_INSTRUMENT_VA(this);
+
   return m_opaque_up->GetUseDynamic();
 }
 
 void SBVariablesOptions::SetUseDynamic(lldb::DynamicValueType dynamic) {
+  LLDB_INSTRUMENT_VA(this, dynamic);
+
   m_opaque_up->SetUseDynamic(dynamic);
 }
 

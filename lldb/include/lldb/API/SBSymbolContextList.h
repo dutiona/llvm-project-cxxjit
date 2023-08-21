@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBSymbolContextList_h_
-#define LLDB_SBSymbolContextList_h_
+#ifndef LLDB_API_SBSYMBOLCONTEXTLIST_H
+#define LLDB_API_SBSYMBOLCONTEXTLIST_H
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBSymbolContext.h"
@@ -24,6 +24,8 @@ public:
 
   const lldb::SBSymbolContextList &
   operator=(const lldb::SBSymbolContextList &rhs);
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -53,4 +55,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBSymbolContextList_h_
+#endif // LLDB_API_SBSYMBOLCONTEXTLIST_H

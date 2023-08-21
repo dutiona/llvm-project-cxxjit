@@ -6,15 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ArmUnwindInfo_h_
-#define liblldb_ArmUnwindInfo_h_
+#ifndef LLDB_SYMBOL_ARMUNWINDINFO_H
+#define LLDB_SYMBOL_ARMUNWINDINFO_H
 
-#include <vector>
-
-#include "lldb/Core/RangeMap.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Utility/DataExtractor.h"
+#include "lldb/Utility/RangeMap.h"
 #include "lldb/lldb-private.h"
+#include <vector>
 
 /*
  * Unwind information reader and parser for the ARM exception handling ABI
@@ -66,4 +65,4 @@ private:
 
 } // namespace lldb_private
 
-#endif // liblldb_ArmUnwindInfo_h_
+#endif // LLDB_SYMBOL_ARMUNWINDINFO_H

@@ -9,6 +9,7 @@
 #include "GraphBuilder.h"
 
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/DebugInfo/Symbolize/SymbolizableModule.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -20,6 +21,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/Binary.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -28,27 +30,25 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
-
 
 using Instr = llvm::cfi_verify::FileAnalysis::Instr;
 
 namespace llvm {
 namespace cfi_verify {
 
-unsigned long long SearchLengthForUndef;
-unsigned long long SearchLengthForConditionalBranch;
+uint64_t SearchLengthForUndef;
+uint64_t SearchLengthForConditionalBranch;
 
-static cl::opt<unsigned long long, true> SearchLengthForUndefArg(
+static cl::opt<uint64_t, true> SearchLengthForUndefArg(
     "search-length-undef",
     cl::desc("Specify the maximum amount of instructions "
              "to inspect when searching for an undefined "
              "instruction from a conditional branch."),
     cl::location(SearchLengthForUndef), cl::init(2));
 
-static cl::opt<unsigned long long, true> SearchLengthForConditionalBranchArg(
+static cl::opt<uint64_t, true> SearchLengthForConditionalBranchArg(
     "search-length-cb",
     cl::desc("Specify the maximum amount of instructions "
              "to inspect when searching for a conditional "
@@ -93,17 +93,19 @@ void GraphResult::printToDOT(const FileAnalysis &Analysis,
 }
 
 GraphResult GraphBuilder::buildFlowGraph(const FileAnalysis &Analysis,
-                                         uint64_t Address) {
+                                         object::SectionedAddress Address) {
   GraphResult Result;
-  Result.BaseAddress = Address;
+  Result.BaseAddress = Address.Address;
   DenseSet<uint64_t> OpenedNodes;
 
   const auto &IndirectInstructions = Analysis.getIndirectInstructions();
 
-  if (IndirectInstructions.find(Address) == IndirectInstructions.end())
+  // check that IndirectInstructions contains specified Address
+  if (IndirectInstructions.find(Address) == IndirectInstructions.end()) {
     return Result;
+  }
 
-  buildFlowGraphImpl(Analysis, OpenedNodes, Result, Address, 0);
+  buildFlowGraphImpl(Analysis, OpenedNodes, Result, Address.Address, 0);
   return Result;
 }
 

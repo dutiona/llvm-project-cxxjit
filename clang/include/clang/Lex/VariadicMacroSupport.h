@@ -39,17 +39,14 @@ namespace clang {
       assert(Ident__VA_ARGS__->isPoisoned() && "__VA_ARGS__ should be poisoned "
                                               "outside an ISO C/C++ variadic "
                                               "macro definition!");
-      assert(
-          !Ident__VA_OPT__ ||
-          (Ident__VA_OPT__->isPoisoned() && "__VA_OPT__ should be poisoned!"));
+      assert(Ident__VA_OPT__->isPoisoned() && "__VA_OPT__ should be poisoned!");
     }
 
     /// Client code should call this function just before the Preprocessor is
     /// about to Lex tokens from the definition of a variadic (ISO C/C++) macro.
     void enterScope() {
       Ident__VA_ARGS__->setIsPoisoned(false);
-      if (Ident__VA_OPT__)
-        Ident__VA_OPT__->setIsPoisoned(false);
+      Ident__VA_OPT__->setIsPoisoned(false);
     }
 
     /// Client code should call this function as soon as the Preprocessor has
@@ -58,8 +55,7 @@ namespace clang {
     /// (might be explicitly called, and then reinvoked via the destructor).
     void exitScope() {
       Ident__VA_ARGS__->setIsPoisoned(true);
-      if (Ident__VA_OPT__)
-        Ident__VA_OPT__->setIsPoisoned(true);
+      Ident__VA_OPT__->setIsPoisoned(true);
     }
 
     ~VariadicMacroScopeGuard() { exitScope(); }
@@ -113,6 +109,8 @@ namespace clang {
       UnmatchedOpeningParens.push_back(LParenLoc);
     }
 
+    /// Are we at the top level within the __VA_OPT__?
+    bool isAtTopLevel() const { return UnmatchedOpeningParens.size() == 1; }
   };
 
   /// A class for tracking whether we're inside a VA_OPT during a
@@ -135,7 +133,8 @@ namespace clang {
 
     unsigned StringifyBefore : 1;
     unsigned CharifyBefore : 1;
-
+    unsigned BeginsWithPlaceholder : 1;
+    unsigned EndsWithPlaceholder : 1;
 
     bool hasStringifyBefore() const {
       assert(!isReset() &&
@@ -151,7 +150,8 @@ namespace clang {
   public:
     VAOptExpansionContext(Preprocessor &PP)
         : VAOptDefinitionContext(PP), LeadingSpaceForStringifiedToken(false),
-          StringifyBefore(false), CharifyBefore(false) {
+          StringifyBefore(false), CharifyBefore(false),
+          BeginsWithPlaceholder(false), EndsWithPlaceholder(false) {
       SyntheticEOFToken.startToken();
       SyntheticEOFToken.setKind(tok::eof);
     }
@@ -162,6 +162,8 @@ namespace clang {
       LeadingSpaceForStringifiedToken = false;
       StringifyBefore = false;
       CharifyBefore = false;
+      BeginsWithPlaceholder = false;
+      EndsWithPlaceholder = false;
     }
 
     const Token &getEOFTok() const { return SyntheticEOFToken; }
@@ -174,7 +176,23 @@ namespace clang {
       LeadingSpaceForStringifiedToken = HasLeadingSpace;
     }
 
+    void hasPlaceholderAfterHashhashAtStart() { BeginsWithPlaceholder = true; }
+    void hasPlaceholderBeforeRParen() {
+      if (isAtTopLevel())
+        EndsWithPlaceholder = true;
+    }
 
+
+    bool beginsWithPlaceholder() const {
+      assert(!isReset() &&
+             "Must only be called if the state has not been reset");
+      return BeginsWithPlaceholder;
+    }
+    bool endsWithPlaceholder() const {
+      assert(!isReset() &&
+             "Must only be called if the state has not been reset");
+      return EndsWithPlaceholder;
+    }
 
     bool hasCharifyBefore() const {
       assert(!isReset() &&

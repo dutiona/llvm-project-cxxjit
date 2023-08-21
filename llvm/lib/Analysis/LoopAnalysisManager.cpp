@@ -7,22 +7,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/Analysis/BasicAliasAnalysis.h"
-#include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Analysis/ScalarEvolutionAliasAnalysis.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/PassManagerImpl.h"
+#include <optional>
 
 using namespace llvm;
 
 namespace llvm {
-/// Enables memory ssa as a dependency for loop passes in legacy pass manager.
-cl::opt<bool> EnableMSSALoopDependency(
-    "enable-mssa-loop-dependency", cl::Hidden, cl::init(false),
-    cl::desc("Enable MemorySSA dependency for loop pass manager"));
-
 // Explicit template instantiations and specialization definitions for core
 // template typedefs.
 template class AllAnalysesOn<Loop>;
@@ -51,7 +46,7 @@ bool LoopAnalysisManagerFunctionProxy::Result::invalidate(
   // invalidation logic below to act on that.
   auto PAC = PA.getChecker<LoopAnalysisManagerFunctionProxy>();
   bool invalidateMemorySSAAnalysis = false;
-  if (EnableMSSALoopDependency)
+  if (MSSAUsed)
     invalidateMemorySSAAnalysis = Inv.invalidate<MemorySSAAnalysis>(F, PA);
   if (!(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>()) ||
       Inv.invalidate<AAManager>(F, PA) ||
@@ -96,7 +91,7 @@ bool LoopAnalysisManagerFunctionProxy::Result::invalidate(
   // cache and so we walk the preorder list in reverse to form a valid
   // postorder.
   for (Loop *L : reverse(PreOrderLoops)) {
-    Optional<PreservedAnalyses> InnerPA;
+    std::optional<PreservedAnalyses> InnerPA;
 
     // Check to see whether the preserved set needs to be adjusted based on
     // function-level analysis invalidation triggering deferred invalidation
@@ -146,13 +141,5 @@ PreservedAnalyses llvm::getLoopPassPreservedAnalyses() {
   PA.preserve<LoopAnalysis>();
   PA.preserve<LoopAnalysisManagerFunctionProxy>();
   PA.preserve<ScalarEvolutionAnalysis>();
-  if (EnableMSSALoopDependency)
-    PA.preserve<MemorySSAAnalysis>();
-  // FIXME: What we really want to do here is preserve an AA category, but that
-  // concept doesn't exist yet.
-  PA.preserve<AAManager>();
-  PA.preserve<BasicAA>();
-  PA.preserve<GlobalsAA>();
-  PA.preserve<SCEVAA>();
   return PA;
 }

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_LIB_PARSE_RAIIOBJECTSFORPARSER_H
-#define LLVM_CLANG_LIB_PARSE_RAIIOBJECTSFORPARSER_H
+#ifndef LLVM_CLANG_PARSE_RAIIOBJECTSFORPARSER_H
+#define LLVM_CLANG_PARSE_RAIIOBJECTSFORPARSER_H
 
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/Parser.h"
@@ -201,9 +201,11 @@ namespace clang {
     ParsingDeclRAIIObject ParsingRAII;
 
   public:
-    ParsingDeclarator(Parser &P, const ParsingDeclSpec &DS, DeclaratorContext C)
-      : Declarator(DS, C), ParsingRAII(P, &DS.getDelayedDiagnosticPool()) {
-    }
+    ParsingDeclarator(Parser &P, const ParsingDeclSpec &DS,
+                      const ParsedAttributes &DeclarationAttrs,
+                      DeclaratorContext C)
+        : Declarator(DS, DeclarationAttrs, C),
+          ParsingRAII(P, &DS.getDelayedDiagnosticPool()) {}
 
     const ParsingDeclSpec &getDeclSpec() const {
       return static_cast<const ParsingDeclSpec&>(Declarator::getDeclSpec());
@@ -228,9 +230,10 @@ namespace clang {
     ParsingDeclRAIIObject ParsingRAII;
 
   public:
-    ParsingFieldDeclarator(Parser &P, const ParsingDeclSpec &DS)
-      : FieldDeclarator(DS), ParsingRAII(P, &DS.getDelayedDiagnosticPool()) {
-    }
+    ParsingFieldDeclarator(Parser &P, const ParsingDeclSpec &DS,
+                           const ParsedAttributes &DeclarationAttrs)
+        : FieldDeclarator(DS, DeclarationAttrs),
+          ParsingRAII(P, &DS.getDelayedDiagnosticPool()) {}
 
     const ParsingDeclSpec &getDeclSpec() const {
       return static_cast<const ParsingDeclSpec&>(D.getDeclSpec());
@@ -287,6 +290,25 @@ namespace clang {
     }
   };
 
+  /// Activates OpenMP parsing mode to preseve OpenMP specific annotation
+  /// tokens.
+  class ParsingOpenMPDirectiveRAII {
+    Parser &P;
+    bool OldVal;
+
+  public:
+    ParsingOpenMPDirectiveRAII(Parser &P, bool Value = true)
+        : P(P), OldVal(P.OpenMPDirectiveParsing) {
+      P.OpenMPDirectiveParsing = Value;
+    }
+
+    /// This can be used to restore the state early, before the dtor
+    /// is run.
+    void restore() { P.OpenMPDirectiveParsing = OldVal; }
+
+    ~ParsingOpenMPDirectiveRAII() { restore(); }
+  };
+
   /// RAII object that makes '>' behave either as an operator
   /// or as the closing angle bracket for a template argument list.
   class GreaterThanIsOperatorScope {
@@ -317,6 +339,19 @@ namespace clang {
     ~InMessageExpressionRAIIObject() {
       InMessageExpression = OldValue;
     }
+  };
+
+  class OffsetOfStateRAIIObject {
+    Sema::OffsetOfKind &OffsetOfState;
+    Sema::OffsetOfKind OldValue;
+
+  public:
+    OffsetOfStateRAIIObject(Parser &P, Sema::OffsetOfKind Value)
+        : OffsetOfState(P.OffsetOfState), OldValue(P.OffsetOfState) {
+      OffsetOfState = Value;
+    }
+
+    ~OffsetOfStateRAIIObject() { OffsetOfState = OldValue; }
   };
 
   /// RAII object that makes sure paren/bracket/brace count is correct
@@ -439,26 +474,6 @@ namespace clang {
       return diagnoseMissingClose();
     }
     void skipToEnd();
-  };
-
-  /// RAIIObject to destroy the contents of a SmallVector of
-  /// TemplateIdAnnotation pointers and clear the vector.
-  class DestroyTemplateIdAnnotationsRAIIObj {
-    SmallVectorImpl<TemplateIdAnnotation *> &Container;
-
-  public:
-    DestroyTemplateIdAnnotationsRAIIObj(
-        SmallVectorImpl<TemplateIdAnnotation *> &Container)
-        : Container(Container) {}
-
-    ~DestroyTemplateIdAnnotationsRAIIObj() {
-      for (SmallVectorImpl<TemplateIdAnnotation *>::iterator I =
-               Container.begin(),
-             E = Container.end();
-           I != E; ++I)
-        (*I)->Destroy();
-      Container.clear();
-    }
   };
 } // end namespace clang
 

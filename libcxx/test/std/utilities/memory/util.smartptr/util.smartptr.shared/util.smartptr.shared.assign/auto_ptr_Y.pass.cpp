@@ -9,13 +9,17 @@
 // <memory>
 
 // shared_ptr
-// REQUIRES: c++98 || c++03 || c++11 || c++14
 
 // template<class Y> shared_ptr& operator=(auto_ptr<Y>&& r);
+
+// REQUIRES: c++03 || c++11 || c++14
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 #include <memory>
 #include <type_traits>
 #include <cassert>
+
+#include "test_macros.h"
 
 struct B
 {
@@ -34,7 +38,7 @@ struct A
     static int count;
 
     A() {++count;}
-    A(const A&) {++count;}
+    A(const A& other) : B(other) {++count;}
     ~A() {--count;}
 };
 

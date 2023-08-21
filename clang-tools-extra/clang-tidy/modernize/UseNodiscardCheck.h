@@ -9,13 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USENODISCARDCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USENODISCARDCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
-/// \brief Add ``[[nodiscard]]`` to non-void const-member functions with no
+/// Add ``[[nodiscard]]`` to non-void const-member functions with no
 /// arguments or pass-by-value or pass by const-reference arguments.
 /// \code
 ///    bool empty() const;
@@ -30,20 +28,19 @@ namespace modernize {
 /// \endcode
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/modernize-use-nodiscard.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/modernize/use-nodiscard.html
 class UseNodiscardCheck : public ClangTidyCheck {
 public:
   UseNodiscardCheck(StringRef Name, ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
 private:
-  const std::string NoDiscardMacro;
+  const StringRef NoDiscardMacro;
 };
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USENODISCARDCHECK_H

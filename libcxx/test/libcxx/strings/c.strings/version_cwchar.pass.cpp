@@ -6,9 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+// XFAIL: no-wide-characters
+
 // <cwchar>
 
 #include <cwchar>
+
+#include "test_macros.h"
 
 #ifndef _LIBCPP_VERSION
 #error _LIBCPP_VERSION not defined

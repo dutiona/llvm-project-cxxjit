@@ -49,33 +49,28 @@ struct ChunkMetadata {
   u32 stack_trace_id;
 };
 
-#if defined(__mips64) || defined(__aarch64__) || defined(__i386__) || \
-    defined(__arm__)
-static const uptr kRegionSizeLog = 20;
-static const uptr kNumRegions = SANITIZER_MMAP_RANGE_SIZE >> kRegionSizeLog;
-template <typename AddressSpaceView>
-using ByteMapASVT =
-    TwoLevelByteMap<(kNumRegions >> 12), 1 << 12, AddressSpaceView>;
-
+#if !SANITIZER_CAN_USE_ALLOCATOR64
 template <typename AddressSpaceViewTy>
 struct AP32 {
   static const uptr kSpaceBeg = 0;
   static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
   static const uptr kMetadataSize = sizeof(ChunkMetadata);
   typedef __sanitizer::CompactSizeClassMap SizeClassMap;
-  static const uptr kRegionSizeLog = __lsan::kRegionSizeLog;
+  static const uptr kRegionSizeLog = 20;
   using AddressSpaceView = AddressSpaceViewTy;
-  using ByteMap = __lsan::ByteMapASVT<AddressSpaceView>;
   typedef NoOpMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
 };
 template <typename AddressSpaceView>
 using PrimaryAllocatorASVT = SizeClassAllocator32<AP32<AddressSpaceView>>;
 using PrimaryAllocator = PrimaryAllocatorASVT<LocalAddressSpaceView>;
-#elif defined(__x86_64__) || defined(__powerpc64__)
-# if defined(__powerpc64__)
-const uptr kAllocatorSpace = 0xa0000000000ULL;
-const uptr kAllocatorSize  = 0x20000000000ULL;  // 2T.
+#else
+# if SANITIZER_FUCHSIA || defined(__powerpc64__)
+const uptr kAllocatorSpace = ~(uptr)0;
+const uptr kAllocatorSize  =  0x40000000000ULL;  // 4T.
+#elif defined(__s390x__)
+const uptr kAllocatorSpace = 0x40000000000ULL;
+const uptr kAllocatorSize = 0x40000000000ULL;  // 4T.
 # else
 const uptr kAllocatorSpace = 0x600000000000ULL;
 const uptr kAllocatorSize  = 0x40000000000ULL;  // 4T.
@@ -97,24 +92,11 @@ using PrimaryAllocator = PrimaryAllocatorASVT<LocalAddressSpaceView>;
 #endif
 
 template <typename AddressSpaceView>
-using AllocatorCacheASVT =
-    SizeClassAllocatorLocalCache<PrimaryAllocatorASVT<AddressSpaceView>>;
-using AllocatorCache = AllocatorCacheASVT<LocalAddressSpaceView>;
-
-template <typename AddressSpaceView>
-using SecondaryAllocatorASVT =
-    LargeMmapAllocator<NoOpMapUnmapCallback, DefaultLargeMmapAllocatorPtrArray,
-                       AddressSpaceView>;
-
-template <typename AddressSpaceView>
-using AllocatorASVT =
-    CombinedAllocator<PrimaryAllocatorASVT<AddressSpaceView>,
-                      AllocatorCacheASVT<AddressSpaceView>,
-                      SecondaryAllocatorASVT<AddressSpaceView>,
-                      AddressSpaceView>;
+using AllocatorASVT = CombinedAllocator<PrimaryAllocatorASVT<AddressSpaceView>>;
 using Allocator = AllocatorASVT<LocalAddressSpaceView>;
+using AllocatorCache = Allocator::AllocatorCache;
 
-AllocatorCache *GetAllocatorCache();
+Allocator::AllocatorCache *GetAllocatorCache();
 
 int lsan_posix_memalign(void **memptr, uptr alignment, uptr size,
                         const StackTrace &stack);
@@ -123,6 +105,8 @@ void *lsan_memalign(uptr alignment, uptr size, const StackTrace &stack);
 void *lsan_malloc(uptr size, const StackTrace &stack);
 void lsan_free(void *p);
 void *lsan_realloc(void *p, uptr size, const StackTrace &stack);
+void *lsan_reallocarray(void *p, uptr nmemb, uptr size,
+                        const StackTrace &stack);
 void *lsan_calloc(uptr nmemb, uptr size, const StackTrace &stack);
 void *lsan_valloc(uptr size, const StackTrace &stack);
 void *lsan_pvalloc(uptr size, const StackTrace &stack);

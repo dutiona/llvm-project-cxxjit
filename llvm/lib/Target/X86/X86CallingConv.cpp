@@ -60,7 +60,7 @@ static bool CC_X86_32_RegCall_Assign2Regs(unsigned &ValNo, MVT &ValVT,
     State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, Reg, LocVT, LocInfo));
   }
 
-  // Successful in allocating regsiters - stop scanning next rules.
+  // Successful in allocating registers - stop scanning next rules.
   return true;
 }
 
@@ -68,23 +68,23 @@ static ArrayRef<MCPhysReg> CC_X86_VectorCallGetSSEs(const MVT &ValVT) {
   if (ValVT.is512BitVector()) {
     static const MCPhysReg RegListZMM[] = {X86::ZMM0, X86::ZMM1, X86::ZMM2,
                                            X86::ZMM3, X86::ZMM4, X86::ZMM5};
-    return makeArrayRef(std::begin(RegListZMM), std::end(RegListZMM));
+    return ArrayRef(std::begin(RegListZMM), std::end(RegListZMM));
   }
 
   if (ValVT.is256BitVector()) {
     static const MCPhysReg RegListYMM[] = {X86::YMM0, X86::YMM1, X86::YMM2,
                                            X86::YMM3, X86::YMM4, X86::YMM5};
-    return makeArrayRef(std::begin(RegListYMM), std::end(RegListYMM));
+    return ArrayRef(std::begin(RegListYMM), std::end(RegListYMM));
   }
 
   static const MCPhysReg RegListXMM[] = {X86::XMM0, X86::XMM1, X86::XMM2,
                                          X86::XMM3, X86::XMM4, X86::XMM5};
-  return makeArrayRef(std::begin(RegListXMM), std::end(RegListXMM));
+  return ArrayRef(std::begin(RegListXMM), std::end(RegListXMM));
 }
 
 static ArrayRef<MCPhysReg> CC_X86_64_VectorCallGetGPRs() {
   static const MCPhysReg RegListGPR[] = {X86::RCX, X86::RDX, X86::R8, X86::R9};
-  return makeArrayRef(std::begin(RegListGPR), std::end(RegListGPR));
+  return ArrayRef(std::begin(RegListGPR), std::end(RegListGPR));
 }
 
 static bool CC_X86_VectorCallAssignRegister(unsigned &ValNo, MVT &ValVT,
@@ -162,8 +162,11 @@ static bool CC_X86_64_VectorCall(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
       // created on top of the basic 32 bytes of win64.
       // It can happen if the fifth or sixth argument is vector type or HVA.
       // At that case for each argument a shadow stack of 8 bytes is allocated.
-      if (Reg == X86::XMM4 || Reg == X86::XMM5)
-        State.AllocateStack(8, 8);
+      const TargetRegisterInfo *TRI =
+          State.getMachineFunction().getSubtarget().getRegisterInfo();
+      if (TRI->regsOverlap(Reg, X86::XMM4) ||
+          TRI->regsOverlap(Reg, X86::XMM5))
+        State.AllocateStack(8, Align(8));
 
       if (!ArgFlags.isHva()) {
         State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
@@ -237,7 +240,7 @@ static bool CC_X86_32_MCUInReg(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   // This is similar to CCAssignToReg<[EAX, EDX, ECX]>, but makes sure
   // not to split i64 and double between a register and stack
   static const MCPhysReg RegList[] = {X86::EAX, X86::EDX, X86::ECX};
-  static const unsigned NumRegs = sizeof(RegList) / sizeof(RegList[0]);
+  static const unsigned NumRegs = std::size(RegList);
 
   SmallVectorImpl<CCValAssign> &PendingMembers = State.getPendingLocs();
 
@@ -278,13 +281,63 @@ static bool CC_X86_32_MCUInReg(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
     if (UseRegs)
       It.convertToReg(State.AllocateReg(RegList[FirstFree++]));
     else
-      It.convertToMem(State.AllocateStack(4, 4));
+      It.convertToMem(State.AllocateStack(4, Align(4)));
     State.addLoc(It);
   }
 
   PendingMembers.clear();
 
   return true;
+}
+
+/// X86 interrupt handlers can only take one or two stack arguments, but if
+/// there are two arguments, they are in the opposite order from the standard
+/// convention. Therefore, we have to look at the argument count up front before
+/// allocating stack for each argument.
+static bool CC_X86_Intr(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                        CCValAssign::LocInfo &LocInfo,
+                        ISD::ArgFlagsTy &ArgFlags, CCState &State) {
+  const MachineFunction &MF = State.getMachineFunction();
+  size_t ArgCount = State.getMachineFunction().getFunction().arg_size();
+  bool Is64Bit = MF.getSubtarget<X86Subtarget>().is64Bit();
+  unsigned SlotSize = Is64Bit ? 8 : 4;
+  unsigned Offset;
+  if (ArgCount == 1 && ValNo == 0) {
+    // If we have one argument, the argument is five stack slots big, at fixed
+    // offset zero.
+    Offset = State.AllocateStack(5 * SlotSize, Align(4));
+  } else if (ArgCount == 2 && ValNo == 0) {
+    // If we have two arguments, the stack slot is *after* the error code
+    // argument. Pretend it doesn't consume stack space, and account for it when
+    // we assign the second argument.
+    Offset = SlotSize;
+  } else if (ArgCount == 2 && ValNo == 1) {
+    // If this is the second of two arguments, it must be the error code. It
+    // appears first on the stack, and is then followed by the five slot
+    // interrupt struct.
+    Offset = 0;
+    (void)State.AllocateStack(6 * SlotSize, Align(4));
+  } else {
+    report_fatal_error("unsupported x86 interrupt prototype");
+  }
+
+  // FIXME: This should be accounted for in
+  // X86FrameLowering::getFrameIndexReference, not here.
+  if (Is64Bit && ArgCount == 2)
+    Offset += SlotSize;
+
+  State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
+  return true;
+}
+
+static bool CC_X86_64_Pointer(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                              CCValAssign::LocInfo &LocInfo,
+                              ISD::ArgFlagsTy &ArgFlags, CCState &State) {
+  if (LocVT != MVT::i64) {
+    LocVT = MVT::i64;
+    LocInfo = CCValAssign::ZExt;
+  }
+  return false;
 }
 
 // Provides entry points of CC_X86 and RetCC_X86.

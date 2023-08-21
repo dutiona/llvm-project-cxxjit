@@ -11,20 +11,22 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "WebAssemblyMCTargetDesc.h"
-#include "InstPrinter/WebAssemblyInstPrinter.h"
-#include "WebAssemblyMCAsmInfo.h"
-#include "WebAssemblyTargetStreamer.h"
+#include "MCTargetDesc/WebAssemblyMCTargetDesc.h"
+#include "MCTargetDesc/WebAssemblyInstPrinter.h"
+#include "MCTargetDesc/WebAssemblyMCAsmInfo.h"
+#include "MCTargetDesc/WebAssemblyTargetStreamer.h"
+#include "TargetInfo/WebAssemblyTargetInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "wasm-mc-target-desc"
 
 #define GET_INSTRINFO_MC_DESC
+#define ENABLE_INSTR_PREDICATE_VERIFIER
 #include "WebAssemblyGenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_MC_DESC
@@ -34,8 +36,9 @@ using namespace llvm;
 #include "WebAssemblyGenRegisterInfo.inc"
 
 static MCAsmInfo *createMCAsmInfo(const MCRegisterInfo & /*MRI*/,
-                                  const Triple &TT) {
-  return new WebAssemblyMCAsmInfo(TT);
+                                  const Triple &TT,
+                                  const MCTargetOptions &Options) {
+  return new WebAssemblyMCAsmInfo(TT, Options);
 }
 
 static MCInstrInfo *createMCInstrInfo() {
@@ -60,7 +63,6 @@ static MCInstPrinter *createMCInstPrinter(const Triple & /*T*/,
 }
 
 static MCCodeEmitter *createCodeEmitter(const MCInstrInfo &MCII,
-                                        const MCRegisterInfo & /*MRI*/,
                                         MCContext &Ctx) {
   return createWebAssemblyMCCodeEmitter(MCII);
 }
@@ -74,7 +76,7 @@ static MCAsmBackend *createAsmBackend(const Target & /*T*/,
 
 static MCSubtargetInfo *createMCSubtargetInfo(const Triple &TT, StringRef CPU,
                                               StringRef FS) {
-  return createWebAssemblyMCSubtargetInfoImpl(TT, CPU, FS);
+  return createWebAssemblyMCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
 }
 
 static MCTargetStreamer *
@@ -94,7 +96,7 @@ static MCTargetStreamer *createNullTargetStreamer(MCStreamer &S) {
 }
 
 // Force static initialization.
-extern "C" void LLVMInitializeWebAssemblyTargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeWebAssemblyTargetMC() {
   for (Target *T :
        {&getTheWebAssemblyTarget32(), &getTheWebAssemblyTarget64()}) {
     // Register the MC asm info.
@@ -125,29 +127,5 @@ extern "C" void LLVMInitializeWebAssemblyTargetMC() {
     TargetRegistry::RegisterAsmTargetStreamer(*T, createAsmTargetStreamer);
     // Register the null target streamer.
     TargetRegistry::RegisterNullTargetStreamer(*T, createNullTargetStreamer);
-  }
-}
-
-wasm::ValType WebAssembly::toValType(const MVT &Ty) {
-  switch (Ty.SimpleTy) {
-  case MVT::i32:
-    return wasm::ValType::I32;
-  case MVT::i64:
-    return wasm::ValType::I64;
-  case MVT::f32:
-    return wasm::ValType::F32;
-  case MVT::f64:
-    return wasm::ValType::F64;
-  case MVT::v16i8:
-  case MVT::v8i16:
-  case MVT::v4i32:
-  case MVT::v2i64:
-  case MVT::v4f32:
-  case MVT::v2f64:
-    return wasm::ValType::V128;
-  case MVT::ExceptRef:
-    return wasm::ValType::EXCEPT_REF;
-  default:
-    llvm_unreachable("unexpected type");
   }
 }

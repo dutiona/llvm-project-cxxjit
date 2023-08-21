@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBFileSpec_h_
-#define LLDB_SBFileSpec_h_
+#ifndef LLDB_API_SBFILESPEC_H
+#define LLDB_API_SBFILESPEC_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -27,6 +27,12 @@ public:
   ~SBFileSpec();
 
   const SBFileSpec &operator=(const lldb::SBFileSpec &rhs);
+
+  explicit operator bool() const;
+
+  bool operator==(const SBFileSpec &rhs) const;
+
+  bool operator!=(const SBFileSpec &rhs) const;
 
   bool IsValid() const;
 
@@ -58,7 +64,6 @@ private:
   friend class SBDeclaration;
   friend class SBFileSpecList;
   friend class SBHostOS;
-  friend class SBInitializerOptions;
   friend class SBLaunchInfo;
   friend class SBLineEntry;
   friend class SBModule;
@@ -69,6 +74,7 @@ private:
   friend class SBSourceManager;
   friend class SBTarget;
   friend class SBThread;
+  friend class SBTrace;
 
   SBFileSpec(const lldb_private::FileSpec &fspec);
 
@@ -87,4 +93,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBFileSpec_h_
+#endif // LLDB_API_SBFILESPEC_H

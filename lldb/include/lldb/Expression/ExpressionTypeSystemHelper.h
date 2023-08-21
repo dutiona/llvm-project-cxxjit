@@ -7,15 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ExpressionTypeSystemHelper_h
-#define ExpressionTypeSystemHelper_h
+#ifndef LLDB_EXPRESSION_EXPRESSIONTYPESYSTEMHELPER_H
+#define LLDB_EXPRESSION_EXPRESSIONTYPESYSTEMHELPER_H
 
 #include "llvm/Support/Casting.h"
 
 namespace lldb_private {
 
-//----------------------------------------------------------------------
-/// @class ExpressionTypeSystemHelper ExpressionTypeSystemHelper.h
+/// \class ExpressionTypeSystemHelper ExpressionTypeSystemHelper.h
 /// "lldb/Expression/ExpressionTypeSystemHelper.h"
 /// A helper object that the Expression can pass to its ExpressionParser
 /// to provide generic information that
@@ -23,7 +22,6 @@ namespace lldb_private {
 /// dyn_cast so that the expression parser can cast it back to the requisite
 /// specific type.
 ///
-//----------------------------------------------------------------------
 
 class ExpressionTypeSystemHelper {
 public:
@@ -38,7 +36,7 @@ public:
 
   ExpressionTypeSystemHelper(LLVMCastKind kind) : m_kind(kind) {}
 
-  ~ExpressionTypeSystemHelper() {}
+  ~ExpressionTypeSystemHelper() = default;
 
 protected:
   LLVMCastKind m_kind;
@@ -46,4 +44,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif /* ExpressionTypeSystemHelper_h */
+#endif // LLDB_EXPRESSION_EXPRESSIONTYPESYSTEMHELPER_H

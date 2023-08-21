@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// UNSUPPORTED: c++98, c++03, c++11, c++14, c++17
+// UNSUPPORTED: c++03, c++11, c++14, c++17
 
 // <string>
 
@@ -16,9 +16,11 @@
 #include <string>
 #include <cassert>
 
+#include "test_macros.h"
+
 int main(int, char**)
 {
-#if defined(__cpp_lib_char8_t) && __cpp_lib_char8_t >= 201811L
+#ifndef TEST_HAS_NO_CHAR8_T
     std::char_traits<char8_t>::int_type i = std::char_traits<char8_t>::eof();
     ((void)i); // Prevent unused warning
 #endif

@@ -6,16 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_OptionGroupString_h_
-#define liblldb_OptionGroupString_h_
+#ifndef LLDB_INTERPRETER_OPTIONGROUPSTRING_H
+#define LLDB_INTERPRETER_OPTIONGROUPSTRING_H
 
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Interpreter/Options.h"
 
 namespace lldb_private {
-//-------------------------------------------------------------------------
 // OptionGroupString
-//-------------------------------------------------------------------------
 
 class OptionGroupString : public OptionGroup {
 public:
@@ -24,7 +22,7 @@ public:
                     lldb::CommandArgumentType argument_type,
                     const char *usage_text, const char *default_value);
 
-  ~OptionGroupString() override;
+  ~OptionGroupString() override = default;
 
   llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
     return llvm::ArrayRef<OptionDefinition>(&m_option_definition, 1);
@@ -32,7 +30,6 @@ public:
 
   Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_value,
                         ExecutionContext *execution_context) override;
-  Status SetOptionValue(uint32_t, const char *, ExecutionContext *) = delete;
 
   void OptionParsingStarting(ExecutionContext *execution_context) override;
 
@@ -47,4 +44,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_OptionGroupString_h_
+#endif // LLDB_INTERPRETER_OPTIONGROUPSTRING_H

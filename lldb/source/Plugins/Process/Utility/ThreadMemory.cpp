@@ -1,5 +1,4 @@
-//===-- ThreadMemory.cpp ----------------------------------------------*- C++
-//-*-===//
+//===-- ThreadMemory.cpp --------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -24,13 +23,15 @@ using namespace lldb_private;
 ThreadMemory::ThreadMemory(Process &process, tid_t tid,
                            const ValueObjectSP &thread_info_valobj_sp)
     : Thread(process, tid), m_backing_thread_sp(),
-      m_thread_info_valobj_sp(thread_info_valobj_sp), m_name(), m_queue() {}
+      m_thread_info_valobj_sp(thread_info_valobj_sp), m_name(), m_queue(),
+      m_register_data_addr(LLDB_INVALID_ADDRESS) {}
 
 ThreadMemory::ThreadMemory(Process &process, lldb::tid_t tid,
                            llvm::StringRef name, llvm::StringRef queue,
                            lldb::addr_t register_data_addr)
     : Thread(process, tid), m_backing_thread_sp(), m_thread_info_valobj_sp(),
-      m_name(name), m_queue(queue), m_register_data_addr(register_data_addr) {}
+      m_name(std::string(name)), m_queue(std::string(queue)),
+      m_register_data_addr(register_data_addr) {}
 
 ThreadMemory::~ThreadMemory() { DestroyThread(); }
 
@@ -54,20 +55,14 @@ RegisterContextSP ThreadMemory::GetRegisterContext() {
 
 RegisterContextSP
 ThreadMemory::CreateRegisterContextForFrame(StackFrame *frame) {
-  RegisterContextSP reg_ctx_sp;
   uint32_t concrete_frame_idx = 0;
 
   if (frame)
     concrete_frame_idx = frame->GetConcreteFrameIndex();
 
-  if (concrete_frame_idx == 0) {
-    reg_ctx_sp = GetRegisterContext();
-  } else {
-    Unwind *unwinder = GetUnwinder();
-    if (unwinder != nullptr)
-      reg_ctx_sp = unwinder->CreateRegisterContextForFrame(frame);
-  }
-  return reg_ctx_sp;
+  if (concrete_frame_idx == 0)
+    return GetRegisterContext();
+  return GetUnwinder().CreateRegisterContextForFrame(frame);
 }
 
 bool ThreadMemory::CalculateStopInfo() {

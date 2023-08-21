@@ -8,16 +8,20 @@
 
 // <locale>
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 // wbuffer_convert<Codecvt, Elem, Tr>
 
 // int_type pbackfail(int_type c = traits::eof());
 
 // This test is not entirely portable
 
+// XFAIL: no-wide-characters
+
 #include <locale>
-#include <codecvt>
-#include <fstream>
 #include <cassert>
+#include <codecvt>
+#include <sstream>
 
 struct test_buf
     : public std::wbuffer_convert<std::codecvt_utf8<wchar_t> >
@@ -39,16 +43,17 @@ struct test_buf
 
 int main(int, char**)
 {
+    std::string const s = "123456789";
     {
-        std::ifstream bs("underflow.dat");
-        test_buf f(bs.rdbuf());
+        std::istringstream in(s);
+        test_buf f(in.rdbuf());
         assert(f.sbumpc() == L'1');
         assert(f.sgetc() == L'2');
         assert(f.pbackfail(L'a') == test_buf::traits_type::eof());
     }
     {
-        std::fstream bs("underflow.dat");
-        test_buf f(bs.rdbuf());
+        std::istringstream in(s);
+        test_buf f(in.rdbuf());
         assert(f.sbumpc() == L'1');
         assert(f.sgetc() == L'2');
         assert(f.pbackfail(L'a') == test_buf::traits_type::eof());

@@ -10,19 +10,21 @@
 define i8 @out8_constmask(i8 %x, i8 %y) {
 ; CHECK-NOBMI-LABEL: out8_constmask:
 ; CHECK-NOBMI:       # %bb.0:
-; CHECK-NOBMI-NEXT:    movl %esi, %eax
+; CHECK-NOBMI-NEXT:    # kill: def $esi killed $esi def $rsi
+; CHECK-NOBMI-NEXT:    # kill: def $edi killed $edi def $rdi
 ; CHECK-NOBMI-NEXT:    andb $85, %dil
-; CHECK-NOBMI-NEXT:    andb $-86, %al
-; CHECK-NOBMI-NEXT:    orb %dil, %al
+; CHECK-NOBMI-NEXT:    andb $-86, %sil
+; CHECK-NOBMI-NEXT:    leal (%rsi,%rdi), %eax
 ; CHECK-NOBMI-NEXT:    # kill: def $al killed $al killed $eax
 ; CHECK-NOBMI-NEXT:    retq
 ;
 ; CHECK-BMI-LABEL: out8_constmask:
 ; CHECK-BMI:       # %bb.0:
-; CHECK-BMI-NEXT:    movl %esi, %eax
+; CHECK-BMI-NEXT:    # kill: def $esi killed $esi def $rsi
+; CHECK-BMI-NEXT:    # kill: def $edi killed $edi def $rdi
 ; CHECK-BMI-NEXT:    andb $85, %dil
-; CHECK-BMI-NEXT:    andb $-86, %al
-; CHECK-BMI-NEXT:    orb %dil, %al
+; CHECK-BMI-NEXT:    andb $-86, %sil
+; CHECK-BMI-NEXT:    leal (%rsi,%rdi), %eax
 ; CHECK-BMI-NEXT:    # kill: def $al killed $al killed $eax
 ; CHECK-BMI-NEXT:    retq
   %mx = and i8 %x, 85
@@ -344,7 +346,7 @@ define i32 @in_multiuse_A_constmask(i32 %x, i32 %y, i32 %z) nounwind {
 ; CHECK-NOBMI-NEXT:    xorl %esi, %ebp
 ; CHECK-NOBMI-NEXT:    andl $1431655765, %ebp # imm = 0x55555555
 ; CHECK-NOBMI-NEXT:    movl %ebp, %edi
-; CHECK-NOBMI-NEXT:    callq use32
+; CHECK-NOBMI-NEXT:    callq use32@PLT
 ; CHECK-NOBMI-NEXT:    xorl %ebx, %ebp
 ; CHECK-NOBMI-NEXT:    movl %ebp, %eax
 ; CHECK-NOBMI-NEXT:    addq $8, %rsp
@@ -362,7 +364,7 @@ define i32 @in_multiuse_A_constmask(i32 %x, i32 %y, i32 %z) nounwind {
 ; CHECK-BMI-NEXT:    xorl %esi, %ebp
 ; CHECK-BMI-NEXT:    andl $1431655765, %ebp # imm = 0x55555555
 ; CHECK-BMI-NEXT:    movl %ebp, %edi
-; CHECK-BMI-NEXT:    callq use32
+; CHECK-BMI-NEXT:    callq use32@PLT
 ; CHECK-BMI-NEXT:    xorl %ebx, %ebp
 ; CHECK-BMI-NEXT:    movl %ebp, %eax
 ; CHECK-BMI-NEXT:    addq $8, %rsp
@@ -386,7 +388,7 @@ define i32 @in_multiuse_B_constmask(i32 %x, i32 %y, i32 %z) nounwind {
 ; CHECK-NOBMI-NEXT:    xorl %esi, %edi
 ; CHECK-NOBMI-NEXT:    movl %edi, %ebp
 ; CHECK-NOBMI-NEXT:    andl $1431655765, %ebp # imm = 0x55555555
-; CHECK-NOBMI-NEXT:    callq use32
+; CHECK-NOBMI-NEXT:    callq use32@PLT
 ; CHECK-NOBMI-NEXT:    xorl %ebx, %ebp
 ; CHECK-NOBMI-NEXT:    movl %ebp, %eax
 ; CHECK-NOBMI-NEXT:    addq $8, %rsp
@@ -403,7 +405,7 @@ define i32 @in_multiuse_B_constmask(i32 %x, i32 %y, i32 %z) nounwind {
 ; CHECK-BMI-NEXT:    xorl %esi, %edi
 ; CHECK-BMI-NEXT:    movl %edi, %ebp
 ; CHECK-BMI-NEXT:    andl $1431655765, %ebp # imm = 0x55555555
-; CHECK-BMI-NEXT:    callq use32
+; CHECK-BMI-NEXT:    callq use32@PLT
 ; CHECK-BMI-NEXT:    xorl %ebx, %ebp
 ; CHECK-BMI-NEXT:    movl %ebp, %eax
 ; CHECK-BMI-NEXT:    addq $8, %rsp

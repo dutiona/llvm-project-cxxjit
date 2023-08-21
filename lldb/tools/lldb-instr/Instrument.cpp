@@ -22,131 +22,6 @@ using namespace clang::tooling;
 
 static llvm::cl::OptionCategory InstrCategory("LLDB Instrumentation Generator");
 
-/// Get the macro name for recording method calls.
-///
-/// LLDB_RECORD_METHOD
-/// LLDB_RECORD_METHOD_CONST
-/// LLDB_RECORD_METHOD_NO_ARGS
-/// LLDB_RECORD_METHOD_CONST_NO_ARGS
-/// LLDB_RECORD_STATIC_METHOD
-/// LLDB_RECORD_STATIC_METHOD_NO_ARGS
-static std::string GetRecordMethodMacroName(bool Static, bool Const,
-                                            bool NoArgs) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-
-  OS << "LLDB_RECORD";
-  if (Static)
-    OS << "_STATIC";
-  OS << "_METHOD";
-  if (Const)
-    OS << "_CONST";
-  if (NoArgs)
-    OS << "_NO_ARGS";
-
-  return OS.str();
-}
-
-/// Get the macro name for register methods.
-///
-/// LLDB_REGISTER_CONSTRUCTOR
-/// LLDB_REGISTER_METHOD
-/// LLDB_REGISTER_METHOD_CONST
-/// LLDB_REGISTER_STATIC_METHOD
-static std::string GetRegisterMethodMacroName(bool Static, bool Const) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-
-  OS << "LLDB_REGISTER";
-  if (Static)
-    OS << "_STATIC";
-  OS << "_METHOD";
-  if (Const)
-    OS << "_CONST";
-
-  return OS.str();
-}
-
-static std::string GetRecordMethodMacro(StringRef Result, StringRef Class,
-                                        StringRef Method, StringRef Signature,
-                                        StringRef Values, bool Static,
-                                        bool Const) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-
-  OS << GetRecordMethodMacroName(Static, Const, Values.empty());
-  OS << "(" << Result << ", " << Class << ", " << Method;
-
-  if (!Values.empty()) {
-    OS << ", (" << Signature << "), " << Values << ");\n\n";
-  } else {
-    OS << ");\n\n";
-  }
-
-  return OS.str();
-}
-
-static std::string GetRecordConstructorMacro(StringRef Class,
-                                             StringRef Signature,
-                                             StringRef Values) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-  if (!Values.empty()) {
-    OS << "LLDB_RECORD_CONSTRUCTOR(" << Class << ", (" << Signature << "), "
-       << Values << ");\n\n";
-  } else {
-    OS << "LLDB_RECORD_CONSTRUCTOR_NO_ARGS(" << Class << ");\n\n";
-  }
-  return OS.str();
-}
-
-static std::string GetRegisterConstructorMacro(StringRef Class,
-                                               StringRef Signature) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-  OS << "LLDB_REGISTER_CONSTRUCTOR(" << Class << ", (" << Signature
-     << "));\n\n";
-  return OS.str();
-}
-
-static std::string GetRegisterMethodMacro(StringRef Result, StringRef Class,
-                                          StringRef Method, StringRef Signature,
-                                          bool Static, bool Const) {
-  std::string Macro;
-  llvm::raw_string_ostream OS(Macro);
-  OS << GetRegisterMethodMacroName(Static, Const);
-  OS << "(" << Result << ", " << Class << ", " << Method << ", (" << Signature
-     << "));\n";
-  return OS.str();
-}
-
-class SBReturnVisitor : public RecursiveASTVisitor<SBReturnVisitor> {
-public:
-  SBReturnVisitor(Rewriter &R) : MyRewriter(R) {}
-
-  bool VisitReturnStmt(ReturnStmt *Stmt) {
-    Expr *E = Stmt->getRetValue();
-
-    if (E->getBeginLoc().isMacroID())
-      return false;
-
-    SourceRange R(E->getBeginLoc(), E->getEndLoc());
-
-    StringRef WrittenExpr = Lexer::getSourceText(
-        CharSourceRange::getTokenRange(R), MyRewriter.getSourceMgr(),
-        MyRewriter.getLangOpts());
-
-    std::string ReplacementText =
-        "LLDB_RECORD_RESULT(" + WrittenExpr.str() + ")";
-    MyRewriter.ReplaceText(R, ReplacementText);
-
-    return true;
-  }
-
-private:
-  Rewriter &MyRewriter;
-};
-
 class SBVisitor : public RecursiveASTVisitor<SBVisitor> {
 public:
   SBVisitor(Rewriter &R, ASTContext &Context)
@@ -163,75 +38,35 @@ public:
     Policy.Bool = true;
 
     // Collect the functions parameter types and names.
-    std::vector<std::string> ParamTypes;
     std::vector<std::string> ParamNames;
-    for (auto *P : Decl->parameters()) {
-      QualType T = P->getType();
-
-      // Currently we don't support functions that have function pointers as an
-      // argument.
-      if (T->isFunctionPointerType())
-        return false;
-
-      // Currently we don't support functions that have void pointers as an
-      // argument.
-      if (T->isVoidPointerType())
-        return false;
-
-      ParamTypes.push_back(T.getAsString(Policy));
+    if (!Decl->isStatic())
+      ParamNames.push_back("this");
+    for (auto *P : Decl->parameters())
       ParamNames.push_back(P->getNameAsString());
-    }
-
-    // Convert the two lists to string for the macros.
-    std::string ParamTypesStr = llvm::join(ParamTypes, ", ");
-    std::string ParamNamesStr = llvm::join(ParamNames, ", ");
-
-    CXXRecordDecl *Record = Decl->getParent();
-    QualType ReturnType = Decl->getReturnType();
 
     // Construct the macros.
-    std::string Macro;
-    if (isa<CXXConstructorDecl>(Decl)) {
-      llvm::outs() << GetRegisterConstructorMacro(Record->getNameAsString(),
-                                                  ParamTypesStr);
-
-      Macro = GetRecordConstructorMacro(Record->getNameAsString(),
-                                        ParamTypesStr, ParamNamesStr);
+    std::string Buffer;
+    llvm::raw_string_ostream Macro(Buffer);
+    if (ParamNames.empty()) {
+      Macro << "LLDB_INSTRUMENT()";
     } else {
-      llvm::outs() << GetRegisterMethodMacro(
-          ReturnType.getAsString(Policy), Record->getNameAsString(),
-          Decl->getNameAsString(), ParamTypesStr, Decl->isStatic(),
-          Decl->isConst());
-
-      Macro = GetRecordMethodMacro(
-          ReturnType.getAsString(Policy), Record->getNameAsString(),
-          Decl->getNameAsString(), ParamTypesStr, ParamNamesStr,
-          Decl->isStatic(), Decl->isConst());
+      Macro << "LLDB_INSTRUMENT_VA(" << llvm::join(ParamNames, ", ") << ")";
     }
 
-    // If this CXXMethodDecl already starts with a macro we're done.
     Stmt *Body = Decl->getBody();
     for (auto &C : Body->children()) {
-      if (C->getBeginLoc().isMacroID())
-        return false;
+      if (C->getBeginLoc().isMacroID()) {
+        CharSourceRange Range =
+            MyRewriter.getSourceMgr().getExpansionRange(C->getSourceRange());
+        MyRewriter.ReplaceText(Range, Macro.str());
+      } else {
+        Macro << ";";
+        SourceLocation InsertLoc = Lexer::getLocForEndOfToken(
+            Body->getBeginLoc(), 0, MyRewriter.getSourceMgr(),
+            MyRewriter.getLangOpts());
+        MyRewriter.InsertTextAfter(InsertLoc, Macro.str());
+      }
       break;
-    }
-
-    // Insert the macro at the beginning of the function. We don't attempt to
-    // fix the formatting and instead rely on clang-format to fix it after the
-    // tool has run. This is also the reason that the macros end with two
-    // newlines, counting on clang-format to normalize this in case the macro
-    // got inserted before an existing newline.
-    SourceLocation InsertLoc = Lexer::getLocForEndOfToken(
-        Body->getBeginLoc(), 0, MyRewriter.getSourceMgr(),
-        MyRewriter.getLangOpts());
-    MyRewriter.InsertTextAfter(InsertLoc, Macro);
-
-    // If the function returns a class or struct, we need to wrap its return
-    // statement(s).
-    if (ReturnType->isStructureOrClassType()) {
-      SBReturnVisitor Visitor(MyRewriter);
-      Visitor.TraverseDecl(Decl);
     }
 
     return true;
@@ -304,12 +139,14 @@ class SBAction : public ASTFrontendAction {
 public:
   SBAction() = default;
 
+  bool BeginSourceFileAction(CompilerInstance &CI) override { return true; }
+
   void EndSourceFileAction() override { MyRewriter.overwriteChangedFiles(); }
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                 StringRef file) override {
+                                                 StringRef File) override {
     MyRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-    return llvm::make_unique<SBConsumer>(MyRewriter, CI.getASTContext());
+    return std::make_unique<SBConsumer>(MyRewriter, CI.getASTContext());
   }
 
 private:
@@ -317,13 +154,19 @@ private:
 };
 
 int main(int argc, const char **argv) {
-  CommonOptionsParser OP(argc, argv, InstrCategory,
-                         "Utility for generating the macros for LLDB's "
-                         "instrumentation framework.");
+  auto ExpectedParser = CommonOptionsParser::create(
+      argc, argv, InstrCategory, llvm::cl::OneOrMore,
+      "Utility for generating the macros for LLDB's "
+      "instrumentation framework.");
+  if (!ExpectedParser) {
+    llvm::errs() << ExpectedParser.takeError();
+    return 1;
+  }
+  CommonOptionsParser &OP = ExpectedParser.get();
 
   auto PCHOpts = std::make_shared<PCHContainerOperations>();
-  PCHOpts->registerWriter(llvm::make_unique<ObjectFilePCHContainerWriter>());
-  PCHOpts->registerReader(llvm::make_unique<ObjectFilePCHContainerReader>());
+  PCHOpts->registerWriter(std::make_unique<ObjectFilePCHContainerWriter>());
+  PCHOpts->registerReader(std::make_unique<ObjectFilePCHContainerReader>());
 
   ClangTool T(OP.getCompilations(), OP.getSourcePathList(), PCHOpts);
   return T.run(newFrontendActionFactory<SBAction>().get());

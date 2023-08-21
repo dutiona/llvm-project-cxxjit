@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_TypeList_h_
-#define liblldb_TypeList_h_
+#ifndef LLDB_SYMBOL_TYPELIST_H
+#define LLDB_SYMBOL_TYPELIST_H
 
 #include "lldb/Symbol/Type.h"
 #include "lldb/Utility/Iterable.h"
@@ -19,9 +19,7 @@ namespace lldb_private {
 
 class TypeList {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   TypeList();
 
   virtual ~TypeList();
@@ -30,14 +28,13 @@ public:
 
   void Dump(Stream *s, bool show_context);
 
-  //    lldb::TypeSP
-  //    FindType(lldb::user_id_t uid);
-
-  TypeList FindTypes(const ConstString &name);
+  TypeList FindTypes(ConstString name);
 
   void Insert(const lldb::TypeSP &type);
 
   uint32_t GetSize() const;
+
+  bool Empty() const { return !GetSize(); }
 
   lldb::TypeSP GetTypeAtIndex(uint32_t idx);
 
@@ -52,10 +49,11 @@ public:
 
   void ForEach(std::function<bool(lldb::TypeSP &type_sp)> const &callback);
 
-  void RemoveMismatchedTypes(const char *qualified_typename, bool exact_match);
+  void RemoveMismatchedTypes(llvm::StringRef qualified_typename,
+                             bool exact_match);
 
-  void RemoveMismatchedTypes(const std::string &type_scope,
-                             const std::string &type_basename,
+  void RemoveMismatchedTypes(llvm::StringRef type_scope,
+                             llvm::StringRef type_basename,
                              lldb::TypeClass type_class, bool exact_match);
 
   void RemoveMismatchedTypes(lldb::TypeClass type_class);
@@ -66,9 +64,10 @@ private:
 
   collection m_types;
 
-  DISALLOW_COPY_AND_ASSIGN(TypeList);
+  TypeList(const TypeList &) = delete;
+  const TypeList &operator=(const TypeList &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_TypeList_h_
+#endif // LLDB_SYMBOL_TYPELIST_H

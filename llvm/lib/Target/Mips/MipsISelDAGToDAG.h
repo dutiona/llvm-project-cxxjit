@@ -30,13 +30,12 @@ namespace llvm {
 
 class MipsDAGToDAGISel : public SelectionDAGISel {
 public:
-  explicit MipsDAGToDAGISel(MipsTargetMachine &TM, CodeGenOpt::Level OL)
-      : SelectionDAGISel(TM, OL), Subtarget(nullptr) {}
+  static char ID;
 
-  // Pass Name
-  StringRef getPassName() const override {
-    return "MIPS DAG->DAG Pattern Instruction Selection";
-  }
+  MipsDAGToDAGISel() = delete;
+
+  explicit MipsDAGToDAGISel(MipsTargetMachine &TM, CodeGenOpt::Level OL)
+      : SelectionDAGISel(ID, TM, OL), Subtarget(nullptr) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
@@ -124,6 +123,11 @@ private:
   /// Select constant vector splats whose value is a run of set bits
   /// starting at bit zero.
   virtual bool selectVSplatMaskR(SDValue N, SDValue &Imm) const;
+
+  /// Convert vector addition with vector subtraction if that allows to encode
+  /// constant as an immediate and thus avoid extra 'ldi' instruction.
+  /// add X, <-1, -1...> --> sub X, <1, 1...>
+  bool selectVecAddAsVecSubIfProfitable(SDNode *Node);
 
   void Select(SDNode *N) override;
 

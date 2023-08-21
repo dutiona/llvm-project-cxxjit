@@ -25,14 +25,12 @@ include "llvm/Target/Target.td"
 def FeatureSIMD128 : SubtargetFeature<"simd128", "SIMDLevel", "SIMD128",
                                       "Enable 128-bit SIMD">;
 
-def FeatureUnimplementedSIMD128 :
-      SubtargetFeature<"unimplemented-simd128",
-                       "SIMDLevel", "UnimplementedSIMD128",
-                       "Enable 128-bit SIMD not yet implemented in engines",
-                       [FeatureSIMD128]>;
+def FeatureRelaxedSIMD : SubtargetFeature<"relaxed-simd", "SIMDLevel", "RelaxedSIMD",
+                                      "Enable relaxed-simd instructions">;
 
 def FeatureAtomics : SubtargetFeature<"atomics", "HasAtomics", "true",
                                       "Enable Atomics">;
+
 def FeatureNontrappingFPToInt :
       SubtargetFeature<"nontrapping-fptoint",
                        "HasNontrappingFPToInt", "true",
@@ -43,6 +41,11 @@ def FeatureSignExt :
                        "HasSignExt", "true",
                        "Enable sign extension operators">;
 
+def FeatureTailCall :
+      SubtargetFeature<"tail-call",
+                       "HasTailCall", "true",
+                       "Enable tail call instructions">;
+
 def FeatureExceptionHandling :
       SubtargetFeature<"exception-handling", "HasExceptionHandling", "true",
                        "Enable Wasm exception handling">;
@@ -50,6 +53,23 @@ def FeatureExceptionHandling :
 def FeatureBulkMemory :
       SubtargetFeature<"bulk-memory", "HasBulkMemory", "true",
                        "Enable bulk memory operations">;
+
+def FeatureMultivalue :
+      SubtargetFeature<"multivalue",
+                       "HasMultivalue", "true",
+                       "Enable multivalue blocks, instructions, and functions">;
+
+def FeatureMutableGlobals :
+      SubtargetFeature<"mutable-globals", "HasMutableGlobals", "true",
+                       "Enable mutable globals">;
+
+def FeatureReferenceTypes :
+      SubtargetFeature<"reference-types", "HasReferenceTypes", "true",
+                       "Enable reference types">;
+
+def FeatureExtendedConst :
+      SubtargetFeature<"extended-const", "HasExtendedConst", "true",
+                       "Enable extended const expressions">;
 
 //===----------------------------------------------------------------------===//
 // Architectures.
@@ -77,12 +97,20 @@ def WebAssemblyInstrInfo : InstrInfo;
 def : ProcessorModel<"mvp", NoSchedModel, []>;
 
 // Generic processor: latest stable version.
-def : ProcessorModel<"generic", NoSchedModel, []>;
+//
+// This includes features that have achieved phase 4 of the standards process,
+// and that are expected to work for most users in the current time, with
+// consideration given to available support in relevant engines and tools, and
+// the importance of the features.
+def : ProcessorModel<"generic", NoSchedModel,
+                      [FeatureSignExt, FeatureMutableGlobals]>;
 
 // Latest and greatest experimental version of WebAssembly. Bugs included!
 def : ProcessorModel<"bleeding-edge", NoSchedModel,
                       [FeatureSIMD128, FeatureAtomics,
-                       FeatureNontrappingFPToInt, FeatureSignExt]>;
+                       FeatureNontrappingFPToInt, FeatureSignExt,
+                       FeatureMutableGlobals, FeatureBulkMemory,
+                       FeatureTailCall]>;
 
 //===----------------------------------------------------------------------===//
 // Target Declaration

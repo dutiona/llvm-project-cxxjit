@@ -30,7 +30,15 @@ endmacro(add_td_sources)
 
 function(add_header_files_for_glob hdrs_out glob)
   file(GLOB hds ${glob})
-  set(${hdrs_out} ${hds} PARENT_SCOPE)
+  set(filtered)
+  foreach(file ${hds})
+    # Explicit existence check is necessary to filter dangling symlinks
+    # out.  See https://bugs.gentoo.org/674662.
+    if(EXISTS ${file})
+      list(APPEND filtered ${file})
+    endif()
+  endforeach()
+  set(${hdrs_out} ${filtered} PARENT_SCOPE)
 endfunction(add_header_files_for_glob)
 
 function(find_all_header_files hdrs_out additional_headerdirs)
@@ -49,10 +57,12 @@ endfunction(find_all_header_files)
 
 
 function(llvm_process_sources OUT_VAR)
-  cmake_parse_arguments(ARG "" "" "ADDITIONAL_HEADERS;ADDITIONAL_HEADER_DIRS" ${ARGN})
+  cmake_parse_arguments(ARG "PARTIAL_SOURCES_INTENDED" "" "ADDITIONAL_HEADERS;ADDITIONAL_HEADER_DIRS" ${ARGN})
   set(sources ${ARG_UNPARSED_ARGUMENTS})
-  llvm_check_source_file_list( ${sources} )
-  
+  if (NOT ARG_PARTIAL_SOURCES_INTENDED)
+    llvm_check_source_file_list(${sources})
+  endif()
+
   # This adds .td and .h files to the Visual Studio solution:
   add_td_sources(sources)
   find_all_header_files(hdrs "${ARG_ADDITIONAL_HEADER_DIRS}")
@@ -92,10 +102,8 @@ function(llvm_check_source_file_list)
     # Don't reject hidden files. Some editors create backups in the
     # same directory as the file.
     if (NOT "${fn}" MATCHES "^\\.")
-      list(FIND LLVM_OPTIONAL_SOURCES ${entry} idx)
-      if( idx LESS 0 )
-        list(FIND listed ${gp} idx)
-        if( idx LESS 0 )
+      if(NOT ${entry} IN_LIST LLVM_OPTIONAL_SOURCES)
+        if(NOT ${gp} IN_LIST listed)
           if(ARG_SOURCE_DIR)
               set(fn_relative "${ARG_SOURCE_DIR}/${fn}")
           else()

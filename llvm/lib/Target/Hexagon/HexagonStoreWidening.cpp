@@ -20,8 +20,6 @@
 // per packet, it also means fewer packets, and ultimately fewer cycles.
 //===---------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "hexagon-widen-stores"
-
 #include "HexagonInstrInfo.h"
 #include "HexagonRegisterInfo.h"
 #include "HexagonSubtarget.h"
@@ -37,6 +35,7 @@
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/DebugLoc.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
@@ -48,6 +47,8 @@
 #include <cstdint>
 #include <iterator>
 #include <vector>
+
+#define DEBUG_TYPE "hexagon-widen-stores"
 
 using namespace llvm;
 
@@ -173,13 +174,13 @@ bool HexagonStoreWidening::instrAliased(InstrGroup &Stores,
 
   MemoryLocation L(MMO.getValue(), MMO.getSize(), MMO.getAAInfo());
 
-  for (auto SI : Stores) {
+  for (auto *SI : Stores) {
     const MachineMemOperand &SMO = getStoreTarget(SI);
     if (!SMO.getValue())
       return true;
 
     MemoryLocation SL(SMO.getValue(), SMO.getSize(), SMO.getAAInfo());
-    if (AA->alias(L, SL))
+    if (!AA->isNoAlias(L, SL))
       return true;
   }
 
@@ -270,7 +271,7 @@ void HexagonStoreWidening::createStoreGroup(MachineInstr *BaseStore,
     if (MI->isCall() || MI->hasUnmodeledSideEffects())
       return;
 
-    if (MI->mayLoad() || MI->mayStore()) {
+    if (MI->mayLoadOrStore()) {
       if (MI->hasOrderedMemoryRef() || instrAliased(Group, MI))
         return;
       Other.push_back(MI);
@@ -313,7 +314,7 @@ bool HexagonStoreWidening::selectStores(InstrGroup::iterator Begin,
   MachineInstr *FirstMI = *Begin;
   assert(!FirstMI->memoperands_empty() && "Expecting some memory operands");
   const MachineMemOperand &FirstMMO = getStoreTarget(FirstMI);
-  unsigned Alignment = FirstMMO.getAlignment();
+  unsigned Alignment = FirstMMO.getAlign().value();
   unsigned SizeAccum = FirstMMO.getSize();
   unsigned FirstOffset = getStoreOffset(FirstMI);
 
@@ -337,8 +338,7 @@ bool HexagonStoreWidening::selectStores(InstrGroup::iterator Begin,
     return false;
 
   OG.push_back(FirstMI);
-  MachineInstr *S1 = FirstMI, *S2 = *(Begin+1);
-  InstrGroup::iterator I = Begin+1;
+  MachineInstr *S1 = FirstMI;
 
   // Pow2Num will be the largest number of elements in OG such that the sum
   // of sizes of stores 0...Pow2Num-1 will be a power of 2.
@@ -350,8 +350,8 @@ bool HexagonStoreWidening::selectStores(InstrGroup::iterator Begin,
   // does not exceed the limit (MaxSize).
   // Keep track of when the total size covered is a power of 2, since
   // this is a size a single store can cover.
-  while (I != End) {
-    S2 = *I;
+  for (InstrGroup::iterator I = Begin + 1; I != End; ++I) {
+    MachineInstr *S2 = *I;
     // Stores are sorted, so if S1 and S2 are not adjacent, there won't be
     // any other store to fill the "hole".
     if (!storesAreAdjacent(S1, S2))
@@ -371,7 +371,6 @@ bool HexagonStoreWidening::selectStores(InstrGroup::iterator Begin,
       break;
 
     S1 = S2;
-    ++I;
   }
 
   // The stores don't add up to anything that can be widened.  Clean up.
@@ -401,8 +400,7 @@ bool HexagonStoreWidening::createWideStores(InstrGroup &OG, InstrGroup &NG,
   unsigned Acc = 0;  // Value accumulator.
   unsigned Shift = 0;
 
-  for (InstrGroup::iterator I = OG.begin(), E = OG.end(); I != E; ++I) {
-    MachineInstr *MI = *I;
+  for (MachineInstr *MI : OG) {
     const MachineMemOperand &MMO = getStoreTarget(MI);
     MachineOperand &SO = MI->getOperand(2);  // Source.
     assert(SO.isImm() && "Expecting an immediate operand");
@@ -418,9 +416,8 @@ bool HexagonStoreWidening::createWideStores(InstrGroup &OG, InstrGroup &NG,
   DebugLoc DL = OG.back()->getDebugLoc();
   const MachineMemOperand &OldM = getStoreTarget(FirstSt);
   MachineMemOperand *NewM =
-    MF->getMachineMemOperand(OldM.getPointerInfo(), OldM.getFlags(),
-                             TotalSize, OldM.getAlignment(),
-                             OldM.getAAInfo());
+      MF->getMachineMemOperand(OldM.getPointerInfo(), OldM.getFlags(),
+                               TotalSize, OldM.getAlign(), OldM.getAAInfo());
 
   if (Acc < 0x10000) {
     // Create mem[hw] = #Acc
@@ -443,7 +440,7 @@ bool HexagonStoreWidening::createWideStores(InstrGroup &OG, InstrGroup &NG,
     // Create vreg = A2_tfrsi #Acc; mem[hw] = vreg
     const MCInstrDesc &TfrD = TII->get(Hexagon::A2_tfrsi);
     const TargetRegisterClass *RC = TII->getRegClass(TfrD, 0, TRI, *MF);
-    unsigned VReg = MF->getRegInfo().createVirtualRegister(RC);
+    Register VReg = MF->getRegInfo().createVirtualRegister(RC);
     MachineInstr *TfrI = BuildMI(*MF, DL, TfrD, VReg)
                            .addImm(int(Acc));
     NG.push_back(TfrI);
@@ -493,7 +490,7 @@ bool HexagonStoreWidening::replaceStores(InstrGroup &OG, InstrGroup &NG) {
 
   // Create a set of all instructions in OG (for quick lookup).
   SmallPtrSet<MachineInstr*, 4> InstrSet;
-  for (auto I : OG)
+  for (auto *I : OG)
     InstrSet.insert(I);
 
   // Traverse the block, until we hit an instruction from OG.
@@ -517,7 +514,7 @@ bool HexagonStoreWidening::replaceStores(InstrGroup &OG, InstrGroup &NG) {
   else
     AtBBStart = true;
 
-  for (auto I : OG)
+  for (auto *I : OG)
     I->eraseFromParent();
 
   if (!AtBBStart)
@@ -525,7 +522,7 @@ bool HexagonStoreWidening::replaceStores(InstrGroup &OG, InstrGroup &NG) {
   else
     InsertAt = MBB->begin();
 
-  for (auto I : NG)
+  for (auto *I : NG)
     MBB->insert(InsertAt, I);
 
   return true;

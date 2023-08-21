@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
@@ -20,9 +19,11 @@
 #include "clang/AST/StmtObjC.h"
 #include "clang/Analysis/DomainSpecific/CocoaConventions.h"
 #include "clang/Analysis/SelectorExtras.h"
+#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CallDescription.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
@@ -32,6 +33,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -211,7 +213,7 @@ void NilArgChecker::generateBugReport(ExplodedNode *N,
   if (!BT)
     BT.reset(new APIMisuse(this, "nil argument"));
 
-  auto R = llvm::make_unique<BugReport>(*BT, Msg, N);
+  auto R = std::make_unique<PathSensitiveBugReport>(*BT, Msg, N);
   R->addRange(Range);
   bugreporter::trackExpressionValue(N, E, *R);
   C.emitReport(std::move(R));
@@ -346,10 +348,6 @@ public:
   CFNumberChecker() : ICreate(nullptr), IGetValue(nullptr) {}
 
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
-
-private:
-  void EmitError(const TypedRegion* R, const Expr *Ex,
-                uint64_t SourceSize, uint64_t TargetSize, uint64_t NumberKind);
 };
 } // end anonymous namespace
 
@@ -372,7 +370,7 @@ enum CFNumberType {
   kCFNumberCGFloatType = 16
 };
 
-static Optional<uint64_t> GetCFNumberSize(ASTContext &Ctx, uint64_t i) {
+static std::optional<uint64_t> GetCFNumberSize(ASTContext &Ctx, uint64_t i) {
   static const unsigned char FixedSize[] = { 8, 16, 32, 64, 32, 64 };
 
   if (i < kCFNumberCharType)
@@ -393,7 +391,7 @@ static Optional<uint64_t> GetCFNumberSize(ASTContext &Ctx, uint64_t i) {
     case kCFNumberCGFloatType:
       // FIXME: We need a way to map from names to Type*.
     default:
-      return None;
+      return std::nullopt;
   }
 
   return Ctx.getTypeSize(T);
@@ -445,12 +443,13 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
 
   // FIXME: We really should allow ranges of valid theType values, and
   //   bifurcate the state appropriately.
-  Optional<nonloc::ConcreteInt> V = TheTypeVal.getAs<nonloc::ConcreteInt>();
+  std::optional<nonloc::ConcreteInt> V =
+      dyn_cast<nonloc::ConcreteInt>(TheTypeVal);
   if (!V)
     return;
 
   uint64_t NumberKind = V->getValue().getLimitedValue();
-  Optional<uint64_t> OptCFNumberSize = GetCFNumberSize(Ctx, NumberKind);
+  std::optional<uint64_t> OptCFNumberSize = GetCFNumberSize(Ctx, NumberKind);
 
   // FIXME: In some cases we can emit an error.
   if (!OptCFNumberSize)
@@ -465,7 +464,7 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
 
   // FIXME: Eventually we should handle arbitrary locations.  We can do this
   //  by having an enhanced memory model that does low-level typing.
-  Optional<loc::MemRegionVal> LV = TheValueExpr.getAs<loc::MemRegionVal>();
+  std::optional<loc::MemRegionVal> LV = TheValueExpr.getAs<loc::MemRegionVal>();
   if (!LV)
     return;
 
@@ -520,7 +519,7 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
     if (!BT)
       BT.reset(new APIMisuse(this, "Bad use of CFNumber APIs"));
 
-    auto report = llvm::make_unique<BugReport>(*BT, os.str(), N);
+    auto report = std::make_unique<PathSensitiveBugReport>(*BT, os.str(), N);
     report->addRange(CE->getArg(2)->getSourceRange());
     C.emitReport(std::move(report));
   }
@@ -533,10 +532,12 @@ void CFNumberChecker::checkPreStmt(const CallExpr *CE,
 namespace {
 class CFRetainReleaseChecker : public Checker<check::PreCall> {
   mutable APIMisuse BT{this, "null passed to CF memory management function"};
-  CallDescription CFRetain{"CFRetain", 1},
-                  CFRelease{"CFRelease", 1},
-                  CFMakeCollectable{"CFMakeCollectable", 1},
-                  CFAutorelease{"CFAutorelease", 1};
+  const CallDescriptionSet ModelledCalls = {
+      {{"CFRetain"}, 1},
+      {{"CFRelease"}, 1},
+      {{"CFMakeCollectable"}, 1},
+      {{"CFAutorelease"}, 1},
+  };
 
 public:
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
@@ -550,13 +551,12 @@ void CFRetainReleaseChecker::checkPreCall(const CallEvent &Call,
     return;
 
   // Check if we called CFRetain/CFRelease/CFMakeCollectable/CFAutorelease.
-  if (!(Call.isCalled(CFRetain) || Call.isCalled(CFRelease) ||
-        Call.isCalled(CFMakeCollectable) || Call.isCalled(CFAutorelease)))
+  if (!ModelledCalls.contains(Call))
     return;
 
   // Get the argument's value.
   SVal ArgVal = Call.getArgSVal(0);
-  Optional<DefinedSVal> DefArgVal = ArgVal.getAs<DefinedSVal>();
+  std::optional<DefinedSVal> DefArgVal = ArgVal.getAs<DefinedSVal>();
   if (!DefArgVal)
     return;
 
@@ -575,7 +575,7 @@ void CFRetainReleaseChecker::checkPreCall(const CallEvent &Call,
     OS << "Null pointer argument in call to "
        << cast<FunctionDecl>(Call.getDecl())->getName();
 
-    auto report = llvm::make_unique<BugReport>(BT, OS.str(), N);
+    auto report = std::make_unique<PathSensitiveBugReport>(BT, OS.str(), N);
     report->addRange(Call.getArgSourceRange(0));
     bugreporter::trackExpressionValue(N, Call.getArgExpr(0), *report);
     C.emitReport(std::move(report));
@@ -635,7 +635,7 @@ void ClassReleaseChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
           "of class '" << Class->getName()
        << "' and not the class directly";
 
-    auto report = llvm::make_unique<BugReport>(*BT, os.str(), N);
+    auto report = std::make_unique<PathSensitiveBugReport>(*BT, os.str(), N);
     report->addRange(msg.getSourceRange());
     C.emitReport(std::move(report));
   }
@@ -744,7 +744,7 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     return;
 
   // Verify that all arguments have Objective-C types.
-  Optional<ExplodedNode*> errorNode;
+  std::optional<ExplodedNode *> errorNode;
 
   for (unsigned I = variadicArgsBegin; I != variadicArgsEnd; ++I) {
     QualType ArgTy = msg.getArgExpr(I)->getType();
@@ -756,7 +756,7 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
       continue;
 
     // Ignore pointer constants.
-    if (msg.getArgSVal(I).getAs<loc::ConcreteInt>())
+    if (isa<loc::ConcreteInt>(msg.getArgSVal(I)))
       continue;
 
     // Ignore pointer types annotated with 'NSObject' attribute.
@@ -768,10 +768,10 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
       continue;
 
     // Generate only one error node to use for all bug reports.
-    if (!errorNode.hasValue())
+    if (!errorNode)
       errorNode = C.generateNonFatalErrorNode();
 
-    if (!errorNode.getValue())
+    if (!*errorNode)
       continue;
 
     SmallString<128> sbuf;
@@ -788,7 +788,8 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
     ArgTy.print(os, C.getLangOpts());
     os << "'";
 
-    auto R = llvm::make_unique<BugReport>(*BT, os.str(), errorNode.getValue());
+    auto R =
+        std::make_unique<PathSensitiveBugReport>(*BT, os.str(), *errorNode);
     R->addRange(msg.getArgSourceRange(I));
     C.emitReport(std::move(R));
   }
@@ -858,7 +859,8 @@ static ProgramStateRef checkCollectionNonNil(CheckerContext &C,
     return nullptr;
 
   SVal CollectionVal = C.getSVal(FCS->getCollection());
-  Optional<DefinedSVal> KnownCollection = CollectionVal.getAs<DefinedSVal>();
+  std::optional<DefinedSVal> KnownCollection =
+      CollectionVal.getAs<DefinedSVal>();
   if (!KnownCollection)
     return State;
 
@@ -890,7 +892,7 @@ static ProgramStateRef checkElementNonNil(CheckerContext &C,
   const Stmt *Element = FCS->getElement();
 
   // FIXME: Copied from ExprEngineObjC.
-  Optional<Loc> ElementLoc;
+  std::optional<Loc> ElementLoc;
   if (const DeclStmt *DS = dyn_cast<DeclStmt>(Element)) {
     const VarDecl *ElemDecl = cast<VarDecl>(DS->getSingleDecl());
     assert(ElemDecl->getInit() == nullptr);
@@ -904,7 +906,7 @@ static ProgramStateRef checkElementNonNil(CheckerContext &C,
 
   // Go ahead and assume the value is non-nil.
   SVal Val = State->getSVal(*ElementLoc);
-  return State->assume(Val.castAs<DefinedOrUnknownSVal>(), true);
+  return State->assume(cast<DefinedOrUnknownSVal>(Val), true);
 }
 
 /// Returns NULL state if the collection is known to contain elements
@@ -929,8 +931,8 @@ assumeCollectionNonEmpty(CheckerContext &C, ProgramStateRef State,
                           nonloc::SymbolVal(*CountS),
                           SvalBuilder.makeIntVal(0, (*CountS)->getType()),
                           SvalBuilder.getConditionType());
-  Optional<DefinedSVal> CountGreaterThanZero =
-    CountGreaterThanZeroVal.getAs<DefinedSVal>();
+  std::optional<DefinedSVal> CountGreaterThanZero =
+      CountGreaterThanZeroVal.getAs<DefinedSVal>();
   if (!CountGreaterThanZero) {
     // The SValBuilder cannot construct a valid SVal for this condition.
     // This means we cannot properly reason about it.
@@ -958,7 +960,7 @@ static bool alreadyExecutedAtLeastOneLoopIteration(const ExplodedNode *N,
     return false;
 
   ProgramPoint P = N->getLocation();
-  if (Optional<BlockEdge> BE = P.getAs<BlockEdge>()) {
+  if (std::optional<BlockEdge> BE = P.getAs<BlockEdge>()) {
     return BE->getSrc()->getLoopTarget() == FCS;
   }
 
@@ -977,8 +979,7 @@ void ObjCLoopChecker::checkPostStmt(const ObjCForCollectionStmt *FCS,
   ProgramStateRef State = C.getState();
 
   // Check if this is the branch for the end of the loop.
-  SVal CollectionSentinel = C.getSVal(FCS);
-  if (CollectionSentinel.isZeroConstant()) {
+  if (!ExprEngine::hasMoreIteration(State, FCS, C.getLocationContext())) {
     if (!alreadyExecutedAtLeastOneLoopIteration(C.getPredecessor(), FCS))
       State = assumeCollectionNonEmpty(C, State, FCS, /*Assumption*/false);
 
@@ -1094,7 +1095,7 @@ ObjCLoopChecker::checkPointerEscape(ProgramStateRef State,
                                     PointerEscapeKind Kind) const {
   SymbolRef ImmutableReceiver = getMethodReceiverIfKnownImmutable(Call);
 
-  // Remove the invalidated symbols form the collection count map.
+  // Remove the invalidated symbols from the collection count map.
   for (InvalidatedSymbols::const_iterator I = Escaped.begin(),
        E = Escaped.end();
        I != E; ++I) {
@@ -1176,7 +1177,8 @@ ObjCNonNilReturnValueChecker::assumeExprIsNonNull(const Expr *NonNullExpr,
                                                   ProgramStateRef State,
                                                   CheckerContext &C) const {
   SVal Val = C.getSVal(NonNullExpr);
-  if (Optional<DefinedOrUnknownSVal> DV = Val.getAs<DefinedOrUnknownSVal>())
+  if (std::optional<DefinedOrUnknownSVal> DV =
+          Val.getAs<DefinedOrUnknownSVal>())
     return State->assume(*DV, true);
   return State;
 }
@@ -1242,7 +1244,7 @@ void ento::registerNilArgChecker(CheckerManager &mgr) {
   mgr.registerChecker<NilArgChecker>();
 }
 
-bool ento::shouldRegisterNilArgChecker(const LangOptions &LO) {
+bool ento::shouldRegisterNilArgChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1250,7 +1252,7 @@ void ento::registerCFNumberChecker(CheckerManager &mgr) {
   mgr.registerChecker<CFNumberChecker>();
 }
 
-bool ento::shouldRegisterCFNumberChecker(const LangOptions &LO) {
+bool ento::shouldRegisterCFNumberChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1258,7 +1260,7 @@ void ento::registerCFRetainReleaseChecker(CheckerManager &mgr) {
   mgr.registerChecker<CFRetainReleaseChecker>();
 }
 
-bool ento::shouldRegisterCFRetainReleaseChecker(const LangOptions &LO) {
+bool ento::shouldRegisterCFRetainReleaseChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1266,7 +1268,7 @@ void ento::registerClassReleaseChecker(CheckerManager &mgr) {
   mgr.registerChecker<ClassReleaseChecker>();
 }
 
-bool ento::shouldRegisterClassReleaseChecker(const LangOptions &LO) {
+bool ento::shouldRegisterClassReleaseChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1274,7 +1276,7 @@ void ento::registerVariadicMethodTypeChecker(CheckerManager &mgr) {
   mgr.registerChecker<VariadicMethodTypeChecker>();
 }
 
-bool ento::shouldRegisterVariadicMethodTypeChecker(const LangOptions &LO) {
+bool ento::shouldRegisterVariadicMethodTypeChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1282,7 +1284,7 @@ void ento::registerObjCLoopChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCLoopChecker>();
 }
 
-bool ento::shouldRegisterObjCLoopChecker(const LangOptions &LO) {
+bool ento::shouldRegisterObjCLoopChecker(const CheckerManager &mgr) {
   return true;
 }
 
@@ -1290,6 +1292,6 @@ void ento::registerObjCNonNilReturnValueChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCNonNilReturnValueChecker>();
 }
 
-bool ento::shouldRegisterObjCNonNilReturnValueChecker(const LangOptions &LO) {
+bool ento::shouldRegisterObjCNonNilReturnValueChecker(const CheckerManager &mgr) {
   return true;
 }

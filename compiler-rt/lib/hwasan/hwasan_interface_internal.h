@@ -16,6 +16,7 @@
 
 #include "sanitizer_common/sanitizer_internal_defs.h"
 #include "sanitizer_common/sanitizer_platform_limits_posix.h"
+#include <link.h>
 
 extern "C" {
 
@@ -24,6 +25,14 @@ void __hwasan_init_static();
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void __hwasan_init();
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_library_loaded(ElfW(Addr) base, const ElfW(Phdr) * phdr,
+                             ElfW(Half) phnum);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_library_unloaded(ElfW(Addr) base, const ElfW(Phdr) * phdr,
+                               ElfW(Half) phnum);
 
 using __sanitizer::uptr;
 using __sanitizer::sptr;
@@ -100,6 +109,13 @@ SANITIZER_INTERFACE_ATTRIBUTE
 uptr __hwasan_tag_pointer(uptr p, u8 tag);
 
 SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_tag_mismatch(uptr addr, u8 ts);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_tag_mismatch4(uptr addr, uptr access_info, uptr *registers_frame,
+                            size_t outsize);
+
+SANITIZER_INTERFACE_ATTRIBUTE
 u8 __hwasan_generate_tag();
 
 // Returns the offset of the first tag mismatch or -1 if the whole range is
@@ -115,6 +131,9 @@ void __hwasan_print_shadow(const void *x, uptr size);
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void __hwasan_handle_longjmp(const void *sp_dst);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_handle_vfork(const void *sp_dst);
 
 SANITIZER_INTERFACE_ATTRIBUTE
 u16 __sanitizer_unaligned_load16(const uu16 *p);
@@ -149,50 +168,13 @@ void __hwasan_thread_exit();
 SANITIZER_INTERFACE_ATTRIBUTE
 void __hwasan_print_memory_usage();
 
+// The compiler will generate this when
+// `-hwasan-record-stack-history-with-calls` is added as a flag, which will add
+// frame record information to the stack ring buffer. This is an alternative to
+// the compiler emitting instructions in the prologue for doing the same thing
+// by accessing the ring buffer directly.
 SANITIZER_INTERFACE_ATTRIBUTE
-int __sanitizer_posix_memalign(void **memptr, uptr alignment, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_memalign(uptr alignment, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_aligned_alloc(uptr alignment, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer___libc_memalign(uptr alignment, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_valloc(uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_pvalloc(uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void __sanitizer_free(void *ptr);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void __sanitizer_cfree(void *ptr);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-uptr __sanitizer_malloc_usable_size(const void *ptr);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-__hwasan::__sanitizer_struct_mallinfo __sanitizer_mallinfo();
-
-SANITIZER_INTERFACE_ATTRIBUTE
-int __sanitizer_mallopt(int cmd, int value);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void __sanitizer_malloc_stats(void);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_calloc(uptr nmemb, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_realloc(void *ptr, uptr size);
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void * __sanitizer_malloc(uptr size);
+void __hwasan_add_frame_record(u64 frame_record_info);
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void *__hwasan_memcpy(void *dst, const void *src, uptr size);
@@ -200,6 +182,9 @@ SANITIZER_INTERFACE_ATTRIBUTE
 void *__hwasan_memset(void *s, int c, uptr n);
 SANITIZER_INTERFACE_ATTRIBUTE
 void *__hwasan_memmove(void *dest, const void *src, uptr n);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __hwasan_set_error_report_callback(void (*callback)(const char *));
 }  // extern "C"
 
 #endif  // HWASAN_INTERFACE_INTERNAL_H

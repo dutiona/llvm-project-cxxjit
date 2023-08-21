@@ -1,4 +1,4 @@
-; RUN: llc -march=hexagon -O2 -enable-pipeliner -disable-block-placement=0 < %s  | FileCheck %s
+; RUN: llc -opaque-pointers=0 -march=hexagon -O2 -enable-pipeliner -disable-block-placement=0 < %s  | FileCheck %s
 
 ; For the Phis generated in the epilog, test that we generate the correct
 ; names for the values coming from the prolog stages. The test belows
@@ -7,8 +7,8 @@
 
 ; CHECK: if ({{.*}}) jump
 ; CHECK: [[VREG:v([0-9]+)]]{{.*}} = {{.*}}vmem(r{{[0-9]+}}++#1)
-; CHECK: if ({{.*}}) {{jump|jump:nt}} [[EPLOG1:(.*)]]
-; CHECK: if ({{.*}}) {{jump|jump:nt}} [[EPLOG:(.*)]]
+; CHECK: if ({{.*}}) {{jump|jump:nt|jump:t}} [[EPLOG1:(.*)]]
+; CHECK: if ({{.*}}) {{jump|jump:nt|jump:t}} [[EPLOG:(.*)]]
 ; CHECK: [[EPLOG]]:
 ; CHECK: [[VREG1:v([0-9]+)]] = [[VREG]]
 ; CHECK: [[VREG]] = v{{[0-9]+}}

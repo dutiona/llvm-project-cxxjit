@@ -1,4 +1,4 @@
-//===--- MiscStringCompare.cpp - clang-tidy--------------------------------===//
+//===-- StringCompareCheck.cpp - clang-tidy--------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,18 +14,13 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace readability {
+namespace clang::tidy::readability {
 
 static const StringRef CompareMessage = "do not use 'compare' to test equality "
                                         "of strings; use the string equality "
                                         "operator instead";
 
 void StringCompareCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   const auto StrCompare = cxxMemberCallExpr(
       callee(cxxMethodDecl(hasName("compare"),
                            ofClass(classTemplateSpecializationDecl(
@@ -34,16 +29,18 @@ void StringCompareCheck::registerMatchers(MatchFinder *Finder) {
       callee(memberExpr().bind("str1")));
 
   // First and second case: cast str.compare(str) to boolean.
-  Finder->addMatcher(implicitCastExpr(hasImplicitDestinationType(booleanType()),
-                                      has(StrCompare))
-                         .bind("match1"),
-                     this);
+  Finder->addMatcher(
+      traverse(TK_AsIs,
+               implicitCastExpr(hasImplicitDestinationType(booleanType()),
+                                has(StrCompare))
+                   .bind("match1")),
+      this);
 
   // Third and fourth case: str.compare(str) == 0 and str.compare(str) != 0.
   Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("=="), hasOperatorName("!=")),
-                     hasEitherOperand(StrCompare.bind("compare")),
-                     hasEitherOperand(integerLiteral(equals(0)).bind("zero")))
+      binaryOperator(hasAnyOperatorName("==", "!="),
+                     hasOperands(StrCompare.bind("compare"),
+                                 integerLiteral(equals(0)).bind("zero")))
           .bind("match2"),
       this);
 }
@@ -76,6 +73,4 @@ void StringCompareCheck::check(const MatchFinder::MatchResult &Result) {
   // FIXME: Add fixit to fix the code for case one and two (match1).
 }
 
-} // namespace readability
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::readability

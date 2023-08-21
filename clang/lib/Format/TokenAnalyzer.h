@@ -29,23 +29,19 @@
 #include "clang/Format/Format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
+#include <memory>
 
 namespace clang {
 namespace format {
 
 class Environment {
 public:
-  Environment(SourceManager &SM, FileID ID, ArrayRef<CharSourceRange> Ranges)
-      : SM(SM), ID(ID), CharRanges(Ranges.begin(), Ranges.end()),
-        FirstStartColumn(0), NextStartColumn(0), LastStartColumn(0) {}
-
   // This sets up an virtual file system with file \p FileName containing the
   // fragment \p Code. Assumes that \p Code starts at \p FirstStartColumn,
   // that the next lines of \p Code should start at \p NextStartColumn, and
   // that \p Code should end at \p LastStartColumn if it ends in newline.
   // See also the documentation of clang::format::internal::reformat.
-  Environment(StringRef Code, StringRef FileName,
-              ArrayRef<tooling::Range> Ranges, unsigned FirstStartColumn = 0,
+  Environment(StringRef Code, StringRef FileName, unsigned FirstStartColumn = 0,
               unsigned NextStartColumn = 0, unsigned LastStartColumn = 0);
 
   FileID getFileID() const { return ID; }
@@ -66,6 +62,14 @@ public:
   // environment should end if it ends in a newline.
   unsigned getLastStartColumn() const { return LastStartColumn; }
 
+  // Returns nullptr and prints a diagnostic to stderr if the environment
+  // can't be created.
+  static std::unique_ptr<Environment> make(StringRef Code, StringRef FileName,
+                                           ArrayRef<tooling::Range> Ranges,
+                                           unsigned FirstStartColumn = 0,
+                                           unsigned NextStartColumn = 0,
+                                           unsigned LastStartColumn = 0);
+
 private:
   // This is only set if constructed from string.
   std::unique_ptr<SourceManagerForFile> VirtualSM;
@@ -85,7 +89,8 @@ class TokenAnalyzer : public UnwrappedLineConsumer {
 public:
   TokenAnalyzer(const Environment &Env, const FormatStyle &Style);
 
-  std::pair<tooling::Replacements, unsigned> process();
+  std::pair<tooling::Replacements, unsigned>
+  process(bool SkipAnnotation = false);
 
 protected:
   virtual std::pair<tooling::Replacements, unsigned>

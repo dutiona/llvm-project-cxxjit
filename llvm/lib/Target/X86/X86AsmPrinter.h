@@ -9,12 +9,9 @@
 #ifndef LLVM_LIB_TARGET_X86_X86ASMPRINTER_H
 #define LLVM_LIB_TARGET_X86_X86ASMPRINTER_H
 
-#include "X86Subtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/FaultMaps.h"
 #include "llvm/CodeGen/StackMaps.h"
-#include "llvm/MC/MCCodeEmitter.h"
-#include "llvm/Target/TargetMachine.h"
 
 // Implemented in X86MCInstLower.cpp
 namespace {
@@ -22,16 +19,18 @@ namespace {
 }
 
 namespace llvm {
+class MCCodeEmitter;
 class MCStreamer;
-class MCSymbol;
+class X86Subtarget;
+class TargetMachine;
 
 class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
-  const X86Subtarget *Subtarget;
-  StackMaps SM;
+  const X86Subtarget *Subtarget = nullptr;
   FaultMaps FM;
   std::unique_ptr<MCCodeEmitter> CodeEmitter;
   bool EmitFPOData = false;
-  bool NeedsRetpoline = false;
+  bool ShouldEmitWeakSwiftAsyncExtendedFramePointerFlags = false;
+  bool IndCSPrefix = false;
 
   // This utility class tracks the length of a stackmap instruction's 'shadow'.
   // It is used by the X86AsmPrinter to ensure that the stackmap shadow
@@ -60,7 +59,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
     // to emit any necessary padding-NOPs.
     void emitShadowPadding(MCStreamer &OutStreamer, const MCSubtargetInfo &STI);
   private:
-    const MachineFunction *MF;
+    const MachineFunction *MF = nullptr;
     bool InShadow = false;
 
     // RequiredShadowSize holds the length of the shadow specified in the most
@@ -99,8 +98,28 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
 
   void LowerFENTRY_CALL(const MachineInstr &MI, X86MCInstLower &MCIL);
 
+  // KCFI specific lowering for X86.
+  uint32_t MaskKCFIType(uint32_t Value);
+  void EmitKCFITypePadding(const MachineFunction &MF, bool HasType = true);
+  void LowerKCFI_CHECK(const MachineInstr &MI);
+
+  // Address sanitizer specific lowering for X86.
+  void LowerASAN_CHECK_MEMACCESS(const MachineInstr &MI);
+
   // Choose between emitting .seh_ directives and .cv_fpo_ directives.
   void EmitSEHInstruction(const MachineInstr *MI);
+
+  void PrintSymbolOperand(const MachineOperand &MO, raw_ostream &O) override;
+  void PrintOperand(const MachineInstr *MI, unsigned OpNo, raw_ostream &O);
+  void PrintModifiedOperand(const MachineInstr *MI, unsigned OpNo,
+                            raw_ostream &O, const char *Modifier);
+  void PrintPCRelImm(const MachineInstr *MI, unsigned OpNo, raw_ostream &O);
+  void PrintLeaMemReference(const MachineInstr *MI, unsigned OpNo,
+                            raw_ostream &O, const char *Modifier);
+  void PrintMemReference(const MachineInstr *MI, unsigned OpNo, raw_ostream &O,
+                         const char *Modifier);
+  void PrintIntelMemReference(const MachineInstr *MI, unsigned OpNo,
+                              raw_ostream &O, const char *Modifier);
 
 public:
   X86AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
@@ -111,23 +130,18 @@ public:
 
   const X86Subtarget &getSubtarget() const { return *Subtarget; }
 
-  void EmitStartOfAsmFile(Module &M) override;
+  void emitStartOfAsmFile(Module &M) override;
 
-  void EmitEndOfAsmFile(Module &M) override;
+  void emitEndOfAsmFile(Module &M) override;
 
-  void EmitInstruction(const MachineInstr *MI) override;
+  void emitInstruction(const MachineInstr *MI) override;
 
-  void EmitBasicBlockEnd(const MachineBasicBlock &MBB) override {
-    AsmPrinter::EmitBasicBlockEnd(MBB);
-    SMShadowTracker.emitShadowPadding(*OutStreamer, getSubtargetInfo());
-  }
+  void emitBasicBlockEnd(const MachineBasicBlock &MBB) override;
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
-                       unsigned AsmVariant, const char *ExtraCode,
-                       raw_ostream &OS) override;
+                       const char *ExtraCode, raw_ostream &O) override;
   bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
-                             unsigned AsmVariant, const char *ExtraCode,
-                             raw_ostream &OS) override;
+                             const char *ExtraCode, raw_ostream &O) override;
 
   bool doInitialization(Module &M) override {
     SMShadowTracker.reset(0);
@@ -136,9 +150,14 @@ public:
     return AsmPrinter::doInitialization(M);
   }
 
-  bool runOnMachineFunction(MachineFunction &F) override;
-  void EmitFunctionBodyStart() override;
-  void EmitFunctionBodyEnd() override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
+  void emitFunctionBodyStart() override;
+  void emitFunctionBodyEnd() override;
+  void emitKCFITypeId(const MachineFunction &MF) override;
+
+  bool shouldEmitWeakSwiftAsyncExtendedFramePointerFlags() const override {
+    return ShouldEmitWeakSwiftAsyncExtendedFramePointerFlags;
+  }
 };
 
 } // end namespace llvm

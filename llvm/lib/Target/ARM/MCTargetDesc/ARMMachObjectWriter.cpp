@@ -9,6 +9,7 @@
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMFixupKinds.h"
 #include "MCTargetDesc/ARMMCTargetDesc.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/MC/MCAsmLayout.h"
@@ -21,7 +22,6 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ScopedPrinter.h"
 
 using namespace llvm;
 
@@ -149,7 +149,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
   if (FixupOffset & 0xff000000) {
     Asm.getContext().reportError(Fixup.getLoc(),
                                  "can not encode offset '0x" +
-                                     to_hexString(FixupOffset) +
+                                     utohexstr(FixupOffset) +
                                      "' in resulting scattered relocation.");
     return;
   }
@@ -204,7 +204,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
   // relocation entry in the low 16 bits of r_address field.
   unsigned ThumbBit = 0;
   unsigned MovtBit = 0;
-  switch ((unsigned)Fixup.getKind()) {
+  switch (Fixup.getTargetKind()) {
   default: break;
   case ARM::fixup_arm_movt_hi16:
     MovtBit = 1;
@@ -218,7 +218,7 @@ RecordARMScatteredHalfRelocation(MachObjectWriter *Writer,
     if (Asm.isThumbFunc(A))
       FixedValue &= 0xfffffffe;
     MovtBit = 1;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case ARM::fixup_t2_movw_lo16:
     ThumbBit = 1;
     break;
@@ -264,7 +264,7 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
   if (FixupOffset & 0xff000000) {
     Asm.getContext().reportError(Fixup.getLoc(),
                                  "can not encode offset '0x" +
-                                     to_hexString(FixupOffset) +
+                                     utohexstr(FixupOffset) +
                                      "' in resulting scattered relocation.");
     return;
   }
@@ -480,7 +480,7 @@ void ARMMachObjectWriter::recordRelocation(MachObjectWriter *Writer,
     // PAIR. I.e. it's correct that we insert the high bits of the addend in the
     // MOVW case here.  relocation entries.
     uint32_t Value = 0;
-    switch ((unsigned)Fixup.getKind()) {
+    switch (Fixup.getTargetKind()) {
     default: break;
     case ARM::fixup_arm_movw_lo16:
     case ARM::fixup_t2_movw_lo16:
@@ -506,5 +506,5 @@ void ARMMachObjectWriter::recordRelocation(MachObjectWriter *Writer,
 std::unique_ptr<MCObjectTargetWriter>
 llvm::createARMMachObjectWriter(bool Is64Bit, uint32_t CPUType,
                                 uint32_t CPUSubtype) {
-  return llvm::make_unique<ARMMachObjectWriter>(Is64Bit, CPUType, CPUSubtype);
+  return std::make_unique<ARMMachObjectWriter>(Is64Bit, CPUType, CPUSubtype);
 }

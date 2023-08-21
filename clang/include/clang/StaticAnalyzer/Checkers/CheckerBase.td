@@ -10,14 +10,68 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// Describes a checker or package option type. This is important for validating
+/// user supplied inputs.
+/// New option types can be added by modifying this enum. Note that this
+/// requires changes in the TableGen emitter file ClangSACheckersEmitter.cpp.
+class CmdLineOptionTypeEnum<bits<2> val> {
+  bits<2> Type = val;
+}
+def Integer : CmdLineOptionTypeEnum<0>;
+def String : CmdLineOptionTypeEnum<1>;
+def Boolean : CmdLineOptionTypeEnum<2>;
+
+/// Describes the state of the entry. We wouldn't like to display, for example,
+/// developer only entries for a list meant for end users.
+class DevelopmentStageEnum<bits<1> val> {
+  bits<1> Val = val;
+}
+
+/// Alpha entries are under development, might be incomplet, inkorrekt and
+/// unstable.
+def InAlpha : DevelopmentStageEnum<0>;
+
+/// Released entries are stable, produce minimal, if any false positives,
+/// and emits reports that explain the occurance of the bug understandably and
+/// thoroughly.
+def Released : DevelopmentStageEnum<1>;
+
+/// Marks the entry hidden. Hidden entries won't be displayed in
+/// -analyzer-checker-option-help.
+class HiddenEnum<bit val> {
+  bit Val = val;
+}
+def DontHide : HiddenEnum<0>;
+def Hide : HiddenEnum<1>;
+
+/// Describes an option for a checker or a package.
+class CmdLineOption<CmdLineOptionTypeEnum type, string cmdFlag, string desc,
+                    string defaultVal, DevelopmentStageEnum stage,
+                    HiddenEnum isHidden = DontHide> {
+  bits<2> Type = type.Type;
+  string  CmdFlag = cmdFlag;
+  string  Desc = desc;
+  string  DefaultVal = defaultVal;
+  bits<1> DevelopmentStage = stage.Val;
+  bit     Hidden = isHidden.Val;
+}
+
+/// Describes a list of package options.
+class PackageOptions<list<CmdLineOption> opts> {
+  list<CmdLineOption> PackageOptions = opts;
+}
+
 /// Describes a package. Every checker is a part of a package, for example,
 /// 'NullDereference' is part of the 'core' package, hence it's full name is
 /// 'core.NullDereference'.
 /// Example:
 ///   def Core : Package<"core">;
 class Package<string name> {
-  string       PackageName = name;
-  Package ParentPackage;
+  string              PackageName = name;
+  // This field is optional.
+  list<CmdLineOption> PackageOptions;
+  Package             ParentPackage;
+  bit                 Hidden = 0;
 }
 
 /// Describes a 'super' package that holds another package inside it. This is
@@ -32,15 +86,14 @@ class ParentPackage<Package P> { Package ParentPackage = P; }
 class HelpText<string text> { string HelpText = text; }
 
 /// Describes what kind of documentation exists for the checker.
-class DocumentationEnum<bits<2> val> {
-  bits<2> Documentation = val;
+class DocumentationEnum<bits<1> val> {
+  bits<1> Documentation = val;
 }
 def NotDocumented : DocumentationEnum<0>;
 def HasDocumentation : DocumentationEnum<1>;
-def HasAlphaDocumentation : DocumentationEnum<2>;
 
 class Documentation<DocumentationEnum val> {
-  bits<2> Documentation = val.Documentation;
+  bits<1> Documentation = val.Documentation;
 }
 
 /// Describes a checker. Every builtin checker has to be registered with the use
@@ -52,15 +105,31 @@ class Documentation<DocumentationEnum val> {
 ///   def DereferenceChecker : Checker<"NullDereference">,
 ///     HelpText<"Check for dereferences of null pointers">;
 class Checker<string name = ""> {
-  string        CheckerName = name;
-  string        HelpText;
-  list<Checker> Dependencies;
-  bits<2>       Documentation;
-  Package       ParentPackage;
+  string              CheckerName = name;
+  string              HelpText;
+  // This field is optional.
+  list<CmdLineOption> CheckerOptions;
+  // This field is optional.
+  list<Checker>       Dependencies;
+  // This field is optional.
+  list<Checker>       WeakDependencies;
+  bits<1>             Documentation;
+  Package             ParentPackage;
+  bit                 Hidden = 0;
 }
 
-/// Describes dependencies in between checkers. For example, InnerPointerChecker
-/// relies on information MallocBase gathers.
+/// Describes a list of checker options.
+class CheckerOptions<list<CmdLineOption> opts> {
+  list<CmdLineOption> CheckerOptions = opts;
+}
+
+/// Describes (strong) dependencies in between checkers. This is important for
+/// modeling checkers, for example, MallocBase depends on the proper modeling of
+/// string operations, so it depends on CStringBase. A checker may only be
+/// enabled if none of its dependencies (transitively) is disabled. Dependencies
+/// are always registered before the dependent checker, and its checker
+/// callbacks are also evaluated sooner.
+/// One may only depend on a purely modeling checker (that emits no diagnostis).
 /// Example:
 ///   def InnerPointerChecker : Checker<"InnerPointer">,
 ///     HelpText<"Check for inner pointers of C++ containers used after "
@@ -69,3 +138,25 @@ class Checker<string name = ""> {
 class Dependencies<list<Checker> Deps = []> {
   list<Checker> Dependencies = Deps;
 }
+
+/// Describes preferred registration and evaluation order in between checkers.
+/// Unlike strong dependencies, this expresses dependencies in between
+/// diagnostics, and *not* modeling. In the case of an unsatisfied (disabled)
+/// weak dependency, the dependent checker might still be registered. If the
+/// weak dependency is satisfied, it'll be registered, and its checker
+/// callbacks will be evaluated before the dependent checker. This can be used
+/// to ensure that a more specific warning would be displayed in place of a
+/// generic one, should multiple checkers detect the same bug. For example,
+/// non-null parameter bugs are detected by NonNullParamChecker due to the
+/// nonnull attribute, and StdLibraryFunctionsChecker as it models standard
+/// functions, and the former is the more specific one. While freeing a
+/// dangling pointer is a bug, if it is also a double free, we would like to
+/// recognize it as such first and foremost. This works best for fatal error
+/// node generation, otherwise both warnings may be present and in any order.
+class WeakDependencies<list<Checker> Deps = []> {
+  list<Checker> WeakDependencies = Deps;
+}
+
+/// Marks a checker or a package hidden. Hidden entries are meant for developers
+/// only, and aren't exposed to end users.
+class Hidden { bit Hidden = 1; }

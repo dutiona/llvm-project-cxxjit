@@ -14,12 +14,13 @@
 #ifndef LLVM_CLANG_LIB_AST_LINKAGE_H
 #define LLVM_CLANG_LIB_AST_LINKAGE_H
 
+#include "clang/AST/ASTFwd.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include <optional>
 
 namespace clang {
 /// Kinds of LV computation.  The linkage side of the computation is
@@ -90,11 +91,11 @@ class LinkageComputer {
     return QueryType(ND, Kind.toBits());
   }
 
-  llvm::Optional<LinkageInfo> lookup(const NamedDecl *ND,
-                                     LVComputationKind Kind) const {
+  std::optional<LinkageInfo> lookup(const NamedDecl *ND,
+                                    LVComputationKind Kind) const {
     auto Iter = CachedLinkageInfo.find(makeCacheKey(ND, Kind));
     if (Iter == CachedLinkageInfo.end())
-      return None;
+      return std::nullopt;
     return Iter->second;
   }
 
@@ -138,6 +139,8 @@ class LinkageComputer {
 
   LinkageInfo getLVForTemplateParameterList(const TemplateParameterList *Params,
                                             LVComputationKind computation);
+
+  LinkageInfo getLVForValue(const APValue &V, LVComputationKind computation);
 
 public:
   LinkageInfo computeLVForDecl(const NamedDecl *D,

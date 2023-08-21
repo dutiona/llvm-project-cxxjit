@@ -40,6 +40,8 @@ public:
   void MacroDefinitionRead(serialization::PreprocessedEntityID,
                            MacroDefinitionRecord *MD) override;
   void ModuleRead(serialization::SubmoduleID ID, Module *Mod) override;
+  void ModuleImportRead(serialization::SubmoduleID ID,
+                        SourceLocation ImportLoc) override;
 
 private:
   std::vector<ASTDeserializationListener *> Listeners;
@@ -65,6 +67,7 @@ public:
   void HandleTopLevelDeclInObjCContainer(DeclGroupRef D) override;
   void HandleImplicitImportDecl(ImportDecl *D) override;
   void CompleteTentativeDefinition(VarDecl *D) override;
+  void CompleteExternalDeclaration(VarDecl *D) override;
   void AssignInheritanceModel(CXXRecordDecl *RD) override;
   void HandleVTable(CXXRecordDecl *RD) override;
   ASTMutationListener *GetASTMutationListener() override;

@@ -1,4 +1,4 @@
-//===--------------------- TildeExpressionResolver.h ------------*- C++ -*-===//
+//===-- MockTildeExpressionResolver.h ---------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_UNITTESTS_UTILITY_MOCKS_MOCK_TILDE_EXPRESSION_RESOLVER_H
-#define LLDB_UNITTESTS_UTILITY_MOCKS_MOCK_TILDE_EXPRESSION_RESOLVER_H
+#ifndef LLDB_UNITTESTS_TESTINGSUPPORT_MOCKTILDEEXPRESSIONRESOLVER_H
+#define LLDB_UNITTESTS_TESTINGSUPPORT_MOCKTILDEEXPRESSIONRESOLVER_H
 
 #include "lldb/Utility/TildeExpressionResolver.h"
 

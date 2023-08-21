@@ -16,7 +16,6 @@
 #define LLVM_CODEGEN_SCHEDULEDAG_H
 
 #include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator.h"
@@ -31,6 +30,7 @@
 
 namespace llvm {
 
+template <class GraphType> struct GraphTraits;
 template<class Graph> class GraphWriter;
 class LLVMTargetMachine;
 class MachineFunction;
@@ -414,7 +414,7 @@ class TargetRegisterInfo;
     /// dirty.
     void setDepthToAtLeast(unsigned NewDepth);
 
-    /// If NewDepth is greater than this node's depth value, set it to be
+    /// If NewHeight is greater than this node's height value, set it to be
     /// the new height value. This also recursively marks predecessor nodes
     /// dirty.
     void setHeightToAtLeast(unsigned NewHeight);
@@ -525,9 +525,8 @@ class TargetRegisterInfo;
     virtual void push(SUnit *U) = 0;
 
     void push_all(const std::vector<SUnit *> &Nodes) {
-      for (std::vector<SUnit *>::const_iterator I = Nodes.begin(),
-           E = Nodes.end(); I != E; ++I)
-        push(*I);
+      for (SUnit *SU : Nodes)
+        push(SU);
     }
 
     virtual SUnit *pop() = 0;
@@ -614,14 +613,19 @@ class TargetRegisterInfo;
     const MCInstrDesc *getNodeDesc(const SDNode *Node) const;
   };
 
-  class SUnitIterator : public std::iterator<std::forward_iterator_tag,
-                                             SUnit, ptrdiff_t> {
+  class SUnitIterator {
     SUnit *Node;
     unsigned Operand;
 
     SUnitIterator(SUnit *N, unsigned Op) : Node(N), Operand(Op) {}
 
   public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = SUnit;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type *;
+    using reference = value_type &;
+
     bool operator==(const SUnitIterator& x) const {
       return Operand == x.Operand;
     }
@@ -691,6 +695,12 @@ class TargetRegisterInfo;
     std::vector<SUnit> &SUnits;
     SUnit *ExitSU;
 
+    // Have any new nodes been added?
+    bool Dirty = false;
+
+    // Outstanding added edges, that have not been applied to the ordering.
+    SmallVector<std::pair<SUnit *, SUnit *>, 16> Updates;
+
     /// Maps topological index to the node number.
     std::vector<int> Index2Node;
     /// Maps the node number to its topological index.
@@ -710,8 +720,17 @@ class TargetRegisterInfo;
     /// Assigns the topological index to the node n.
     void Allocate(int n, int index);
 
+    /// Fix the ordering, by either recomputing from scratch or by applying
+    /// any outstanding updates. Uses a heuristic to estimate what will be
+    /// cheaper.
+    void FixOrder();
+
   public:
     ScheduleDAGTopologicalSort(std::vector<SUnit> &SUnits, SUnit *ExitSU);
+
+    /// Add a SUnit without predecessors to the end of the topological order. It
+    /// also must be the first new node added to the DAG.
+    void AddSUnitWithoutPredecessors(const SUnit *SU);
 
     /// Creates the initial topological ordering from the DAG to be scheduled.
     void InitDAGTopologicalSorting();
@@ -734,10 +753,18 @@ class TargetRegisterInfo;
     /// added from SUnit \p X to SUnit \p Y.
     void AddPred(SUnit *Y, SUnit *X);
 
+    /// Queues an update to the topological ordering to accommodate an edge to
+    /// be added from SUnit \p X to SUnit \p Y.
+    void AddPredQueued(SUnit *Y, SUnit *X);
+
     /// Updates the topological ordering to accommodate an an edge to be
     /// removed from the specified node \p N from the predecessors of the
     /// current node \p M.
     void RemovePred(SUnit *M, SUnit *N);
+
+    /// Mark the ordering as temporarily broken, after a new node has been
+    /// added.
+    void MarkDirty() { Dirty = true; }
 
     typedef std::vector<int>::iterator iterator;
     typedef std::vector<int>::const_iterator const_iterator;

@@ -1,4 +1,4 @@
-//===-- Highlighter.cpp -----------------------------------------*- C++ -*-===//
+//===-- Highlighter.cpp ---------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,8 +11,10 @@
 #include "lldb/Target/Language.h"
 #include "lldb/Utility/AnsiTerminal.h"
 #include "lldb/Utility/StreamString.h"
+#include <optional>
 
 using namespace lldb_private;
+using namespace lldb_private::ansi;
 
 void HighlightStyle::ColorStyle::Apply(Stream &s, llvm::StringRef value) const {
   s << m_prefix << value << m_suffix;
@@ -20,13 +22,13 @@ void HighlightStyle::ColorStyle::Apply(Stream &s, llvm::StringRef value) const {
 
 void HighlightStyle::ColorStyle::Set(llvm::StringRef prefix,
                                      llvm::StringRef suffix) {
-  m_prefix = lldb_utility::ansi::FormatAnsiTerminalCodes(prefix);
-  m_suffix = lldb_utility::ansi::FormatAnsiTerminalCodes(suffix);
+  m_prefix = FormatAnsiTerminalCodes(prefix);
+  m_suffix = FormatAnsiTerminalCodes(suffix);
 }
 
 void DefaultHighlighter::Highlight(const HighlightStyle &options,
                                    llvm::StringRef line,
-                                   llvm::Optional<size_t> cursor_pos,
+                                   std::optional<size_t> cursor_pos,
                                    llvm::StringRef previous_lines,
                                    Stream &s) const {
   // If we don't have a valid cursor, then we just print the line as-is.
@@ -71,7 +73,7 @@ HighlighterManager::getHighlighterFor(lldb::LanguageType language_type,
 
 std::string Highlighter::Highlight(const HighlightStyle &options,
                                    llvm::StringRef line,
-                                   llvm::Optional<size_t> cursor_pos,
+                                   std::optional<size_t> cursor_pos,
                                    llvm::StringRef previous_lines) const {
   StreamString s;
   Highlight(options, line, cursor_pos, previous_lines, s);

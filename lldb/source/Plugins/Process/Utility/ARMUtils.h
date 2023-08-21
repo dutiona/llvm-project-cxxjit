@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_ARMUtils_h_
-#define lldb_ARMUtils_h_
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_ARMUTILS_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_ARMUTILS_H
 
 #include "ARMDefines.h"
 #include "InstructionUtils.h"
@@ -25,7 +25,8 @@ static inline uint32_t DecodeImmShift(const uint32_t type, const uint32_t imm5,
                                       ARM_ShifterType &shift_t) {
   switch (type) {
   default:
-  // assert(0 && "Invalid shift type");
+    assert(0 && "Invalid shift type");
+    break;
   case 0:
     shift_t = SRType_LSL;
     return imm5;
@@ -302,7 +303,7 @@ static inline uint32_t ARMExpandImm(uint32_t opcode) {
 // (imm32, carry_out) = ThumbExpandImm_C(imm12, carry_in)
 static inline uint32_t ThumbExpandImm_C(uint32_t opcode, uint32_t carry_in,
                                         uint32_t &carry_out) {
-  uint32_t imm32; // the expanded result
+  uint32_t imm32 = 0; // the expanded result
   const uint32_t i = bit(opcode, 26);
   const uint32_t imm3 = bits(opcode, 14, 12);
   const uint32_t abcdefgh = bits(opcode, 7, 0);
@@ -311,6 +312,8 @@ static inline uint32_t ThumbExpandImm_C(uint32_t opcode, uint32_t carry_in,
   if (bits(imm12, 11, 10) == 0) {
     switch (bits(imm12, 9, 8)) {
     default: // Keep static analyzer happy with a default case
+      break;
+
     case 0:
       imm32 = abcdefgh;
       break;
@@ -371,4 +374,4 @@ static inline bool BadReg(uint32_t n) { return n == 13 || n == 15; }
 
 } // namespace lldb_private
 
-#endif // lldb_ARMUtils_h_
+#endif // LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_ARMUTILS_H

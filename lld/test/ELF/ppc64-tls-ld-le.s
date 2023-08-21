@@ -3,13 +3,13 @@
 // RUN: llvm-mc -filetype=obj -triple=powerpc64le-unknown-linux %s -o %t.o
 // RUN: llvm-readelf -r %t.o | FileCheck --check-prefix=InputRelocs %s
 // RUN: ld.lld  %t.o -o %t
-// RUN: llvm-objdump -d %t | FileCheck --check-prefix=Dis %s
+// RUN: llvm-objdump -d --no-show-raw-insn %t | FileCheck --check-prefix=Dis %s
 // RUN: llvm-readelf -r %t | FileCheck --check-prefix=OutputRelocs %s
 
 // RUN: llvm-mc -filetype=obj -triple=powerpc64-unknown-linux %s -o %t.o
 // RUN: llvm-readelf -r %t.o | FileCheck --check-prefix=InputRelocs %s
 // RUN: ld.lld  %t.o -o %t
-// RUN: llvm-objdump -d %t | FileCheck --check-prefix=Dis %s
+// RUN: llvm-objdump -d --no-show-raw-insn %t | FileCheck --check-prefix=Dis %s
 // RUN: llvm-readelf -r %t | FileCheck --check-prefix=OutputRelocs %s
 
 	.text
@@ -67,7 +67,7 @@ a:
 // InputRelocs: R_PPC64_TLSLD           {{0+}}  a + 0
 
 // Verify that the local-dynamic sequence is relaxed to local exec.
-// Dis: _start:
+// Dis: <_start>:
 // Dis: nop
 // Dis: addis 3, 13, 0
 // Dis: nop

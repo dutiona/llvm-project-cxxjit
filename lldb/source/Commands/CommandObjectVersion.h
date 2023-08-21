@@ -6,16 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_CommandObjectVersion_h_
-#define liblldb_CommandObjectVersion_h_
+#ifndef LLDB_SOURCE_COMMANDS_COMMANDOBJECTVERSION_H
+#define LLDB_SOURCE_COMMANDS_COMMANDOBJECTVERSION_H
 
 #include "lldb/Interpreter/CommandObject.h"
 
 namespace lldb_private {
 
-//-------------------------------------------------------------------------
 // CommandObjectVersion
-//-------------------------------------------------------------------------
 
 class CommandObjectVersion : public CommandObjectParsed {
 public:
@@ -29,4 +27,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_CommandObjectVersion_h_
+#endif // LLDB_SOURCE_COMMANDS_COMMANDOBJECTVERSION_H

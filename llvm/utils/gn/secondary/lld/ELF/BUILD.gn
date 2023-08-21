@@ -20,10 +20,12 @@ static_library("ELF") {
     "//llvm/lib/Option",
     "//llvm/lib/Support",
     "//llvm/lib/Target:TargetsToBuild",
+    "//llvm/lib/TargetParser",
   ]
   include_dirs = [ "." ]
   sources = [
     "AArch64ErrataFix.cpp",
+    "ARMErrataFix.cpp",
     "Arch/AArch64.cpp",
     "Arch/AMDGPU.cpp",
     "Arch/ARM.cpp",
@@ -43,7 +45,6 @@ static_library("ELF") {
     "Driver.cpp",
     "DriverUtils.cpp",
     "EhFrame.cpp",
-    "Filesystem.cpp",
     "ICF.cpp",
     "InputFiles.cpp",
     "InputSection.cpp",

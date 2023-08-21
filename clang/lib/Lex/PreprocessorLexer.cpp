@@ -30,9 +30,7 @@ PreprocessorLexer::PreprocessorLexer(Preprocessor *pp, FileID fid)
 /// After the preprocessor has parsed a \#include, lex and
 /// (potentially) macro expand the filename.
 void PreprocessorLexer::LexIncludeFilename(Token &FilenameTok) {
-  assert(ParsingPreprocessorDirective &&
-         ParsingFilename == false &&
-         "Must be in a preprocessing directive!");
+  assert(ParsingFilename == false && "reentered LexIncludeFilename");
 
   // We are now parsing a filename!
   ParsingFilename = true;
@@ -45,14 +43,11 @@ void PreprocessorLexer::LexIncludeFilename(Token &FilenameTok) {
 
   // We should have obtained the filename now.
   ParsingFilename = false;
-
-  // No filename?
-  if (FilenameTok.is(tok::eod))
-    PP->Diag(FilenameTok.getLocation(), diag::err_pp_expects_filename);
 }
 
 /// getFileEntry - Return the FileEntry corresponding to this FileID.  Like
 /// getFileID(), this only works for lexers with attached preprocessors.
-const FileEntry *PreprocessorLexer::getFileEntry() const {
-  return PP->getSourceManager().getFileEntryForID(getFileID());
+OptionalFileEntryRefDegradesToFileEntryPtr
+PreprocessorLexer::getFileEntry() const {
+  return PP->getSourceManager().getFileEntryRefForID(getFileID());
 }

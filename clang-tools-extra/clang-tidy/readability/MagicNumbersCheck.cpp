@@ -19,14 +19,13 @@
 #include <algorithm>
 
 using namespace clang::ast_matchers;
-using namespace clang::ast_type_traits;
 
-namespace {
+namespace clang {
 
-bool isUsedToInitializeAConstant(const MatchFinder::MatchResult &Result,
-                                 const DynTypedNode &Node) {
+static bool isUsedToInitializeAConstant(const MatchFinder::MatchResult &Result,
+                                        const DynTypedNode &Node) {
 
-  const auto *AsDecl = Node.get<clang::DeclaratorDecl>();
+  const auto *AsDecl = Node.get<DeclaratorDecl>();
   if (AsDecl) {
     if (AsDecl->getType().isConstQualified())
       return true;
@@ -34,7 +33,7 @@ bool isUsedToInitializeAConstant(const MatchFinder::MatchResult &Result,
     return AsDecl->isImplicit();
   }
 
-  if (Node.get<clang::EnumConstantDecl>() != nullptr)
+  if (Node.get<EnumConstantDecl>())
     return true;
 
   return llvm::any_of(Result.Context->getParents(Node),
@@ -43,11 +42,19 @@ bool isUsedToInitializeAConstant(const MatchFinder::MatchResult &Result,
                       });
 }
 
-} // namespace
+static bool isUsedToDefineABitField(const MatchFinder::MatchResult &Result,
+                                    const DynTypedNode &Node) {
+  const auto *AsFieldDecl = Node.get<FieldDecl>();
+  if (AsFieldDecl && AsFieldDecl->isBitField())
+    return true;
 
-namespace clang {
-namespace tidy {
-namespace readability {
+  return llvm::any_of(Result.Context->getParents(Node),
+                      [&Result](const DynTypedNode &Parent) {
+                        return isUsedToDefineABitField(Result, Parent);
+                      });
+}
+
+namespace tidy::readability {
 
 const char DefaultIgnoredIntegerValues[] = "1;2;3;4;";
 const char DefaultIgnoredFloatingPointValues[] = "1.0;100.0;";
@@ -56,44 +63,60 @@ MagicNumbersCheck::MagicNumbersCheck(StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       IgnoreAllFloatingPointValues(
           Options.get("IgnoreAllFloatingPointValues", false)),
+      IgnoreBitFieldsWidths(Options.get("IgnoreBitFieldsWidths", true)),
       IgnorePowersOf2IntegerValues(
-          Options.get("IgnorePowersOf2IntegerValues", false)) {
+          Options.get("IgnorePowersOf2IntegerValues", false)),
+      RawIgnoredIntegerValues(
+          Options.get("IgnoredIntegerValues", DefaultIgnoredIntegerValues)),
+      RawIgnoredFloatingPointValues(Options.get(
+          "IgnoredFloatingPointValues", DefaultIgnoredFloatingPointValues)) {
   // Process the set of ignored integer values.
-  const std::vector<std::string> IgnoredIntegerValuesInput =
-      utils::options::parseStringList(
-          Options.get("IgnoredIntegerValues", DefaultIgnoredIntegerValues));
+  const std::vector<StringRef> IgnoredIntegerValuesInput =
+      utils::options::parseStringList(RawIgnoredIntegerValues);
   IgnoredIntegerValues.resize(IgnoredIntegerValuesInput.size());
   llvm::transform(IgnoredIntegerValuesInput, IgnoredIntegerValues.begin(),
-                  [](const std::string &Value) { return std::stoll(Value); });
+                  [](StringRef Value) {
+                    int64_t Res;
+                    Value.getAsInteger(10, Res);
+                    return Res;
+                  });
   llvm::sort(IgnoredIntegerValues);
 
   if (!IgnoreAllFloatingPointValues) {
     // Process the set of ignored floating point values.
-    const std::vector<std::string> IgnoredFloatingPointValuesInput =
-        utils::options::parseStringList(Options.get(
-            "IgnoredFloatingPointValues", DefaultIgnoredFloatingPointValues));
+    const std::vector<StringRef> IgnoredFloatingPointValuesInput =
+        utils::options::parseStringList(RawIgnoredFloatingPointValues);
     IgnoredFloatingPointValues.reserve(IgnoredFloatingPointValuesInput.size());
     IgnoredDoublePointValues.reserve(IgnoredFloatingPointValuesInput.size());
     for (const auto &InputValue : IgnoredFloatingPointValuesInput) {
       llvm::APFloat FloatValue(llvm::APFloat::IEEEsingle());
-      FloatValue.convertFromString(InputValue, DefaultRoundingMode);
+      auto StatusOrErr =
+          FloatValue.convertFromString(InputValue, DefaultRoundingMode);
+      assert(StatusOrErr && "Invalid floating point representation");
+      consumeError(StatusOrErr.takeError());
       IgnoredFloatingPointValues.push_back(FloatValue.convertToFloat());
 
       llvm::APFloat DoubleValue(llvm::APFloat::IEEEdouble());
-      DoubleValue.convertFromString(InputValue, DefaultRoundingMode);
+      StatusOrErr =
+          DoubleValue.convertFromString(InputValue, DefaultRoundingMode);
+      assert(StatusOrErr && "Invalid floating point representation");
+      consumeError(StatusOrErr.takeError());
       IgnoredDoublePointValues.push_back(DoubleValue.convertToDouble());
     }
-    llvm::sort(IgnoredFloatingPointValues.begin(),
-               IgnoredFloatingPointValues.end());
-    llvm::sort(IgnoredDoublePointValues.begin(),
-               IgnoredDoublePointValues.end());
+    llvm::sort(IgnoredFloatingPointValues);
+    llvm::sort(IgnoredDoublePointValues);
   }
 }
 
 void MagicNumbersCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
-  Options.store(Opts, "IgnoredIntegerValues", DefaultIgnoredIntegerValues);
+  Options.store(Opts, "IgnoreAllFloatingPointValues",
+                IgnoreAllFloatingPointValues);
+  Options.store(Opts, "IgnoreBitFieldsWidths", IgnoreBitFieldsWidths);
+  Options.store(Opts, "IgnorePowersOf2IntegerValues",
+                IgnorePowersOf2IntegerValues);
+  Options.store(Opts, "IgnoredIntegerValues", RawIgnoredIntegerValues);
   Options.store(Opts, "IgnoredFloatingPointValues",
-                DefaultIgnoredFloatingPointValues);
+                RawIgnoredFloatingPointValues);
 }
 
 void MagicNumbersCheck::registerMatchers(MatchFinder *Finder) {
@@ -103,6 +126,9 @@ void MagicNumbersCheck::registerMatchers(MatchFinder *Finder) {
 }
 
 void MagicNumbersCheck::check(const MatchFinder::MatchResult &Result) {
+
+  TraversalKindScope RAII(*Result.Context, TK_AsIs);
+
   checkBoundMatch<IntegerLiteral>(Result, "integer");
   checkBoundMatch<FloatingLiteral>(Result, "float");
 }
@@ -112,10 +138,33 @@ bool MagicNumbersCheck::isConstant(const MatchFinder::MatchResult &Result,
   return llvm::any_of(
       Result.Context->getParents(ExprResult),
       [&Result](const DynTypedNode &Parent) {
-        return isUsedToInitializeAConstant(Result, Parent) ||
-               // Ignore this instance, because this match reports the location
-               // where the template is defined, not where it is instantiated.
-               Parent.get<SubstNonTypeTemplateParmExpr>();
+        if (isUsedToInitializeAConstant(Result, Parent))
+          return true;
+
+        // Ignore this instance, because this matches an
+        // expanded class enumeration value.
+        if (Parent.get<CStyleCastExpr>() &&
+            llvm::any_of(
+                Result.Context->getParents(Parent),
+                [](const DynTypedNode &GrandParent) {
+                  return GrandParent.get<SubstNonTypeTemplateParmExpr>() !=
+                         nullptr;
+                }))
+          return true;
+
+        // Ignore this instance, because this match reports the
+        // location where the template is defined, not where it
+        // is instantiated.
+        if (Parent.get<SubstNonTypeTemplateParmExpr>())
+          return true;
+
+        // Don't warn on string user defined literals:
+        // std::string s = "Hello World"s;
+        if (const auto *UDL = Parent.get<UserDefinedLiteral>())
+          if (UDL->getLiteralOperatorKind() == UserDefinedLiteral::LOK_String)
+            return true;
+
+        return false;
       });
 }
 
@@ -160,11 +209,20 @@ bool MagicNumbersCheck::isSyntheticValue(const SourceManager *SourceManager,
     return false;
 
   const StringRef BufferIdentifier =
-      SourceManager->getBuffer(FileOffset.first)->getBufferIdentifier();
+      SourceManager->getBufferOrFake(FileOffset.first).getBufferIdentifier();
 
   return BufferIdentifier.empty();
 }
 
-} // namespace readability
-} // namespace tidy
+bool MagicNumbersCheck::isBitFieldWidth(
+    const clang::ast_matchers::MatchFinder::MatchResult &Result,
+    const IntegerLiteral &Literal) const {
+  return IgnoreBitFieldsWidths &&
+         llvm::any_of(Result.Context->getParents(Literal),
+                      [&Result](const DynTypedNode &Parent) {
+                        return isUsedToDefineABitField(Result, Parent);
+                      });
+}
+
+} // namespace tidy::readability
 } // namespace clang

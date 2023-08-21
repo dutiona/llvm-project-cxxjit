@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "func-id-helper.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include <sstream>
 
@@ -29,9 +30,14 @@ std::string FuncIdConversionHelper::SymbolOrNumber(int32_t FuncId) const {
     return F.str();
   }
 
-  if (auto ResOrErr = Symbolizer.symbolizeCode(BinaryInstrMap, It->second)) {
+  object::SectionedAddress ModuleAddress;
+  ModuleAddress.Address = It->second;
+  // TODO: set proper section index here.
+  // object::SectionedAddress::UndefSection works for only absolute addresses.
+  ModuleAddress.SectionIndex = object::SectionedAddress::UndefSection;
+  if (auto ResOrErr = Symbolizer.symbolizeCode(BinaryInstrMap, ModuleAddress)) {
     auto &DI = *ResOrErr;
-    if (DI.FunctionName == "<invalid>")
+    if (DI.FunctionName == DILineInfo::BadString)
       F << "@(" << std::hex << It->second << ")";
     else
       F << DI.FunctionName;
@@ -51,7 +57,12 @@ std::string FuncIdConversionHelper::FileLineAndColumn(int32_t FuncId) const {
     return "(unknown)";
 
   std::ostringstream F;
-  auto ResOrErr = Symbolizer.symbolizeCode(BinaryInstrMap, It->second);
+  object::SectionedAddress ModuleAddress;
+  ModuleAddress.Address = It->second;
+  // TODO: set proper section index here.
+  // object::SectionedAddress::UndefSection works for only absolute addresses.
+  ModuleAddress.SectionIndex = object::SectionedAddress::UndefSection;
+  auto ResOrErr = Symbolizer.symbolizeCode(BinaryInstrMap, ModuleAddress);
   if (!ResOrErr) {
     consumeError(ResOrErr.takeError());
     return "(unknown)";

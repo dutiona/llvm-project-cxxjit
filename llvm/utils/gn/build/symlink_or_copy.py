@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Symlinks, or on Windows copies, an existing file to a second location.
 
@@ -22,6 +22,11 @@ def main():
     # FIXME: This should not check the host platform but the target platform
     # (which needs to be passed in as an arg), for cross builds.
     if sys.platform != 'win32':
+        try:
+            os.makedirs(os.path.dirname(args.output))
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
         try:
             os.symlink(args.source, args.output)
         except OSError as e:

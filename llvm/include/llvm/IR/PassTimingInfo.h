@@ -15,29 +15,26 @@
 #ifndef LLVM_IR_PASSTIMINGINFO_H
 #define LLVM_IR_PASSTIMINGINFO_H
 
-#include "llvm/ADT/Any.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Timer.h"
-#include "llvm/Support/TypeName.h"
 #include <memory>
+#include <utility>
+
 namespace llvm {
 
 class Pass;
 class PassInstrumentationCallbacks;
+class raw_ostream;
 
 /// If -time-passes has been specified, report the timings immediately and then
-/// reset the timers to zero.
-void reportAndResetTimings();
+/// reset the timers to zero. By default it uses the stream created by
+/// CreateInfoOutputFile().
+void reportAndResetTimings(raw_ostream *OutStream = nullptr);
 
 /// Request the timer for this legacy-pass-manager's pass instance.
 Timer *getPassTimer(Pass *);
-
-/// If the user specifies the -time-passes argument on an LLVM tool command line
-/// then the value of this boolean will be true, otherwise false.
-/// This is the storage for the -time-passes option.
-extern bool TimePassesIsEnabled;
 
 /// This class implements -time-passes functionality for new pass manager.
 /// It provides the pass-instrumentation callbacks that measure the pass
@@ -50,30 +47,34 @@ class TimePassesHandler {
   /// to all the instance of a given pass) + sequential invocation counter.
   using PassInvocationID = std::pair<StringRef, unsigned>;
 
-  /// A group of all pass-timing timers.
-  TimerGroup TG;
+  /// Groups of timers for passes and analyses.
+  TimerGroup PassTG;
+  TimerGroup AnalysisTG;
 
+  using TimerVector = llvm::SmallVector<std::unique_ptr<Timer>, 4>;
   /// Map of timers for pass invocations
-  DenseMap<PassInvocationID, std::unique_ptr<Timer>> TimingData;
+  StringMap<TimerVector> TimingData;
 
-  /// Map that counts invocations of passes, for use in UniqPassID construction.
-  StringMap<unsigned> PassIDCountMap;
+  /// Currently active pass timer.
+  Timer *ActivePassTimer = nullptr;
+  /// Stack of currently active analysis timers. Analyses can request other
+  /// analyses.
+  SmallVector<Timer *, 8> AnalysisActiveTimerStack;
 
-  /// Stack of currently active timers.
-  SmallVector<Timer *, 8> TimerStack;
+  /// Custom output stream to print timing information into.
+  /// By default (== nullptr) we emit time report into the stream created by
+  /// CreateInfoOutputFile().
+  raw_ostream *OutStream = nullptr;
 
   bool Enabled;
+  bool PerRun;
 
 public:
-  TimePassesHandler(bool Enabled = TimePassesIsEnabled);
+  TimePassesHandler();
+  TimePassesHandler(bool Enabled, bool PerRun = false);
 
   /// Destructor handles the print action if it has not been handled before.
-  ~TimePassesHandler() {
-    // First destroying the timers from TimingData, which deploys all their
-    // collected data into the TG time group member, which later prints itself
-    // when being destroyed.
-    TimingData.clear();
-  }
+  ~TimePassesHandler() { print(); }
 
   /// Prints out timing information and then resets the timers.
   void print();
@@ -84,22 +85,20 @@ public:
 
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 
+  /// Set a custom output stream for subsequent reporting.
+  void setOutStream(raw_ostream &OutStream);
+
 private:
   /// Dumps information for running/triggered timers, useful for debugging
   LLVM_DUMP_METHOD void dump() const;
 
   /// Returns the new timer for each new run of the pass.
-  Timer &getPassTimer(StringRef PassID);
+  Timer &getPassTimer(StringRef PassID, bool IsPass);
 
-  /// Returns the incremented counter for the next invocation of \p PassID.
-  unsigned nextPassID(StringRef PassID) { return ++PassIDCountMap[PassID]; }
-
-  void startTimer(StringRef PassID);
-  void stopTimer(StringRef PassID);
-
-  // Implementation of pass instrumentation callbacks.
-  bool runBeforePass(StringRef PassID);
-  void runAfterPass(StringRef PassID);
+  void startAnalysisTimer(StringRef PassID);
+  void stopAnalysisTimer(StringRef PassID);
+  void startPassTimer(StringRef PassID);
+  void stopPassTimer(StringRef PassID);
 };
 
 } // namespace llvm

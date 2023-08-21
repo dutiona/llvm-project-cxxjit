@@ -26,6 +26,13 @@ namespace llvm {
 
 
 namespace llvm {
+  namespace AArch64DBnXS {
+#define GET_DBNXS_IMPL
+#include "AArch64GenSystemOperands.inc"
+  }
+}
+
+namespace llvm {
   namespace AArch64DB {
 #define GET_DB_IMPL
 #include "AArch64GenSystemOperands.inc"
@@ -82,11 +89,25 @@ namespace llvm {
 }
 
 namespace llvm {
+  namespace AArch64RPRFM {
+#define GET_RPRFM_IMPL
+#include "AArch64GenSystemOperands.inc"
+  } // namespace AArch64RPRFM
+} // namespace llvm
+
+namespace llvm {
   namespace AArch64SVEPredPattern {
 #define GET_SVEPREDPAT_IMPL
 #include "AArch64GenSystemOperands.inc"
   }
 }
+
+namespace llvm {
+namespace AArch64SVEVecLenSpecifier {
+#define GET_SVEVECLENSPECIFIER_IMPL
+#include "AArch64GenSystemOperands.inc"
+} // namespace AArch64SVEVecLenSpecifier
+} // namespace llvm
 
 namespace llvm {
   namespace AArch64ExactFPImm {
@@ -97,7 +118,9 @@ namespace llvm {
 
 namespace llvm {
   namespace AArch64PState {
-#define GET_PSTATE_IMPL
+#define GET_PSTATEIMM0_15_IMPL
+#include "AArch64GenSystemOperands.inc"
+#define GET_PSTATEIMM0_1_IMPL
 #include "AArch64GenSystemOperands.inc"
   }
 }
@@ -125,7 +148,7 @@ namespace llvm {
 
 uint32_t AArch64SysReg::parseGenericRegister(StringRef Name) {
   // Try to parse an S<op0>_<op1>_<Cn>_<Cm>_<op2> register name
-  Regex GenericRegPattern("^S([0-3])_([0-7])_C([0-9]|1[0-5])_C([0-9]|1[0-5])_([0-7])$");
+  static const Regex GenericRegPattern("^S([0-3])_([0-7])_C([0-9]|1[0-5])_C([0-9]|1[0-5])_([0-7])$");
 
   std::string UpperName = Name.upper();
   SmallVector<StringRef, 5> Ops;
@@ -158,7 +181,14 @@ std::string AArch64SysReg::genericRegisterString(uint32_t Bits) {
 
 namespace llvm {
   namespace AArch64TLBI {
-#define GET_TLBI_IMPL
+#define GET_TLBITable_IMPL
+#include "AArch64GenSystemOperands.inc"
+  }
+}
+
+namespace llvm {
+  namespace AArch64SVCR {
+#define GET_SVCR_IMPL
 #include "AArch64GenSystemOperands.inc"
   }
 }

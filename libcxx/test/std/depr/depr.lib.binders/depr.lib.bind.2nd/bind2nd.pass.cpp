@@ -7,15 +7,18 @@
 //===----------------------------------------------------------------------===//
 
 // <functional>
-// REQUIRES: c++98 || c++03 || c++11 || c++14
 
 // template <class Fn, class T>
 //   binder2nd<Fn>
 //   bind2nd(const Fn& op, const T& x);
 
+// REQUIRES: c++03 || c++11 || c++14
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 #include <functional>
 #include <cassert>
 
+#include "test_macros.h"
 #include "../test_func.h"
 
 int main(int, char**)

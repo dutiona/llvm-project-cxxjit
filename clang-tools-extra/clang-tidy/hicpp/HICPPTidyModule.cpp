@@ -9,6 +9,7 @@
 #include "../ClangTidy.h"
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
+#include "../bugprone/UndelegatedConstructorCheck.h"
 #include "../bugprone/UseAfterMoveCheck.h"
 #include "../cppcoreguidelines/AvoidGotoCheck.h"
 #include "../cppcoreguidelines/NoMallocCheck.h"
@@ -20,7 +21,6 @@
 #include "../google/ExplicitConstructorCheck.h"
 #include "../misc/NewDeleteOverloadsCheck.h"
 #include "../misc/StaticAssertCheck.h"
-#include "../bugprone/UndelegatedConstructorCheck.h"
 #include "../modernize/AvoidCArraysCheck.h"
 #include "../modernize/DeprecatedHeadersCheck.h"
 #include "../modernize/UseAutoCheck.h"
@@ -34,15 +34,14 @@
 #include "../performance/NoexceptMoveConstructorCheck.h"
 #include "../readability/BracesAroundStatementsCheck.h"
 #include "../readability/FunctionSizeCheck.h"
-#include "../readability/IdentifierNamingCheck.h"
+#include "../readability/NamedParameterCheck.h"
 #include "../readability/UppercaseLiteralSuffixCheck.h"
 #include "ExceptionBaseclassCheck.h"
 #include "MultiwayPathsCoveredCheck.h"
 #include "NoAssemblerCheck.h"
 #include "SignedBitwiseCheck.h"
 
-namespace clang {
-namespace tidy {
+namespace clang::tidy {
 namespace hicpp {
 
 class HICPPModule : public ClangTidyModule {
@@ -65,7 +64,7 @@ public:
         "hicpp-explicit-conversions");
     CheckFactories.registerCheck<readability::FunctionSizeCheck>(
         "hicpp-function-size");
-    CheckFactories.registerCheck<readability::IdentifierNamingCheck>(
+    CheckFactories.registerCheck<readability::NamedParameterCheck>(
         "hicpp-named-parameter");
     CheckFactories.registerCheck<bugprone::UseAfterMoveCheck>(
         "hicpp-invalid-access-moved");
@@ -120,5 +119,4 @@ static ClangTidyModuleRegistry::Add<HICPPModule>
 // and thus register the HICPPModule.
 volatile int HICPPModuleAnchorSource = 0;
 
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy

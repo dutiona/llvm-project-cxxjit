@@ -11,14 +11,11 @@
 
 #include "lld/Common/LLVM.h"
 
-namespace lld {
-namespace elf {
-class InputSectionBase;
+namespace lld::elf {
 struct EhSectionPiece;
 
-size_t readEhRecordSize(InputSectionBase *S, size_t Off);
-uint8_t getFdeEncoding(EhSectionPiece *P);
-} // namespace elf
-} // namespace lld
+uint8_t getFdeEncoding(EhSectionPiece *p);
+bool hasLSDA(const EhSectionPiece &p);
+}
 
 #endif

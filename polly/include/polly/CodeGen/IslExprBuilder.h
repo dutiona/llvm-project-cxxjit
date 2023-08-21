@@ -13,17 +13,7 @@
 
 #include "polly/CodeGen/IRBuilder.h"
 #include "polly/Support/ScopHelper.h"
-
-#include "llvm/ADT/MapVector.h"
-#include "isl/ast.h"
 #include "isl/isl-noexceptions.h"
-
-namespace llvm {
-class DataLayout;
-class ScalarEvolution;
-} // namespace llvm
-
-struct isl_id;
 
 namespace llvm {
 // Provide PointerLikeTypeTraits for isl_id.
@@ -34,7 +24,7 @@ public:
   static inline const Region *getFromVoidPointer(void *P) {
     return (Region *)P;
   }
-  enum { NumLowBitsAvailable = 0 };
+  static constexpr int NumLowBitsAvailable = 0;
 };
 } // namespace llvm
 
@@ -88,7 +78,7 @@ class ScopArrayInfo;
 ///   to use this information in our IslAstGenerator. Preliminary patches are
 ///   available, but have not been committed yet.
 ///
-class IslExprBuilder {
+class IslExprBuilder final {
 public:
   /// A map from isl_ids to llvm::Values.
   typedef llvm::MapVector<isl_id *, llvm::AssertingVH<llvm::Value>> IDToValueTy;
@@ -181,8 +171,10 @@ public:
   /// @param Expr The ast expression of type isl_ast_op_access
   ///             for which we generate LLVM-IR.
   ///
-  /// @return The llvm::Value* containing the result of the computation.
-  llvm::Value *createAccessAddress(__isl_take isl_ast_expr *Expr);
+  /// @return A pair of the llvm::Value* containing the result of the
+  ///         computation and the llvm::Type* it points to.
+  std::pair<llvm::Value *, llvm::Type *>
+  createAccessAddress(__isl_take isl_ast_expr *Expr);
 
   /// Check if an @p Expr contains integer constants larger than 64 bit.
   ///

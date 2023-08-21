@@ -16,12 +16,11 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
+#include <optional>
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace performance {
+namespace clang::tidy::performance {
 
 namespace {
 
@@ -41,25 +40,14 @@ bool isReferencedOutsideOfCallExpr(const FunctionDecl &Function,
 
 bool hasLoopStmtAncestor(const DeclRefExpr &DeclRef, const Decl &Decl,
                          ASTContext &Context) {
-  auto Matches =
-      match(decl(forEachDescendant(declRefExpr(
-                equalsNode(&DeclRef),
-                unless(hasAncestor(stmt(anyOf(forStmt(), cxxForRangeStmt(),
-                                              whileStmt(), doStmt()))))))),
-            Decl, Context);
+  auto Matches = match(
+      traverse(TK_AsIs,
+               decl(forEachDescendant(declRefExpr(
+                   equalsNode(&DeclRef),
+                   unless(hasAncestor(stmt(anyOf(forStmt(), cxxForRangeStmt(),
+                                                 whileStmt(), doStmt())))))))),
+      Decl, Context);
   return Matches.empty();
-}
-
-bool isExplicitTemplateSpecialization(const FunctionDecl &Function) {
-  if (const auto *SpecializationInfo = Function.getTemplateSpecializationInfo())
-    if (SpecializationInfo->getTemplateSpecializationKind() ==
-        TSK_ExplicitSpecialization)
-      return true;
-  if (const auto *Method = llvm::dyn_cast<CXXMethodDecl>(&Function))
-    if (Method->getTemplatedKind() == FunctionDecl::TK_MemberSpecialization &&
-        Method->getMemberSpecializationInfo()->isExplicitSpecialization())
-      return true;
-  return false;
 }
 
 } // namespace
@@ -67,16 +55,13 @@ bool isExplicitTemplateSpecialization(const FunctionDecl &Function) {
 UnnecessaryValueParamCheck::UnnecessaryValueParamCheck(
     StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      IncludeStyle(utils::IncludeSorter::parseIncludeStyle(
-          Options.getLocalOrGlobal("IncludeStyle", "llvm"))),
+      Inserter(Options.getLocalOrGlobal("IncludeStyle",
+                                        utils::IncludeSorter::IS_LLVM),
+               areDiagsSelfContained()),
       AllowedTypes(
           utils::options::parseStringList(Options.get("AllowedTypes", ""))) {}
 
 void UnnecessaryValueParamCheck::registerMatchers(MatchFinder *Finder) {
-  // This check is specific to C++ and doesn't apply to languages like
-  // Objective-C.
-  if (!getLangOpts().CPlusPlus)
-    return;
   const auto ExpensiveValueParamDecl = parmVarDecl(
       hasType(qualType(
           hasCanonicalType(matchers::isExpensiveToCopy()),
@@ -85,16 +70,20 @@ void UnnecessaryValueParamCheck::registerMatchers(MatchFinder *Finder) {
                            matchers::matchesAnyListedName(AllowedTypes))))))),
       decl().bind("param"));
   Finder->addMatcher(
-      functionDecl(hasBody(stmt()), isDefinition(), unless(isImplicit()),
-                   unless(cxxMethodDecl(anyOf(isOverride(), isFinal()))),
-                   has(typeLoc(forEach(ExpensiveValueParamDecl))),
-                   unless(isInstantiated()), decl().bind("functionDecl")),
+      traverse(
+          TK_AsIs,
+          functionDecl(hasBody(stmt()), isDefinition(), unless(isImplicit()),
+                       unless(cxxMethodDecl(anyOf(isOverride(), isFinal()))),
+                       has(typeLoc(forEach(ExpensiveValueParamDecl))),
+                       unless(isInstantiated()), decl().bind("functionDecl"))),
       this);
 }
 
 void UnnecessaryValueParamCheck::check(const MatchFinder::MatchResult &Result) {
   const auto *Param = Result.Nodes.getNodeAs<ParmVarDecl>("param");
   const auto *Function = Result.Nodes.getNodeAs<FunctionDecl>("functionDecl");
+
+  TraversalKindScope RAII(*Result.Context, TK_AsIs);
 
   FunctionParmMutationAnalyzer &Analyzer =
       MutationAnalyzers.try_emplace(Function, *Function, *Result.Context)
@@ -130,29 +119,26 @@ void UnnecessaryValueParamCheck::check(const MatchFinder::MatchResult &Result) {
     }
   }
 
-  const size_t Index = std::find(Function->parameters().begin(),
-                                 Function->parameters().end(), Param) -
+  const size_t Index = llvm::find(Function->parameters(), Param) -
                        Function->parameters().begin();
 
   auto Diag =
       diag(Param->getLocation(),
-           IsConstQualified ? "the const qualified parameter %0 is "
-                              "copied for each invocation; consider "
-                              "making it a reference"
-                            : "the parameter %0 is copied for each "
-                              "invocation but only used as a const reference; "
-                              "consider making it a const reference")
-      << paramNameOrIndex(Param->getName(), Index);
+           "the %select{|const qualified }0parameter %1 is copied for each "
+           "invocation%select{ but only used as a const reference|}0; consider "
+           "making it a %select{const |}0reference")
+      << IsConstQualified << paramNameOrIndex(Param->getName(), Index);
   // Do not propose fixes when:
   // 1. the ParmVarDecl is in a macro, since we cannot place them correctly
   // 2. the function is virtual as it might break overrides
   // 3. the function is referenced outside of a call expression within the
   //    compilation unit as the signature change could introduce build errors.
-  // 4. the function is an explicit template specialization.
+  // 4. the function is a primary template or an explicit template
+  // specialization.
   const auto *Method = llvm::dyn_cast<CXXMethodDecl>(Function);
   if (Param->getBeginLoc().isMacroID() || (Method && Method->isVirtual()) ||
       isReferencedOutsideOfCallExpr(*Function, *Result.Context) ||
-      isExplicitTemplateSpecialization(*Function))
+      (Function->getTemplatedKind() != FunctionDecl::TK_NonTemplate))
     return;
   for (const auto *FunctionDecl = Function; FunctionDecl != nullptr;
        FunctionDecl = FunctionDecl->getPreviousDecl()) {
@@ -162,22 +148,22 @@ void UnnecessaryValueParamCheck::check(const MatchFinder::MatchResult &Result) {
     // The parameter of each declaration needs to be checked individually as to
     // whether it is const or not as constness can differ between definition and
     // declaration.
-    if (!CurrentParam.getType().getCanonicalType().isConstQualified())
-      Diag << utils::fixit::changeVarDeclToConst(CurrentParam);
+    if (!CurrentParam.getType().getCanonicalType().isConstQualified()) {
+      if (std::optional<FixItHint> Fix = utils::fixit::addQualifierToVarDecl(
+              CurrentParam, *Result.Context, DeclSpec::TQ::TQ_const))
+        Diag << *Fix;
+    }
   }
 }
 
 void UnnecessaryValueParamCheck::registerPPCallbacks(
-    CompilerInstance &Compiler) {
-  Inserter.reset(new utils::IncludeInserter(
-      Compiler.getSourceManager(), Compiler.getLangOpts(), IncludeStyle));
-  Compiler.getPreprocessor().addPPCallbacks(Inserter->CreatePPCallbacks());
+    const SourceManager &SM, Preprocessor *PP, Preprocessor *ModuleExpanderPP) {
+  Inserter.registerPreprocessor(PP);
 }
 
 void UnnecessaryValueParamCheck::storeOptions(
     ClangTidyOptions::OptionMap &Opts) {
-  Options.store(Opts, "IncludeStyle",
-                utils::IncludeSorter::toString(IncludeStyle));
+  Options.store(Opts, "IncludeStyle", Inserter.getStyle());
   Options.store(Opts, "AllowedTypes",
                 utils::options::serializeStringList(AllowedTypes));
 }
@@ -200,13 +186,9 @@ void UnnecessaryValueParamCheck::handleMoveFix(const ParmVarDecl &Var,
   auto EndLoc = Lexer::getLocForEndOfToken(CopyArgument.getLocation(), 0, SM,
                                            Context.getLangOpts());
   Diag << FixItHint::CreateInsertion(CopyArgument.getBeginLoc(), "std::move(")
-       << FixItHint::CreateInsertion(EndLoc, ")");
-  if (auto IncludeFixit = Inserter->CreateIncludeInsertion(
-          SM.getFileID(CopyArgument.getBeginLoc()), "utility",
-          /*IsAngled=*/true))
-    Diag << *IncludeFixit;
+       << FixItHint::CreateInsertion(EndLoc, ")")
+       << Inserter.createIncludeInsertion(
+              SM.getFileID(CopyArgument.getBeginLoc()), "<utility>");
 }
 
-} // namespace performance
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::performance

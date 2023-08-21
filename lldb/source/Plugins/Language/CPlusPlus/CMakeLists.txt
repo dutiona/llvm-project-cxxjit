@@ -1,16 +1,19 @@
 add_lldb_library(lldbPluginCPlusPlusLanguage PLUGIN
   BlockPointer.cpp
+  Coroutines.cpp
   CPlusPlusLanguage.cpp
   CPlusPlusNameParser.cpp
   CxxStringTypes.cpp
+  GenericBitset.cpp
+  GenericOptional.cpp
   LibCxx.cpp
   LibCxxAtomic.cpp
-  LibCxxBitset.cpp
   LibCxxInitializerList.cpp
   LibCxxList.cpp
   LibCxxMap.cpp
-  LibCxxOptional.cpp
   LibCxxQueue.cpp
+  LibCxxRangesRefView.cpp
+  LibCxxSpan.cpp
   LibCxxTuple.cpp
   LibCxxUnorderedMap.cpp
   LibCxxVariant.cpp
@@ -28,6 +31,8 @@ add_lldb_library(lldbPluginCPlusPlusLanguage PLUGIN
     lldbTarget
     lldbUtility
     lldbPluginClangCommon
+    lldbPluginCPPRuntime
+    lldbPluginTypeSystemClang
 
   LINK_COMPONENTS
     Support

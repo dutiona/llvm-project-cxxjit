@@ -4,7 +4,7 @@
 
 ; Make sure we don't try to form FMAX_LEGACY nodes with f64
 
-define amdgpu_kernel void @test_fmax_legacy_uge_f64(double addrspace(1)* %out, double addrspace(1)* %in) #0 {
+define amdgpu_kernel void @test_fmax_legacy_uge_f64(ptr addrspace(1) %out, ptr addrspace(1) %in) #0 {
 ; SI-LABEL: test_fmax_legacy_uge_f64:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x9
@@ -37,26 +37,26 @@ define amdgpu_kernel void @test_fmax_legacy_uge_f64(double addrspace(1)* %out, d
 ; VI-NEXT:    flat_load_dwordx4 v[0:3], v[0:1]
 ; VI-NEXT:    v_mov_b32_e32 v4, s0
 ; VI-NEXT:    v_mov_b32_e32 v5, s1
-; VI-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
+; VI-NEXT:    s_waitcnt vmcnt(0)
 ; VI-NEXT:    v_cmp_nlt_f64_e32 vcc, v[0:1], v[2:3]
 ; VI-NEXT:    v_cndmask_b32_e32 v1, v3, v1, vcc
 ; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v0, vcc
 ; VI-NEXT:    flat_store_dwordx2 v[4:5], v[0:1]
 ; VI-NEXT:    s_endpgm
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
-  %gep.0 = getelementptr double, double addrspace(1)* %in, i32 %tid
-  %gep.1 = getelementptr double, double addrspace(1)* %gep.0, i32 1
+  %gep.0 = getelementptr double, ptr addrspace(1) %in, i32 %tid
+  %gep.1 = getelementptr double, ptr addrspace(1) %gep.0, i32 1
 
-  %a = load double, double addrspace(1)* %gep.0, align 8
-  %b = load double, double addrspace(1)* %gep.1, align 8
+  %a = load double, ptr addrspace(1) %gep.0, align 8
+  %b = load double, ptr addrspace(1) %gep.1, align 8
 
   %cmp = fcmp uge double %a, %b
   %val = select i1 %cmp, double %a, double %b
-  store double %val, double addrspace(1)* %out, align 8
+  store double %val, ptr addrspace(1) %out, align 8
   ret void
 }
 
-define amdgpu_kernel void @test_fmax_legacy_oge_f64(double addrspace(1)* %out, double addrspace(1)* %in) #0 {
+define amdgpu_kernel void @test_fmax_legacy_oge_f64(ptr addrspace(1) %out, ptr addrspace(1) %in) #0 {
 ; SI-LABEL: test_fmax_legacy_oge_f64:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x9
@@ -89,26 +89,26 @@ define amdgpu_kernel void @test_fmax_legacy_oge_f64(double addrspace(1)* %out, d
 ; VI-NEXT:    flat_load_dwordx4 v[0:3], v[0:1]
 ; VI-NEXT:    v_mov_b32_e32 v4, s0
 ; VI-NEXT:    v_mov_b32_e32 v5, s1
-; VI-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
+; VI-NEXT:    s_waitcnt vmcnt(0)
 ; VI-NEXT:    v_cmp_ge_f64_e32 vcc, v[0:1], v[2:3]
 ; VI-NEXT:    v_cndmask_b32_e32 v1, v3, v1, vcc
 ; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v0, vcc
 ; VI-NEXT:    flat_store_dwordx2 v[4:5], v[0:1]
 ; VI-NEXT:    s_endpgm
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
-  %gep.0 = getelementptr double, double addrspace(1)* %in, i32 %tid
-  %gep.1 = getelementptr double, double addrspace(1)* %gep.0, i32 1
+  %gep.0 = getelementptr double, ptr addrspace(1) %in, i32 %tid
+  %gep.1 = getelementptr double, ptr addrspace(1) %gep.0, i32 1
 
-  %a = load double, double addrspace(1)* %gep.0, align 8
-  %b = load double, double addrspace(1)* %gep.1, align 8
+  %a = load double, ptr addrspace(1) %gep.0, align 8
+  %b = load double, ptr addrspace(1) %gep.1, align 8
 
   %cmp = fcmp oge double %a, %b
   %val = select i1 %cmp, double %a, double %b
-  store double %val, double addrspace(1)* %out, align 8
+  store double %val, ptr addrspace(1) %out, align 8
   ret void
 }
 
-define amdgpu_kernel void @test_fmax_legacy_ugt_f64(double addrspace(1)* %out, double addrspace(1)* %in) #0 {
+define amdgpu_kernel void @test_fmax_legacy_ugt_f64(ptr addrspace(1) %out, ptr addrspace(1) %in) #0 {
 ; SI-LABEL: test_fmax_legacy_ugt_f64:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x9
@@ -141,26 +141,26 @@ define amdgpu_kernel void @test_fmax_legacy_ugt_f64(double addrspace(1)* %out, d
 ; VI-NEXT:    flat_load_dwordx4 v[0:3], v[0:1]
 ; VI-NEXT:    v_mov_b32_e32 v4, s0
 ; VI-NEXT:    v_mov_b32_e32 v5, s1
-; VI-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
+; VI-NEXT:    s_waitcnt vmcnt(0)
 ; VI-NEXT:    v_cmp_nle_f64_e32 vcc, v[0:1], v[2:3]
 ; VI-NEXT:    v_cndmask_b32_e32 v1, v3, v1, vcc
 ; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v0, vcc
 ; VI-NEXT:    flat_store_dwordx2 v[4:5], v[0:1]
 ; VI-NEXT:    s_endpgm
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
-  %gep.0 = getelementptr double, double addrspace(1)* %in, i32 %tid
-  %gep.1 = getelementptr double, double addrspace(1)* %gep.0, i32 1
+  %gep.0 = getelementptr double, ptr addrspace(1) %in, i32 %tid
+  %gep.1 = getelementptr double, ptr addrspace(1) %gep.0, i32 1
 
-  %a = load double, double addrspace(1)* %gep.0, align 8
-  %b = load double, double addrspace(1)* %gep.1, align 8
+  %a = load double, ptr addrspace(1) %gep.0, align 8
+  %b = load double, ptr addrspace(1) %gep.1, align 8
 
   %cmp = fcmp ugt double %a, %b
   %val = select i1 %cmp, double %a, double %b
-  store double %val, double addrspace(1)* %out, align 8
+  store double %val, ptr addrspace(1) %out, align 8
   ret void
 }
 
-define amdgpu_kernel void @test_fmax_legacy_ogt_f64(double addrspace(1)* %out, double addrspace(1)* %in) #0 {
+define amdgpu_kernel void @test_fmax_legacy_ogt_f64(ptr addrspace(1) %out, ptr addrspace(1) %in) #0 {
 ; SI-LABEL: test_fmax_legacy_ogt_f64:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x9
@@ -193,22 +193,22 @@ define amdgpu_kernel void @test_fmax_legacy_ogt_f64(double addrspace(1)* %out, d
 ; VI-NEXT:    flat_load_dwordx4 v[0:3], v[0:1]
 ; VI-NEXT:    v_mov_b32_e32 v4, s0
 ; VI-NEXT:    v_mov_b32_e32 v5, s1
-; VI-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
+; VI-NEXT:    s_waitcnt vmcnt(0)
 ; VI-NEXT:    v_cmp_gt_f64_e32 vcc, v[0:1], v[2:3]
 ; VI-NEXT:    v_cndmask_b32_e32 v1, v3, v1, vcc
 ; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v0, vcc
 ; VI-NEXT:    flat_store_dwordx2 v[4:5], v[0:1]
 ; VI-NEXT:    s_endpgm
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
-  %gep.0 = getelementptr double, double addrspace(1)* %in, i32 %tid
-  %gep.1 = getelementptr double, double addrspace(1)* %gep.0, i32 1
+  %gep.0 = getelementptr double, ptr addrspace(1) %in, i32 %tid
+  %gep.1 = getelementptr double, ptr addrspace(1) %gep.0, i32 1
 
-  %a = load double, double addrspace(1)* %gep.0, align 8
-  %b = load double, double addrspace(1)* %gep.1, align 8
+  %a = load double, ptr addrspace(1) %gep.0, align 8
+  %b = load double, ptr addrspace(1) %gep.1, align 8
 
   %cmp = fcmp ogt double %a, %b
   %val = select i1 %cmp, double %a, double %b
-  store double %val, double addrspace(1)* %out, align 8
+  store double %val, ptr addrspace(1) %out, align 8
   ret void
 }
 

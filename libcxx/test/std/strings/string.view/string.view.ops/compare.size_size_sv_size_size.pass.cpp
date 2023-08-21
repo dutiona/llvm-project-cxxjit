@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: !stdlib=libc++ && (c++03 || c++11 || c++14)
+
 // <string_view>
 
 // constexpr int compare(size_type pos1, size_type n1, basic_string_view str,
@@ -16,7 +18,7 @@
 #include <stdexcept>
 
 #include "test_macros.h"
-#include "constexpr_char_traits.hpp"
+#include "constexpr_char_traits.h"
 
 int sign ( int x ) { return x > 0 ? 1 : ( x < 0 ? -1 : 0 ); }
 
@@ -5812,12 +5814,14 @@ int main(int, char**) {
     test("ABCde", 2, 4, "abcde", 2, 4, -1);
     }
 
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
     test(L"abcde", 5, 1, L"", 0, 0, 0);
     test(L"abcde", 2, 4, L"", 0, 0, 3);
     test(L"abcde", 2, 4, L"abcde", 3, 4, -2);
     test(L"ABCde", 2, 4, L"abcde", 2, 4, -1);
     }
+#endif
 
 #if TEST_STD_VER >= 11
     {
@@ -5840,8 +5844,8 @@ int main(int, char**) {
     typedef std::basic_string_view<char, constexpr_char_traits<char>> SV;
     constexpr SV  sv1 { "abcde", 5 };
     static_assert ( sv1.compare(5, 1, "", 0, 0) == 0, "" );
-    static_assert ( sv1.compare(2, 4, "", 0, 0) == 1, "" );
-    static_assert ( sv1.compare(2, 4, "abcde", 3, 4) == -1, "" );
+    static_assert ( sv1.compare(2, 4, "", 0, 0) > 0, "" );
+    static_assert ( sv1.compare(2, 4, "abcde", 3, 4) < 0, "" );
     }
 #endif
 

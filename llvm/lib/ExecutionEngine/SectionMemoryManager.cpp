@@ -64,9 +64,9 @@ uint8_t *SectionMemoryManager::allocateSection(
   // Look in the list of free memory regions and use a block there if one
   // is available.
   for (FreeMemBlock &FreeMB : MemGroup.FreeMem) {
-    if (FreeMB.Free.size() >= RequiredSize) {
+    if (FreeMB.Free.allocatedSize() >= RequiredSize) {
       Addr = (uintptr_t)FreeMB.Free.base();
-      uintptr_t EndOfBlock = Addr + FreeMB.Free.size();
+      uintptr_t EndOfBlock = Addr + FreeMB.Free.allocatedSize();
       // Align the address.
       Addr = (Addr + Alignment - 1) & ~(uintptr_t)(Alignment - 1);
 
@@ -112,10 +112,19 @@ uint8_t *SectionMemoryManager::allocateSection(
   // Save this address as the basis for our next request
   MemGroup.Near = MB;
 
+  // Copy the address to all the other groups, if they have not
+  // been initialized.
+  if (CodeMem.Near.base() == nullptr)
+    CodeMem.Near = MB;
+  if (RODataMem.Near.base() == nullptr)
+    RODataMem.Near = MB;
+  if (RWDataMem.Near.base() == nullptr)
+    RWDataMem.Near = MB;
+
   // Remember that we allocated this memory
   MemGroup.AllocatedMem.push_back(MB);
   Addr = (uintptr_t)MB.base();
-  uintptr_t EndOfBlock = Addr + MB.size();
+  uintptr_t EndOfBlock = Addr + MB.allocatedSize();
 
   // Align the address.
   Addr = (Addr + Alignment - 1) & ~(uintptr_t)(Alignment - 1);
@@ -152,8 +161,7 @@ bool SectionMemoryManager::finalizeMemory(std::string *ErrMsg) {
   }
 
   // Make read-only data memory read-only.
-  ec = applyMemoryGroupPermissions(RODataMem,
-                                   sys::Memory::MF_READ | sys::Memory::MF_EXEC);
+  ec = applyMemoryGroupPermissions(RODataMem, sys::Memory::MF_READ);
   if (ec) {
     if (ErrMsg) {
       *ErrMsg = ec.message();
@@ -172,12 +180,12 @@ bool SectionMemoryManager::finalizeMemory(std::string *ErrMsg) {
 }
 
 static sys::MemoryBlock trimBlockToPageSize(sys::MemoryBlock M) {
-  static const size_t PageSize = sys::Process::getPageSize();
+  static const size_t PageSize = sys::Process::getPageSizeEstimate();
 
   size_t StartOverlap =
       (PageSize - ((uintptr_t)M.base() % PageSize)) % PageSize;
 
-  size_t TrimmedSize = M.size();
+  size_t TrimmedSize = M.allocatedSize();
   TrimmedSize -= StartOverlap;
   TrimmedSize -= TrimmedSize % PageSize;
 
@@ -185,8 +193,9 @@ static sys::MemoryBlock trimBlockToPageSize(sys::MemoryBlock M) {
                            TrimmedSize);
 
   assert(((uintptr_t)Trimmed.base() % PageSize) == 0);
-  assert((Trimmed.size() % PageSize) == 0);
-  assert(M.base() <= Trimmed.base() && Trimmed.size() <= M.size());
+  assert((Trimmed.allocatedSize() % PageSize) == 0);
+  assert(M.base() <= Trimmed.base() &&
+         Trimmed.allocatedSize() <= M.allocatedSize());
 
   return Trimmed;
 }
@@ -209,17 +218,17 @@ SectionMemoryManager::applyMemoryGroupPermissions(MemoryGroup &MemGroup,
   }
 
   // Remove all blocks which are now empty
-  MemGroup.FreeMem.erase(
-      remove_if(MemGroup.FreeMem,
-                [](FreeMemBlock &FreeMB) { return FreeMB.Free.size() == 0; }),
-      MemGroup.FreeMem.end());
+  erase_if(MemGroup.FreeMem, [](FreeMemBlock &FreeMB) {
+    return FreeMB.Free.allocatedSize() == 0;
+  });
 
   return std::error_code();
 }
 
 void SectionMemoryManager::invalidateInstructionCache() {
   for (sys::MemoryBlock &Block : CodeMem.PendingMem)
-    sys::Memory::InvalidateInstructionCache(Block.base(), Block.size());
+    sys::Memory::InvalidateInstructionCache(Block.base(),
+                                            Block.allocatedSize());
 }
 
 SectionMemoryManager::~SectionMemoryManager() {
@@ -229,7 +238,7 @@ SectionMemoryManager::~SectionMemoryManager() {
   }
 }
 
-SectionMemoryManager::MemoryMapper::~MemoryMapper() {}
+SectionMemoryManager::MemoryMapper::~MemoryMapper() = default;
 
 void SectionMemoryManager::anchor() {}
 
@@ -242,11 +251,7 @@ public:
   allocateMappedMemory(SectionMemoryManager::AllocationPurpose Purpose,
                        size_t NumBytes, const sys::MemoryBlock *const NearBlock,
                        unsigned Flags, std::error_code &EC) override {
-    // allocateMappedMemory calls mmap(2). We round up a request size
-    // to page size to get extra space for free.
-    static const size_t PageSize = sys::Process::getPageSize();
-    size_t ReqBytes = (NumBytes + PageSize - 1) & ~(PageSize - 1);
-    return sys::Memory::allocateMappedMemory(ReqBytes, NearBlock, Flags, EC);
+    return sys::Memory::allocateMappedMemory(NumBytes, NearBlock, Flags, EC);
   }
 
   std::error_code protectMappedMemory(const sys::MemoryBlock &Block,

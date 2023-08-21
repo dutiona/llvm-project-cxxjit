@@ -1,4 +1,3 @@
-// -*- C++ -*-
 //===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -37,19 +36,19 @@
 
 int main(int, char**)
 {
-    assert(std::regex_constants::error_collate != 0);
-    assert(std::regex_constants::error_ctype != 0);
-    assert(std::regex_constants::error_escape != 0);
-    assert(std::regex_constants::error_backref != 0);
-    assert(std::regex_constants::error_brack != 0);
-    assert(std::regex_constants::error_paren != 0);
-    assert(std::regex_constants::error_brace != 0);
-    assert(std::regex_constants::error_badbrace != 0);
-    assert(std::regex_constants::error_range != 0);
-    assert(std::regex_constants::error_space != 0);
-    assert(std::regex_constants::error_badrepeat != 0);
-    assert(std::regex_constants::error_complexity != 0);
-    assert(std::regex_constants::error_stack != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_collate != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_ctype != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_escape != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_backref != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_brack != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_paren != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_brace != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_badbrace != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_range != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_space != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_badrepeat != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_complexity != 0);
+    LIBCPP_ASSERT(std::regex_constants::error_stack != 0);
 
     assert(std::regex_constants::error_collate != std::regex_constants::error_ctype);
     assert(std::regex_constants::error_collate != std::regex_constants::error_escape);

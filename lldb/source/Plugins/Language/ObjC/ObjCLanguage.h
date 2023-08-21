@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ObjCLanguage_h_
-#define liblldb_ObjCLanguage_h_
+#ifndef LLDB_SOURCE_PLUGINS_LANGUAGE_OBJC_OBJCLANGUAGE_H
+#define LLDB_SOURCE_PLUGINS_LANGUAGE_OBJC_OBJCLANGUAGE_H
 
 #include <cstring>
 #include <vector>
@@ -27,9 +27,7 @@ public:
   public:
     enum Type { eTypeUnspecified, eTypeClassMethod, eTypeInstanceMethod };
 
-    MethodName()
-        : m_full(), m_class(), m_category(), m_selector(),
-          m_type(eTypeUnspecified), m_category_is_valid(false) {}
+    MethodName() : m_full(), m_class(), m_category(), m_selector() {}
 
     MethodName(const char *name, bool strict)
         : m_full(), m_class(), m_category(), m_selector(),
@@ -58,32 +56,20 @@ public:
 
     Type GetType() const { return m_type; }
 
-    const ConstString &GetFullName() const { return m_full; }
+    ConstString GetFullName() const { return m_full; }
 
     ConstString GetFullNameWithoutCategory(bool empty_if_no_category);
 
     bool SetName(const char *name, bool strict);
     bool SetName(llvm::StringRef name, bool strict);
 
-    const ConstString &GetClassName();
+    ConstString GetClassName();
 
-    const ConstString &GetClassNameWithCategory();
+    ConstString GetClassNameWithCategory();
 
-    const ConstString &GetCategory();
+    ConstString GetCategory();
 
-    const ConstString &GetSelector();
-
-    // Get all possible names for a method. Examples:
-    // If name is "+[NSString(my_additions) myStringWithCString:]"
-    //  names[0] => "+[NSString(my_additions) myStringWithCString:]"
-    //  names[1] => "+[NSString myStringWithCString:]"
-    // If name is specified without the leading '+' or '-' like
-    // "[NSString(my_additions) myStringWithCString:]"
-    //  names[0] => "+[NSString(my_additions) myStringWithCString:]"
-    //  names[1] => "-[NSString(my_additions) myStringWithCString:]"
-    //  names[2] => "+[NSString myStringWithCString:]"
-    //  names[3] => "-[NSString myStringWithCString:]"
-    size_t GetFullNames(std::vector<ConstString> &names, bool append);
+    ConstString GetSelector();
 
   protected:
     ConstString
@@ -93,8 +79,8 @@ public:
         m_class_category;   // Class with category: "NSString(my_additions)"
     ConstString m_category; // Category:    "my_additions"
     ConstString m_selector; // Selector:    "myStringWithCString:"
-    Type m_type;
-    bool m_category_is_valid;
+    Type m_type = eTypeUnspecified;
+    bool m_category_is_valid = false;
   };
 
   ObjCLanguage() = default;
@@ -105,9 +91,24 @@ public:
     return lldb::eLanguageTypeObjC;
   }
 
+  // Get all possible names for a method. Examples:
+  // If method_name is "+[NSString(my_additions) myStringWithCString:]"
+  //   variant_names[0] => "+[NSString myStringWithCString:]"
+  // If name is specified without the leading '+' or '-' like
+  // "[NSString(my_additions) myStringWithCString:]"
+  //  variant_names[0] => "+[NSString(my_additions) myStringWithCString:]"
+  //  variant_names[1] => "-[NSString(my_additions) myStringWithCString:]"
+  //  variant_names[2] => "+[NSString myStringWithCString:]"
+  //  variant_names[3] => "-[NSString myStringWithCString:]"
+  // Also returns the FunctionNameType of each possible name.
+  std::vector<Language::MethodNameVariant>
+  GetMethodNameVariants(ConstString method_name) const override;
+
+  bool SymbolNameFitsToLanguage(Mangled mangled) const override;
+
   lldb::TypeCategoryImplSP GetFormatters() override;
 
-  std::vector<ConstString>
+  std::vector<FormattersMatchCandidate>
   GetPossibleFormattersMatches(ValueObject &valobj,
                                lldb::DynamicValueType use_dynamic) override;
 
@@ -119,20 +120,20 @@ public:
 
   bool IsNilReference(ValueObject &valobj) override;
 
+  llvm::StringRef GetNilReferenceSummaryString() override { return "nil"; }
+
   bool IsSourceFile(llvm::StringRef file_path) const override;
 
   const Highlighter *GetHighlighter() const override { return &m_highlighter; }
 
-  //------------------------------------------------------------------
   // Static Functions
-  //------------------------------------------------------------------
   static void Initialize();
 
   static void Terminate();
 
   static lldb_private::Language *CreateInstance(lldb::LanguageType language);
 
-  static lldb_private::ConstString GetPluginNameStatic();
+  static llvm::StringRef GetPluginNameStatic() { return "objc"; }
 
   static bool IsPossibleObjCMethodName(const char *name) {
     if (!name)
@@ -154,14 +155,10 @@ public:
       return false;
   }
 
-  //------------------------------------------------------------------
   // PluginInterface protocol
-  //------------------------------------------------------------------
-  ConstString GetPluginName() override;
-
-  uint32_t GetPluginVersion() override;
+  llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_ObjCLanguage_h_
+#endif // LLDB_SOURCE_PLUGINS_LANGUAGE_OBJC_OBJCLANGUAGE_H

@@ -1,4 +1,4 @@
-//===--- llvm-mc-fuzzer.cpp - Fuzzer for the MC layer ---------------------===//
+//===-- llvm-mc-disassemble-fuzzer.cpp - Fuzzer for the MC layer ----------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,6 +12,7 @@
 #include "llvm-c/Target.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -42,7 +43,7 @@ std::string FeaturesStr;
 
 static cl::list<std::string>
     FuzzerArgs("fuzzer-args", cl::Positional,
-               cl::desc("Options to pass to the fuzzer"), cl::ZeroOrMore,
+               cl::desc("Options to pass to the fuzzer"),
                cl::PositionalEatsArgs);
 static std::vector<char *> ModifiedArgv;
 

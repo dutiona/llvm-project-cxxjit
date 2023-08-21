@@ -1,4 +1,4 @@
-//===-- TypeMap.cpp --------------------------------------------*- C++ -*-===//
+//===-- TypeMap.cpp -------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,18 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <vector>
-
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclGroup.h"
-
-#include "clang/Basic/Builtins.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/TargetInfo.h"
 
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
@@ -30,14 +18,11 @@
 
 using namespace lldb;
 using namespace lldb_private;
-using namespace clang;
 
 TypeMap::TypeMap() : m_types() {}
 
-//----------------------------------------------------------------------
 // Destructor
-//----------------------------------------------------------------------
-TypeMap::~TypeMap() {}
+TypeMap::~TypeMap() = default;
 
 void TypeMap::Insert(const TypeSP &type_sp) {
   // Just push each type on the back for now. We will worry about uniquing
@@ -61,9 +46,7 @@ bool TypeMap::InsertUnique(const TypeSP &type_sp) {
   return true;
 }
 
-//----------------------------------------------------------------------
 // Find a base type by its unique ID.
-//----------------------------------------------------------------------
 // TypeSP
 // TypeMap::FindType(lldb::user_id_t uid)
 //{
@@ -73,11 +56,9 @@ bool TypeMap::InsertUnique(const TypeSP &type_sp) {
 //    return TypeSP();
 //}
 
-//----------------------------------------------------------------------
 // Find a type by name.
-//----------------------------------------------------------------------
 // TypeMap
-// TypeMap::FindTypes (const ConstString &name)
+// TypeMap::FindTypes (ConstString name)
 //{
 //    // Do we ever need to make a lookup by name map? Here we are doing
 //    // a linear search which isn't going to be fast.
@@ -140,28 +121,14 @@ bool TypeMap::Remove(const lldb::TypeSP &type_sp) {
   return false;
 }
 
-void TypeMap::Dump(Stream *s, bool show_context) {
+void TypeMap::Dump(Stream *s, bool show_context, lldb::DescriptionLevel level) {
   for (iterator pos = m_types.begin(), end = m_types.end(); pos != end; ++pos) {
-    pos->second->Dump(s, show_context);
+    pos->second->Dump(s, show_context, level);
   }
 }
 
-void TypeMap::RemoveMismatchedTypes(const char *qualified_typename,
-                                    bool exact_match) {
-  llvm::StringRef type_scope;
-  llvm::StringRef type_basename;
-  TypeClass type_class = eTypeClassAny;
-  if (!Type::GetTypeScopeAndBasename(qualified_typename, type_scope,
-                                     type_basename, type_class)) {
-    type_basename = qualified_typename;
-    type_scope = "";
-  }
-  return RemoveMismatchedTypes(type_scope, type_basename, type_class,
-                               exact_match);
-}
-
-void TypeMap::RemoveMismatchedTypes(const std::string &type_scope,
-                                    const std::string &type_basename,
+void TypeMap::RemoveMismatchedTypes(llvm::StringRef type_scope,
+                                    llvm::StringRef type_basename,
                                     TypeClass type_class, bool exact_match) {
   // Our "collection" type currently is a std::map which doesn't have any good
   // way to iterate and remove items from the map so we currently just make a
@@ -229,28 +196,6 @@ void TypeMap::RemoveMismatchedTypes(const std::string &type_scope,
     if (keep_match) {
       matching_types.insert(*pos);
     }
-  }
-  m_types.swap(matching_types);
-}
-
-void TypeMap::RemoveMismatchedTypes(TypeClass type_class) {
-  if (type_class == eTypeClassAny)
-    return;
-
-  // Our "collection" type currently is a std::map which doesn't have any good
-  // way to iterate and remove items from the map so we currently just make a
-  // new list and add all of the matching types to it, and then swap it into
-  // m_types at the end
-  collection matching_types;
-
-  iterator pos, end = m_types.end();
-
-  for (pos = m_types.begin(); pos != end; ++pos) {
-    Type *the_type = pos->second.get();
-    TypeClass match_type_class =
-        the_type->GetForwardCompilerType().GetTypeClass();
-    if (match_type_class & type_class)
-      matching_types.insert(*pos);
   }
   m_types.swap(matching_types);
 }

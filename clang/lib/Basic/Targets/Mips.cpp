@@ -20,11 +20,11 @@
 using namespace clang;
 using namespace clang::targets;
 
-const Builtin::Info MipsTargetInfo::BuiltinInfo[] = {
+static constexpr Builtin::Info BuiltinInfo[] = {
 #define BUILTIN(ID, TYPE, ATTRS)                                               \
-  {#ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr},
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
 #define LIBBUILTIN(ID, TYPE, ATTRS, HEADER)                                    \
-  {#ID, TYPE, ATTRS, HEADER, ALL_LANGUAGES, nullptr},
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::HEADER, ALL_LANGUAGES},
 #include "clang/Basic/BuiltinsMips.def"
 };
 
@@ -39,18 +39,18 @@ bool MipsTargetInfo::processorSupportsGPR64() const {
       .Case("mips64r5", true)
       .Case("mips64r6", true)
       .Case("octeon", true)
+      .Case("octeon+", true)
       .Default(false);
-  return false;
 }
 
 static constexpr llvm::StringLiteral ValidCPUNames[] = {
     {"mips1"},  {"mips2"},    {"mips3"},    {"mips4"},    {"mips5"},
     {"mips32"}, {"mips32r2"}, {"mips32r3"}, {"mips32r5"}, {"mips32r6"},
     {"mips64"}, {"mips64r2"}, {"mips64r3"}, {"mips64r5"}, {"mips64r6"},
-    {"octeon"}, {"p5600"}};
+    {"octeon"}, {"octeon+"}, {"p5600"}};
 
 bool MipsTargetInfo::isValidCPUName(StringRef Name) const {
-  return llvm::find(ValidCPUNames, Name) != std::end(ValidCPUNames);
+  return llvm::is_contained(ValidCPUNames, Name);
 }
 
 void MipsTargetInfo::fillValidCPUList(
@@ -61,7 +61,7 @@ void MipsTargetInfo::fillValidCPUList(
 unsigned MipsTargetInfo::getISARev() const {
   return llvm::StringSwitch<unsigned>(getCPU())
              .Cases("mips32", "mips64", 1)
-             .Cases("mips32r2", "mips64r2", 2)
+             .Cases("mips32r2", "mips64r2", "octeon", "octeon+", 2)
              .Cases("mips32r3", "mips64r3", 3)
              .Cases("mips32r5", "mips64r5", 5)
              .Cases("mips32r6", "mips64r6", 6)
@@ -182,18 +182,24 @@ void MipsTargetInfo::getTargetDefines(const LangOptions &Opts,
   if (DisableMadd4)
     Builder.defineMacro("__mips_no_madd4", Twine(1));
 
-  Builder.defineMacro("_MIPS_SZPTR", Twine(getPointerWidth(0)));
+  Builder.defineMacro("_MIPS_SZPTR", Twine(getPointerWidth(LangAS::Default)));
   Builder.defineMacro("_MIPS_SZINT", Twine(getIntWidth()));
   Builder.defineMacro("_MIPS_SZLONG", Twine(getLongWidth()));
 
   Builder.defineMacro("_MIPS_ARCH", "\"" + CPU + "\"");
-  Builder.defineMacro("_MIPS_ARCH_" + StringRef(CPU).upper());
+  if (CPU == "octeon+")
+    Builder.defineMacro("_MIPS_ARCH_OCTEONP");
+  else
+    Builder.defineMacro("_MIPS_ARCH_" + StringRef(CPU).upper());
 
-  // These shouldn't be defined for MIPS-I but there's no need to check
-  // for that since MIPS-I isn't supported.
-  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1");
-  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2");
-  Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4");
+  if (StringRef(CPU).startswith("octeon"))
+    Builder.defineMacro("__OCTEON__");
+
+  if (CPU != "mips1") {
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1");
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2");
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4");
+  }
 
   // 32-bit MIPS processors don't have the necessary lld/scd instructions
   // found in 64-bit processors. In the case of O32 on a 64-bit processor,
@@ -206,13 +212,16 @@ void MipsTargetInfo::getTargetDefines(const LangOptions &Opts,
 bool MipsTargetInfo::hasFeature(StringRef Feature) const {
   return llvm::StringSwitch<bool>(Feature)
       .Case("mips", true)
+      .Case("dsp", DspRev >= DSP1)
+      .Case("dspr2", DspRev >= DSP2)
       .Case("fp64", FPMode == FP64)
+      .Case("msa", HasMSA)
       .Default(false);
 }
 
 ArrayRef<Builtin::Info> MipsTargetInfo::getTargetBuiltins() const {
-  return llvm::makeArrayRef(BuiltinInfo, clang::Mips::LastTSBuiltin -
-                                             Builtin::FirstTSBuiltin);
+  return llvm::ArrayRef(BuiltinInfo,
+                        clang::Mips::LastTSBuiltin - Builtin::FirstTSBuiltin);
 }
 
 unsigned MipsTargetInfo::getUnwindWordWidth() const {
@@ -220,7 +229,7 @@ unsigned MipsTargetInfo::getUnwindWordWidth() const {
       .Case("o32", 32)
       .Case("n32", 64)
       .Case("n64", 64)
-      .Default(getPointerWidth(0));
+      .Default(getPointerWidth(LangAS::Default));
 }
 
 bool MipsTargetInfo::validateTarget(DiagnosticsEngine &Diags) const {

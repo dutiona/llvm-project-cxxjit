@@ -9,12 +9,10 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ARGUMENTCOMMENTCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ARGUMENTCOMMENTCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "llvm/Support/Regex.h"
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 /// Checks that argument comments match parameter names.
 ///
@@ -41,6 +39,7 @@ public:
 
 private:
   const unsigned StrictMode : 1;
+  const unsigned IgnoreSingleArgument : 1;
   const unsigned CommentBoolLiterals : 1;
   const unsigned CommentIntegerLiterals : 1;
   const unsigned CommentFloatLiterals : 1;
@@ -57,8 +56,6 @@ private:
   bool shouldAddComment(const Expr *Arg) const;
 };
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ARGUMENTCOMMENTCHECK_H

@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_DynamicLoaderHexagonDYLD_h_
-#define liblldb_DynamicLoaderHexagonDYLD_h_
+#ifndef LLDB_SOURCE_PLUGINS_DYNAMICLOADER_HEXAGON_DYLD_DYNAMICLOADERHEXAGONDYLD_H
+#define LLDB_SOURCE_PLUGINS_DYNAMICLOADER_HEXAGON_DYLD_DYNAMICLOADERHEXAGONDYLD_H
 
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Target/DynamicLoader.h"
@@ -24,16 +24,14 @@ public:
 
   static void Terminate();
 
-  static lldb_private::ConstString GetPluginNameStatic();
+  static llvm::StringRef GetPluginNameStatic() { return "hexagon-dyld"; }
 
-  static const char *GetPluginDescriptionStatic();
+  static llvm::StringRef GetPluginDescriptionStatic();
 
   static lldb_private::DynamicLoader *
   CreateInstance(lldb_private::Process *process, bool force);
 
-  //------------------------------------------------------------------
   // DynamicLoader protocol
-  //------------------------------------------------------------------
 
   void DidAttach() override;
 
@@ -48,12 +46,8 @@ public:
                                   const lldb::ThreadSP thread,
                                   lldb::addr_t tls_file_addr) override;
 
-  //------------------------------------------------------------------
   // PluginInterface protocol
-  //------------------------------------------------------------------
-  lldb_private::ConstString GetPluginName() override;
-
-  uint32_t GetPluginVersion() override;
+  llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
 protected:
   /// Runtime linker rendezvous structure.
@@ -86,21 +80,21 @@ protected:
   /// of loaded modules.
   void RefreshModules();
 
-  /// Updates the load address of every allocatable section in @p module.
+  /// Updates the load address of every allocatable section in \p module.
   ///
-  /// @param module The module to traverse.
+  /// \param module The module to traverse.
   ///
-  /// @param link_map_addr The virtual address of the link map for the @p
+  /// \param link_map_addr The virtual address of the link map for the @p
   /// module.
   ///
-  /// @param base_addr The virtual base address @p module is loaded at.
+  /// \param base_addr The virtual base address \p module is loaded at.
   void UpdateLoadedSections(lldb::ModuleSP module, lldb::addr_t link_map_addr,
                             lldb::addr_t base_addr,
                             bool base_addr_is_offset) override;
 
-  /// Removes the loaded sections from the target in @p module.
+  /// Removes the loaded sections from the target in \p module.
   ///
-  /// @param module The module to traverse.
+  /// \param module The module to traverse.
   void UnloadSections(const lldb::ModuleSP module) override;
 
   /// Callback routine invoked when we hit the breakpoint on process entry.
@@ -135,8 +129,6 @@ protected:
 private:
   const lldb_private::SectionList *
   GetSectionListFromModule(const lldb::ModuleSP module) const;
-
-  DISALLOW_COPY_AND_ASSIGN(DynamicLoaderHexagonDYLD);
 };
 
-#endif // liblldb_DynamicLoaderHexagonDYLD_h_
+#endif // LLDB_SOURCE_PLUGINS_DYNAMICLOADER_HEXAGON_DYLD_DYNAMICLOADERHEXAGONDYLD_H

@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: !stdlib=libc++ && (c++03 || c++11 || c++14)
+
 // <string_view>
 
 // size_type find_last_not_of(const basic_string& str, size_type pos = npos) const;
@@ -13,10 +15,13 @@
 #include <string_view>
 #include <cassert>
 
+#include "test_macros.h"
+
 template <class S>
 void
 test(const S& s, const S& str, typename S::size_type pos, typename S::size_type x)
 {
+    LIBCPP_ASSERT_NOEXCEPT(s.find_last_not_of(str, pos));
     assert(s.find_last_not_of(str, pos) == x);
     if (x != S::npos)
         assert(x <= pos && x < s.size());
@@ -26,6 +31,7 @@ template <class S>
 void
 test(const S& s, const S& str, typename S::size_type x)
 {
+    LIBCPP_ASSERT_NOEXCEPT(s.find_last_not_of(str));
     assert(s.find_last_not_of(str) == x);
     if (x != S::npos)
         assert(x < s.size());

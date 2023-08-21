@@ -10,15 +10,17 @@
 
 // template<Arithmetic T>
 //   T
-//   norm(T x);
+//   norm(T x); // constexpr in C++20
 
 #include <complex>
 #include <type_traits>
 #include <cassert>
 
+#include "test_macros.h"
 #include "../cases.h"
 
 template <class T>
+TEST_CONSTEXPR_CXX20
 void
 test(T x, typename std::enable_if<std::is_integral<T>::value>::type* = 0)
 {
@@ -27,6 +29,7 @@ test(T x, typename std::enable_if<std::is_integral<T>::value>::type* = 0)
 }
 
 template <class T>
+TEST_CONSTEXPR_CXX20
 void
 test(T x, typename std::enable_if<!std::is_integral<T>::value>::type* = 0)
 {
@@ -35,12 +38,14 @@ test(T x, typename std::enable_if<!std::is_integral<T>::value>::type* = 0)
 }
 
 template <class T>
-void
+TEST_CONSTEXPR_CXX20
+bool
 test()
 {
     test<T>(0);
     test<T>(1);
     test<T>(10);
+    return true;
 }
 
 int main(int, char**)
@@ -52,5 +57,14 @@ int main(int, char**)
     test<unsigned>();
     test<long long>();
 
-  return 0;
+#if TEST_STD_VER >= 20
+    static_assert(test<float>());
+    static_assert(test<double>());
+    static_assert(test<long double>());
+    static_assert(test<int>());
+    static_assert(test<unsigned>());
+    static_assert(test<long long>());
+#endif
+
+    return 0;
 }

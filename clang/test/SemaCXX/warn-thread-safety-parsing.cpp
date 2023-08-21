@@ -496,7 +496,7 @@ Mutex aa_var_arg_bad_3 ACQUIRED_AFTER(muDoublePointer); // \
 Mutex aa_var_arg_bad_4 ACQUIRED_AFTER(umu); // \
   // expected-warning {{'acquired_after' attribute requires arguments whose type is annotated with 'capability' attribute}}
 UnlockableMu aa_var_arg_bad_5 ACQUIRED_AFTER(mu_aa); // \
-  // expected-warning {{'acquired_after' attribute can only be applied in a context annotated with 'capability("mutex")' attribute}}
+  // expected-warning {{'acquired_after' attribute can only be applied in a context annotated with 'capability' attribute}}
 
 //-----------------------------------------//
 //  Acquired Before (ab)
@@ -559,7 +559,7 @@ Mutex ab_var_arg_bad_3 ACQUIRED_BEFORE(muDoublePointer); // \
 Mutex ab_var_arg_bad_4 ACQUIRED_BEFORE(umu); // \
   // expected-warning {{'acquired_before' attribute requires arguments whose type is annotated with 'capability' attribute}}
 UnlockableMu ab_var_arg_bad_5 ACQUIRED_BEFORE(mu_ab); // \
-  // expected-warning {{'acquired_before' attribute can only be applied in a context annotated with 'capability("mutex")' attribute}}
+  // expected-warning {{'acquired_before' attribute can only be applied in a context annotated with 'capability' attribute}}
 
 
 //-----------------------------------------//
@@ -1240,7 +1240,7 @@ void call_method_ptr_inst(UnFoo* f) {
 
 int temp;
 void empty_back_edge() {
-  // Create a back edge to a block with with no statements
+  // Create a back edge to a block with no statements
   for (;;) {
     ++temp;
     if (temp > 10) break;
@@ -1293,6 +1293,11 @@ struct SLDerived1 : public SLTemplateClass<double> {
 struct SLDerived2 : public SLTemplateClass<int> {
   ~SLDerived2() UNLOCK_FUNCTION(); // \
     // expected-warning{{'unlock_function' attribute without capability arguments refers to 'this', but 'SLDerived2' isn't annotated with 'capability' or 'scoped_lockable' attribute}}
+};
+
+struct SLDerived3 : public SLTemplateDerived<int> {
+  ~SLDerived3() UNLOCK_FUNCTION(); // \
+    // expected-warning{{'unlock_function' attribute without capability arguments refers to 'this', but 'SLDerived3' isn't annotated with 'capability' or 'scoped_lockable' attribute}}
 };
 
 //-----------------------------------------------------
@@ -1480,7 +1485,7 @@ class Foo {
   int a GUARDED_BY(mu1_);
   int b GUARDED_BY(mu2_);
   int c GUARDED_BY(mu3_);  // \
-    // expected-warning {{'guarded_by' attribute requires arguments whose type is annotated with 'capability' attribute; type here is 'InheritanceTest::Derived3'}}
+    // expected-warning {{'guarded_by' attribute requires arguments whose type is annotated with 'capability' attribute; type here is 'Derived3'}}
 
   void foo() EXCLUSIVE_LOCKS_REQUIRED(mu1_, mu2_) {
     a = 0;

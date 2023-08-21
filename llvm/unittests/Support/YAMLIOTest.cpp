@@ -6,8 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Endian.h"
@@ -237,6 +239,58 @@ TEST(YAMLIO, TestSequenceMapWriteAndRead) {
 }
 
 //
+// Test reading the entire struct as an enum.
+//
+
+struct FooBarEnum {
+  int Foo;
+  int Bar;
+  bool operator==(const FooBarEnum &R) const {
+    return Foo == R.Foo && Bar == R.Bar;
+  }
+};
+
+namespace llvm {
+namespace yaml {
+template <> struct MappingTraits<FooBarEnum> {
+  static void enumInput(IO &io, FooBarEnum &Val) {
+    io.enumCase(Val, "OnlyFoo", FooBarEnum({1, 0}));
+    io.enumCase(Val, "OnlyBar", FooBarEnum({0, 1}));
+  }
+  static void mapping(IO &io, FooBarEnum &Val) {
+    io.mapOptional("Foo", Val.Foo);
+    io.mapOptional("Bar", Val.Bar);
+  }
+};
+} // namespace yaml
+} // namespace llvm
+
+TEST(YAMLIO, TestMapEnumRead) {
+  FooBarEnum Doc;
+  {
+    Input Yin("OnlyFoo");
+    Yin >> Doc;
+    EXPECT_FALSE(Yin.error());
+    EXPECT_EQ(Doc.Foo, 1);
+    EXPECT_EQ(Doc.Bar, 0);
+  }
+  {
+    Input Yin("OnlyBar");
+    Yin >> Doc;
+    EXPECT_FALSE(Yin.error());
+    EXPECT_EQ(Doc.Foo, 0);
+    EXPECT_EQ(Doc.Bar, 1);
+  }
+  {
+    Input Yin("{Foo: 3, Bar: 5}");
+    Yin >> Doc;
+    EXPECT_FALSE(Yin.error());
+    EXPECT_EQ(Doc.Foo, 3);
+    EXPECT_EQ(Doc.Bar, 5);
+  }
+}
+
+//
 // Test YAML filename handling.
 //
 static void testErrorFilename(const llvm::SMDiagnostic &Error, void *) {
@@ -283,10 +337,8 @@ TEST(YAMLIO, MultilineStrings) {
     YOut << Original;
   }
   auto Expected = "---\n"
-                  "str1:            'a multiline string\n"
-                  "foobarbaz'\n"
-                  "str2:            'another one\r"
-                  "foobarbaz'\n"
+                  "str1:            \"a multiline string\\nfoobarbaz\"\n"
+                  "str2:            \"another one\\rfoobarbaz\"\n"
                   "str3:            a one-line string\n"
                   "...\n";
   ASSERT_EQ(Serialized, Expected);
@@ -398,8 +450,8 @@ TEST(YAMLIO, TestReadBuiltInTypes) {
   yin >> map;
 
   EXPECT_FALSE(yin.error());
-  EXPECT_TRUE(map.str.equals("hello there"));
-  EXPECT_TRUE(map.stdstr == "hello where?");
+  EXPECT_EQ(map.str, "hello there");
+  EXPECT_EQ(map.stdstr, "hello where?");
   EXPECT_EQ(map.u64, 5000000000ULL);
   EXPECT_EQ(map.u32, 4000000000U);
   EXPECT_EQ(map.u16, 65000);
@@ -454,23 +506,23 @@ TEST(YAMLIO, TestReadWriteBuiltInTypes) {
     yin >> map;
 
     EXPECT_FALSE(yin.error());
-    EXPECT_TRUE(map.str.equals("one two"));
-    EXPECT_TRUE(map.stdstr == "three four");
-    EXPECT_EQ(map.u64,      6000000000ULL);
-    EXPECT_EQ(map.u32,      3000000000U);
-    EXPECT_EQ(map.u16,      50000);
-    EXPECT_EQ(map.u8,       254);
-    EXPECT_EQ(map.b,        true);
-    EXPECT_EQ(map.s64,      -6000000000LL);
-    EXPECT_EQ(map.s32,      -2000000000L);
-    EXPECT_EQ(map.s16,      -32000);
-    EXPECT_EQ(map.s8,       -128);
-    EXPECT_EQ(map.f,        3.25);
-    EXPECT_EQ(map.d,        -2.8625);
-    EXPECT_EQ(map.h8,       Hex8(254));
-    EXPECT_EQ(map.h16,      Hex16(50000));
-    EXPECT_EQ(map.h32,      Hex32(3000000000U));
-    EXPECT_EQ(map.h64,      Hex64(6000000000LL));
+    EXPECT_EQ(map.str, "one two");
+    EXPECT_EQ(map.stdstr, "three four");
+    EXPECT_EQ(map.u64, 6000000000ULL);
+    EXPECT_EQ(map.u32, 3000000000U);
+    EXPECT_EQ(map.u16, 50000);
+    EXPECT_EQ(map.u8, 254);
+    EXPECT_EQ(map.b, true);
+    EXPECT_EQ(map.s64, -6000000000LL);
+    EXPECT_EQ(map.s32, -2000000000L);
+    EXPECT_EQ(map.s16, -32000);
+    EXPECT_EQ(map.s8, -128);
+    EXPECT_EQ(map.f, 3.25);
+    EXPECT_EQ(map.d, -2.8625);
+    EXPECT_EQ(map.h8, Hex8(254));
+    EXPECT_EQ(map.h16, Hex16(50000));
+    EXPECT_EQ(map.h32, Hex32(3000000000U));
+    EXPECT_EQ(map.h64, Hex64(6000000000LL));
   }
 }
 
@@ -579,6 +631,90 @@ TEST(YAMLIO, TestReadWriteEndianTypes) {
   }
 }
 
+enum class Enum : uint16_t { One, Two };
+enum class BitsetEnum : uint16_t {
+  ZeroOne = 0x01,
+  OneZero = 0x10,
+  LLVM_MARK_AS_BITMASK_ENUM(/*LargestValue*/ OneZero),
+};
+LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+struct EndianEnums {
+  llvm::support::little_t<Enum> LittleEnum;
+  llvm::support::big_t<Enum> BigEnum;
+  llvm::support::little_t<BitsetEnum> LittleBitset;
+  llvm::support::big_t<BitsetEnum> BigBitset;
+};
+namespace llvm {
+namespace yaml {
+template <> struct ScalarEnumerationTraits<Enum> {
+  static void enumeration(IO &io, Enum &E) {
+    io.enumCase(E, "One", Enum::One);
+    io.enumCase(E, "Two", Enum::Two);
+  }
+};
+
+template <> struct ScalarBitSetTraits<BitsetEnum> {
+  static void bitset(IO &io, BitsetEnum &E) {
+    io.bitSetCase(E, "ZeroOne", BitsetEnum::ZeroOne);
+    io.bitSetCase(E, "OneZero", BitsetEnum::OneZero);
+  }
+};
+
+template <> struct MappingTraits<EndianEnums> {
+  static void mapping(IO &io, EndianEnums &EE) {
+    io.mapRequired("LittleEnum", EE.LittleEnum);
+    io.mapRequired("BigEnum", EE.BigEnum);
+    io.mapRequired("LittleBitset", EE.LittleBitset);
+    io.mapRequired("BigBitset", EE.BigBitset);
+  }
+};
+} // namespace yaml
+} // namespace llvm
+
+TEST(YAMLIO, TestReadEndianEnums) {
+  EndianEnums map;
+  Input yin("---\n"
+            "LittleEnum:   One\n"
+            "BigEnum:      Two\n"
+            "LittleBitset: [ ZeroOne ]\n"
+            "BigBitset:    [ ZeroOne, OneZero ]\n"
+            "...\n");
+  yin >> map;
+
+  EXPECT_FALSE(yin.error());
+  EXPECT_EQ(Enum::One, map.LittleEnum);
+  EXPECT_EQ(Enum::Two, map.BigEnum);
+  EXPECT_EQ(BitsetEnum::ZeroOne, map.LittleBitset);
+  EXPECT_EQ(BitsetEnum::ZeroOne | BitsetEnum::OneZero, map.BigBitset);
+}
+
+TEST(YAMLIO, TestReadWriteEndianEnums) {
+  std::string intermediate;
+  {
+    EndianEnums map;
+    map.LittleEnum = Enum::Two;
+    map.BigEnum = Enum::One;
+    map.LittleBitset = BitsetEnum::OneZero | BitsetEnum::ZeroOne;
+    map.BigBitset = BitsetEnum::OneZero;
+
+    llvm::raw_string_ostream ostr(intermediate);
+    Output yout(ostr);
+    yout << map;
+  }
+
+  {
+    Input yin(intermediate);
+    EndianEnums map;
+    yin >> map;
+
+    EXPECT_FALSE(yin.error());
+    EXPECT_EQ(Enum::Two, map.LittleEnum);
+    EXPECT_EQ(Enum::One, map.BigEnum);
+    EXPECT_EQ(BitsetEnum::OneZero | BitsetEnum::ZeroOne, map.LittleBitset);
+    EXPECT_EQ(BitsetEnum::OneZero, map.BigBitset);
+  }
+}
+
 struct StringTypes {
   llvm::StringRef str1;
   llvm::StringRef str2;
@@ -603,6 +739,7 @@ struct StringTypes {
   std::string stdstr10;
   std::string stdstr11;
   std::string stdstr12;
+  std::string stdstr13;
 };
 
 namespace llvm {
@@ -633,6 +770,7 @@ namespace yaml {
       io.mapRequired("stdstr10",  st.stdstr10);
       io.mapRequired("stdstr11",  st.stdstr11);
       io.mapRequired("stdstr12",  st.stdstr12);
+      io.mapRequired("stdstr13",  st.stdstr13);
     }
   };
 }
@@ -665,6 +803,7 @@ TEST(YAMLIO, TestReadWriteStringTypes) {
     map.stdstr10 = "0.2e20";
     map.stdstr11 = "0x30";
     map.stdstr12 = "- match";
+    map.stdstr13.assign("\0a\0b\0", 5);
 
     llvm::raw_string_ostream ostr(intermediate);
     Output yout(ostr);
@@ -690,6 +829,7 @@ TEST(YAMLIO, TestReadWriteStringTypes) {
   EXPECT_NE(std::string::npos, flowOut.find("'@hhh'"));
   EXPECT_NE(std::string::npos, flowOut.find("''\n"));
   EXPECT_NE(std::string::npos, flowOut.find("'0000000004000000'\n"));
+  EXPECT_NE(std::string::npos, flowOut.find("\"\\0a\\0b\\0\""));
 
   {
     Input yin(intermediate);
@@ -697,18 +837,19 @@ TEST(YAMLIO, TestReadWriteStringTypes) {
     yin >> map;
 
     EXPECT_FALSE(yin.error());
-    EXPECT_TRUE(map.str1.equals("'aaa"));
-    EXPECT_TRUE(map.str2.equals("\"bbb"));
-    EXPECT_TRUE(map.str3.equals("`ccc"));
-    EXPECT_TRUE(map.str4.equals("@ddd"));
-    EXPECT_TRUE(map.str5.equals(""));
-    EXPECT_TRUE(map.str6.equals("0000000004000000"));
-    EXPECT_TRUE(map.stdstr1 == "'eee");
-    EXPECT_TRUE(map.stdstr2 == "\"fff");
-    EXPECT_TRUE(map.stdstr3 == "`ggg");
-    EXPECT_TRUE(map.stdstr4 == "@hhh");
-    EXPECT_TRUE(map.stdstr5 == "");
-    EXPECT_TRUE(map.stdstr6 == "0000000004000000");
+    EXPECT_EQ(map.str1, "'aaa");
+    EXPECT_EQ(map.str2, "\"bbb");
+    EXPECT_EQ(map.str3, "`ccc");
+    EXPECT_EQ(map.str4, "@ddd");
+    EXPECT_EQ(map.str5, "");
+    EXPECT_EQ(map.str6, "0000000004000000");
+    EXPECT_EQ(map.stdstr1, "'eee");
+    EXPECT_EQ(map.stdstr2, "\"fff");
+    EXPECT_EQ(map.stdstr3, "`ggg");
+    EXPECT_EQ(map.stdstr4, "@hhh");
+    EXPECT_EQ(map.stdstr5, "");
+    EXPECT_EQ(map.stdstr6, "0000000004000000");
+    EXPECT_EQ(std::string("\0a\0b\0", 5), map.stdstr13);
   }
 }
 
@@ -823,7 +964,7 @@ namespace yaml {
       io.mapRequired("f1", c.f1);
       io.mapRequired("f2", c.f2);
       io.mapRequired("f3", c.f3);
-      io.mapOptional("f4", c.f4, MyFlags(flagRound));
+      io.mapOptional("f4", c.f4, flagRound);
      }
   };
 }
@@ -1327,8 +1468,8 @@ namespace yaml {
     static void mapping(IO &io, TotalSeconds &secs) {
       MappingNormalization<NormalizedSeconds, TotalSeconds> keys(io, secs);
 
-      io.mapOptional("hours",    keys->hours,    (uint32_t)0);
-      io.mapOptional("minutes",  keys->minutes,  (uint8_t)0);
+      io.mapOptional("hours", keys->hours, 0);
+      io.mapOptional("minutes", keys->minutes, 0);
       io.mapRequired("seconds",  keys->seconds);
     }
   };
@@ -1693,10 +1834,10 @@ namespace yaml {
     static void mapping(IO &io, MyValidation &d) {
         io.mapRequired("value", d.value);
     }
-    static StringRef validate(IO &io, MyValidation &d) {
+    static std::string validate(IO &io, MyValidation &d) {
         if (d.value < 0)
           return "negative value";
-        return StringRef();
+        return {};
     }
   };
  }
@@ -2099,7 +2240,6 @@ TEST(YAMLIO, TestReadBuiltInTypesDoubleError) {
 //
 // Test error handling reading built-in Hex8 type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(Hex8)
 TEST(YAMLIO, TestReadBuiltInTypesHex8Error) {
   std::vector<Hex8> seq;
   Input yin("---\n"
@@ -2110,15 +2250,26 @@ TEST(YAMLIO, TestReadBuiltInTypesHex8Error) {
             /*Ctxt=*/nullptr,
             suppressErrorMessages);
   yin >> seq;
-
   EXPECT_TRUE(!!yin.error());
+
+  std::vector<Hex8> seq2;
+  Input yin2("---\n"
+             "[ 0x12, 0xFE, 0x123 ]\n"
+             "...\n",
+             /*Ctxt=*/nullptr, suppressErrorMessages);
+  yin2 >> seq2;
+  EXPECT_TRUE(!!yin2.error());
+
+  EXPECT_EQ(seq.size(), 3u);
+  EXPECT_EQ(seq.size(), seq2.size());
+  for (size_t i = 0; i < seq.size(); ++i)
+    EXPECT_EQ(seq[i], seq2[i]);
 }
 
 
 //
 // Test error handling reading built-in Hex16 type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(Hex16)
 TEST(YAMLIO, TestReadBuiltInTypesHex16Error) {
   std::vector<Hex16> seq;
   Input yin("---\n"
@@ -2129,14 +2280,25 @@ TEST(YAMLIO, TestReadBuiltInTypesHex16Error) {
             /*Ctxt=*/nullptr,
             suppressErrorMessages);
   yin >> seq;
-
   EXPECT_TRUE(!!yin.error());
+
+  std::vector<Hex16> seq2;
+  Input yin2("---\n"
+             "[ 0x0012, 0xFEFF, 0x12345 ]\n"
+             "...\n",
+             /*Ctxt=*/nullptr, suppressErrorMessages);
+  yin2 >> seq2;
+  EXPECT_TRUE(!!yin2.error());
+
+  EXPECT_EQ(seq.size(), 3u);
+  EXPECT_EQ(seq.size(), seq2.size());
+  for (size_t i = 0; i < seq.size(); ++i)
+    EXPECT_EQ(seq[i], seq2[i]);
 }
 
 //
 // Test error handling reading built-in Hex32 type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(Hex32)
 TEST(YAMLIO, TestReadBuiltInTypesHex32Error) {
   std::vector<Hex32> seq;
   Input yin("---\n"
@@ -2149,12 +2311,24 @@ TEST(YAMLIO, TestReadBuiltInTypesHex32Error) {
   yin >> seq;
 
   EXPECT_TRUE(!!yin.error());
+
+  std::vector<Hex32> seq2;
+  Input yin2("---\n"
+             "[ 0x0012, 0xFEFF0000, 0x1234556789 ]\n"
+             "...\n",
+             /*Ctxt=*/nullptr, suppressErrorMessages);
+  yin2 >> seq2;
+  EXPECT_TRUE(!!yin2.error());
+
+  EXPECT_EQ(seq.size(), 3u);
+  EXPECT_EQ(seq.size(), seq2.size());
+  for (size_t i = 0; i < seq.size(); ++i)
+    EXPECT_EQ(seq[i], seq2[i]);
 }
 
 //
 // Test error handling reading built-in Hex64 type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(Hex64)
 TEST(YAMLIO, TestReadBuiltInTypesHex64Error) {
   std::vector<Hex64> seq;
   Input yin("---\n"
@@ -2165,8 +2339,20 @@ TEST(YAMLIO, TestReadBuiltInTypesHex64Error) {
             /*Ctxt=*/nullptr,
             suppressErrorMessages);
   yin >> seq;
-
   EXPECT_TRUE(!!yin.error());
+
+  std::vector<Hex64> seq2;
+  Input yin2("---\n"
+             "[ 0x0012, 0xFFEEDDCCBBAA9988, 0x12345567890ABCDEF0 ]\n"
+             "...\n",
+             /*Ctxt=*/nullptr, suppressErrorMessages);
+  yin2 >> seq2;
+  EXPECT_TRUE(!!yin2.error());
+
+  EXPECT_EQ(seq.size(), 3u);
+  EXPECT_EQ(seq.size(), seq2.size());
+  for (size_t i = 0; i < seq.size(); ++i)
+    EXPECT_EQ(seq[i], seq2[i]);
 }
 
 TEST(YAMLIO, TestMalformedMapFailsGracefully) {
@@ -2438,7 +2624,7 @@ TEST(YAMLIO, TestMapWithContext) {
   ostr.flush();
   EXPECT_EQ(1, Context.A);
   EXPECT_EQ("---\n"
-            "Simple:          \n"
+            "Simple:\n"
             "  B:               0\n"
             "  C:               0\n"
             "  Context:         1\n"
@@ -2453,7 +2639,7 @@ TEST(YAMLIO, TestMapWithContext) {
   ostr.flush();
   EXPECT_EQ(2, Context.A);
   EXPECT_EQ("---\n"
-            "Simple:          \n"
+            "Simple:\n"
             "  B:               2\n"
             "  C:               3\n"
             "  Context:         2\n"
@@ -2466,13 +2652,22 @@ LLVM_YAML_IS_STRING_MAP(int)
 
 TEST(YAMLIO, TestCustomMapping) {
   std::map<std::string, int> x;
-  x["foo"] = 1;
-  x["bar"] = 2;
 
   std::string out;
   llvm::raw_string_ostream ostr(out);
   Output xout(ostr, nullptr, 0);
 
+  xout << x;
+  ostr.flush();
+  EXPECT_EQ("---\n"
+            "{}\n"
+            "...\n",
+            out);
+
+  x["foo"] = 1;
+  x["bar"] = 2;
+
+  out.clear();
   xout << x;
   ostr.flush();
   EXPECT_EQ("---\n"
@@ -2505,10 +2700,10 @@ TEST(YAMLIO, TestCustomMappingStruct) {
   xout << x;
   ostr.flush();
   EXPECT_EQ("---\n"
-            "bar:             \n"
+            "bar:\n"
             "  foo:             3\n"
             "  bar:             4\n"
-            "foo:             \n"
+            "foo:\n"
             "  foo:             1\n"
             "  bar:             2\n"
             "...\n",
@@ -2522,6 +2717,49 @@ TEST(YAMLIO, TestCustomMappingStruct) {
   EXPECT_EQ(2, y["foo"].bar);
   EXPECT_EQ(3, y["bar"].foo);
   EXPECT_EQ(4, y["bar"].bar);
+}
+
+struct FooBarMapMap {
+  std::map<std::string, FooBar> fbm;
+};
+
+namespace llvm {
+namespace yaml {
+template <> struct MappingTraits<FooBarMapMap> {
+  static void mapping(IO &io, FooBarMapMap &x) {
+    io.mapRequired("fbm", x.fbm);
+  }
+};
+}
+}
+
+TEST(YAMLIO, TestEmptyMapWrite) {
+  FooBarMapMap cont;
+  std::string str;
+  llvm::raw_string_ostream OS(str);
+  Output yout(OS);
+  yout << cont;
+  EXPECT_EQ(OS.str(), "---\nfbm:             {}\n...\n");
+}
+
+TEST(YAMLIO, TestEmptySequenceWrite) {
+  {
+    FooBarContainer cont;
+    std::string str;
+    llvm::raw_string_ostream OS(str);
+    Output yout(OS);
+    yout << cont;
+    EXPECT_EQ(OS.str(), "---\nfbs:             []\n...\n");
+  }
+
+  {
+    FooBarSequence seq;
+    std::string str;
+    llvm::raw_string_ostream OS(str);
+    Output yout(OS);
+    yout << seq;
+    EXPECT_EQ(OS.str(), "---\n[]\n...\n");
+  }
 }
 
 static void TestEscaped(llvm::StringRef Input, llvm::StringRef Expected) {
@@ -2710,19 +2948,19 @@ template <> struct PolymorphicTraits<std::unique_ptr<Poly>> {
 
   static Scalar &getAsScalar(std::unique_ptr<Poly> &N) {
     if (!N || !isa<Scalar>(*N))
-      N = llvm::make_unique<Scalar>();
+      N = std::make_unique<Scalar>();
     return *cast<Scalar>(N.get());
   }
 
   static Seq &getAsSequence(std::unique_ptr<Poly> &N) {
     if (!N || !isa<Seq>(*N))
-      N = llvm::make_unique<Seq>();
+      N = std::make_unique<Seq>();
     return *cast<Seq>(N.get());
   }
 
   static Map &getAsMap(std::unique_ptr<Poly> &N) {
     if (!N || !isa<Map>(*N))
-      N = llvm::make_unique<Map>();
+      N = std::make_unique<Map>();
     return *cast<Map>(N.get());
   }
 };
@@ -2801,7 +3039,7 @@ template <> struct SequenceTraits<Seq> {
 
 TEST(YAMLIO, TestReadWritePolymorphicScalar) {
   std::string intermediate;
-  std::unique_ptr<Poly> node = llvm::make_unique<Scalar>(true);
+  std::unique_ptr<Poly> node = std::make_unique<Scalar>(true);
 
   llvm::raw_string_ostream ostr(intermediate);
   Output yout(ostr);
@@ -2815,9 +3053,9 @@ TEST(YAMLIO, TestReadWritePolymorphicScalar) {
 TEST(YAMLIO, TestReadWritePolymorphicSeq) {
   std::string intermediate;
   {
-    auto seq = llvm::make_unique<Seq>();
-    seq->push_back(llvm::make_unique<Scalar>(true));
-    seq->push_back(llvm::make_unique<Scalar>(1.0));
+    auto seq = std::make_unique<Seq>();
+    seq->push_back(std::make_unique<Scalar>(true));
+    seq->push_back(std::make_unique<Scalar>(1.0));
     auto node = llvm::unique_dyn_cast<Poly>(seq);
 
     llvm::raw_string_ostream ostr(intermediate);
@@ -2847,9 +3085,9 @@ TEST(YAMLIO, TestReadWritePolymorphicSeq) {
 TEST(YAMLIO, TestReadWritePolymorphicMap) {
   std::string intermediate;
   {
-    auto map = llvm::make_unique<Map>();
-    (*map)["foo"] = llvm::make_unique<Scalar>(false);
-    (*map)["bar"] = llvm::make_unique<Scalar>(2.0);
+    auto map = std::make_unique<Map>();
+    (*map)["foo"] = std::make_unique<Scalar>(false);
+    (*map)["bar"] = std::make_unique<Scalar>(2.0);
     std::unique_ptr<Poly> node = llvm::unique_dyn_cast<Poly>(map);
 
     llvm::raw_string_ostream ostr(intermediate);
@@ -2873,4 +3111,227 @@ TEST(YAMLIO, TestReadWritePolymorphicMap) {
     EXPECT_EQ(bar->SKind, Scalar::SK_Double);
     EXPECT_EQ(bar->DoubleValue, 2.0);
   }
+}
+
+TEST(YAMLIO, TestAnchorMapError) {
+  Input yin("& & &: ");
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestFlowSequenceTokenErrors) {
+  Input yin(",");
+  EXPECT_FALSE(yin.setCurrentDocument());
+  EXPECT_TRUE(yin.error());
+
+  Input yin2("]");
+  EXPECT_FALSE(yin2.setCurrentDocument());
+  EXPECT_TRUE(yin2.error());
+
+  Input yin3("}");
+  EXPECT_FALSE(yin3.setCurrentDocument());
+  EXPECT_TRUE(yin3.error());
+}
+
+TEST(YAMLIO, TestDirectiveMappingNoValue) {
+  Input yin("%YAML\n{5:");
+  EXPECT_FALSE(yin.setCurrentDocument());
+  EXPECT_TRUE(yin.error());
+
+  Input yin2("%TAG\n'\x98!< :\n");
+  yin2.setCurrentDocument();
+  EXPECT_TRUE(yin2.error());
+}
+
+TEST(YAMLIO, TestUnescapeInfiniteLoop) {
+  Input yin("\"\\u\\^#\\\\\"");
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerUnexpectedCharacter) {
+  Input yin("!<$\x9F.");
+  EXPECT_FALSE(yin.setCurrentDocument());
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestUnknownDirective) {
+  Input yin("%");
+  EXPECT_FALSE(yin.setCurrentDocument());
+  EXPECT_TRUE(yin.error());
+
+  Input yin2("%)");
+  EXPECT_FALSE(yin2.setCurrentDocument());
+  EXPECT_TRUE(yin2.error());
+}
+
+TEST(YAMLIO, TestEmptyAlias) {
+  Input yin("&");
+  EXPECT_FALSE(yin.setCurrentDocument());
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestEmptyAnchor) {
+  Input yin("*");
+  EXPECT_FALSE(yin.setCurrentDocument());
+}
+
+TEST(YAMLIO, TestScannerNoNullEmpty) {
+  std::vector<char> str{};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_FALSE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullSequenceOfNull) {
+  std::vector<char> str{'-'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_FALSE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullSimpleSequence) {
+  std::vector<char> str{'-', ' ', 'a'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_FALSE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullUnbalancedMap) {
+  std::vector<char> str{'{'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullEmptyMap) {
+  std::vector<char> str{'{', '}'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_FALSE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullUnbalancedSequence) {
+  std::vector<char> str{'['};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullEmptySequence) {
+  std::vector<char> str{'[', ']'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_FALSE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullScalarUnbalancedDoubleQuote) {
+  std::vector<char> str{'"'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullScalarUnbalancedSingleQuote) {
+  std::vector<char> str{'\''};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullEmptyAlias) {
+  std::vector<char> str{'&'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullEmptyAnchor) {
+  std::vector<char> str{'*'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullDecodeInvalidUTF8) {
+  std::vector<char> str{'\xef'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+TEST(YAMLIO, TestScannerNoNullScanPlainScalarInFlow) {
+  std::vector<char> str{'{', 'a', ':'};
+  Input yin(llvm::StringRef(str.data(), str.size()));
+  yin.setCurrentDocument();
+  EXPECT_TRUE(yin.error());
+}
+
+struct FixedArray {
+  FixedArray() {
+    // Initialize to int max as a sentinel value.
+    for (auto &v : values)
+      v = std::numeric_limits<int>::max();
+  }
+  int values[4];
+};
+
+namespace llvm {
+namespace yaml {
+  template <>
+  struct MappingTraits<FixedArray> {
+    static void mapping(IO &io, FixedArray& st) {
+      MutableArrayRef<int> array = st.values;
+      io.mapRequired("Values", array);
+    }
+  };
+}
+}
+
+TEST(YAMLIO, FixedSizeArray) {
+  FixedArray faval;
+  Input yin("---\nValues:  [ 1, 2, 3, 4 ]\n...\n");
+  yin >> faval;
+
+  EXPECT_FALSE(yin.error());
+  EXPECT_EQ(faval.values[0], 1);
+  EXPECT_EQ(faval.values[1], 2);
+  EXPECT_EQ(faval.values[2], 3);
+  EXPECT_EQ(faval.values[3], 4);
+
+  std::string serialized;
+  {
+    llvm::raw_string_ostream os(serialized);
+    Output yout(os);
+    yout << faval;
+  }
+  auto expected = "---\n"
+                  "Values:          [ 1, 2, 3, 4 ]\n"
+                  "...\n";
+  ASSERT_EQ(serialized, expected);
+}
+
+TEST(YAMLIO, FixedSizeArrayMismatch) {
+  {
+    FixedArray faval;
+    Input yin("---\nValues:  [ 1, 2, 3 ]\n...\n");
+    yin >> faval;
+
+    // No error for too small, leaves the default initialized value
+    EXPECT_FALSE(yin.error());
+    EXPECT_EQ(faval.values[0], 1);
+    EXPECT_EQ(faval.values[1], 2);
+    EXPECT_EQ(faval.values[2], 3);
+    EXPECT_EQ(faval.values[3], std::numeric_limits<int>::max());
+  }
+
+  {
+    FixedArray faval;
+    Input yin("---\nValues:  [ 1, 2, 3, 4, 5 ]\n...\n");
+    yin >> faval;
+
+    // Error for too many elements.
+    EXPECT_TRUE(!!yin.error());
+  }
+
 }

@@ -12,8 +12,12 @@
 
 // charT widen(char c) const;
 
+// XFAIL: no-wide-characters
+
 #include <locale>
 #include <cassert>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

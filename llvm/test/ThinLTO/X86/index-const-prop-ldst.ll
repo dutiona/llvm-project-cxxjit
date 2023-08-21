@@ -5,17 +5,17 @@
 
 ; The 'store' instruction in @main should prevent internalization
 ; even when there is 'load' instruction before it.
-; CHECK: @g = available_externally dso_local global i32 42
+; CHECK: @g = available_externally global i32 42
 
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
 @g = external global i32
 
 define i32 @main() {
-  %v = load i32, i32* @g
+  %v = load i32, ptr @g
   %q = add i32 %v, 1
-  store i32 %q, i32* @g
+  store i32 %q, ptr @g
   
   ret i32 %v
 }

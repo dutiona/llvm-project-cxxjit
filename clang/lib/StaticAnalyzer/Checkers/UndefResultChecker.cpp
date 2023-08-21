@@ -16,6 +16,7 @@
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicExtent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
@@ -50,10 +51,10 @@ static bool isArrayIndexOutOfBounds(CheckerContext &C, const Expr *Ex) {
     return false;
 
   DefinedOrUnknownSVal Idx = ER->getIndex().castAs<DefinedOrUnknownSVal>();
-  DefinedOrUnknownSVal NumElements = C.getStoreManager().getSizeInElements(
-      state, ER->getSuperRegion(), ER->getValueType());
-  ProgramStateRef StInBound = state->assumeInBound(Idx, NumElements, true);
-  ProgramStateRef StOutBound = state->assumeInBound(Idx, NumElements, false);
+  DefinedOrUnknownSVal ElementCount = getDynamicElementCount(
+      state, ER->getSuperRegion(), C.getSValBuilder(), ER->getValueType());
+  ProgramStateRef StInBound, StOutBound;
+  std::tie(StInBound, StOutBound) = state->assumeInBoundDual(Idx, ElementCount);
   return StOutBound && !StInBound;
 }
 
@@ -144,7 +145,7 @@ void UndefResultChecker::checkPostStmt(const BinaryOperator *B,
           OS << '\'' << I->getSExtValue() << "\', which is";
 
         OS << " greater or equal to the width of type '"
-           << B->getLHS()->getType().getAsString() << "'.";
+           << B->getLHS()->getType() << "'.";
       } else if (B->getOpcode() == BinaryOperatorKind::BO_Shl &&
                  C.isNegative(B->getLHS())) {
         OS << "The result of the left shift is undefined because the left "
@@ -161,8 +162,7 @@ void UndefResultChecker::checkPostStmt(const BinaryOperator *B,
         OS << "The result of the left shift is undefined due to shifting \'"
            << LHS->getSExtValue() << "\' by \'" << RHS->getZExtValue()
            << "\', which is unrepresentable in the unsigned version of "
-           << "the return type \'" << B->getLHS()->getType().getAsString()
-           << "\'";
+           << "the return type \'" << B->getLHS()->getType() << "\'";
         Ex = B->getLHS();
       } else {
         OS << "The result of the '"
@@ -170,7 +170,7 @@ void UndefResultChecker::checkPostStmt(const BinaryOperator *B,
            << "' expression is undefined";
       }
     }
-    auto report = llvm::make_unique<BugReport>(*BT, OS.str(), N);
+    auto report = std::make_unique<PathSensitiveBugReport>(*BT, OS.str(), N);
     if (Ex) {
       report->addRange(Ex->getSourceRange());
       bugreporter::trackExpressionValue(N, Ex, *report);
@@ -186,6 +186,6 @@ void ento::registerUndefResultChecker(CheckerManager &mgr) {
   mgr.registerChecker<UndefResultChecker>();
 }
 
-bool ento::shouldRegisterUndefResultChecker(const LangOptions &LO) {
+bool ento::shouldRegisterUndefResultChecker(const CheckerManager &mgr) {
   return true;
 }

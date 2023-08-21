@@ -9,11 +9,9 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NONPRIVATEMEMBERVARIABLESINCLASSESCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NONPRIVATEMEMBERVARIABLESINCLASSESCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace misc {
+namespace clang::tidy::misc {
 
 /// This checker finds classes that not only contain the data
 /// (non-static member variables), but also have logic (non-static member
@@ -25,11 +23,15 @@ namespace misc {
 /// ignored and optionally all `public` member variables could be ignored.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/misc-non-private-member-variables-in-classes.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/misc/non-private-member-variables-in-classes.html
 class NonPrivateMemberVariablesInClassesCheck : public ClangTidyCheck {
 public:
   NonPrivateMemberVariablesInClassesCheck(StringRef Name,
                                           ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
+  void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
@@ -38,8 +40,6 @@ private:
   const bool IgnorePublicMemberVariables;
 };
 
-} // namespace misc
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::misc
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NONPRIVATEMEMBERVARIABLESINCLASSESCHECK_H

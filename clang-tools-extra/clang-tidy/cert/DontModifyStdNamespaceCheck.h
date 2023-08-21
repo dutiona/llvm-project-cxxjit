@@ -9,27 +9,26 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CERT_DONT_MODIFY_STD_NAMESPACE_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CERT_DONT_MODIFY_STD_NAMESPACE_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace cert {
+namespace clang::tidy::cert {
 
 /// Modification of the std or posix namespace can result in undefined behavior.
 /// This check warns for such modifications.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/cert-msc53-cpp.html
+/// https://clang.llvm.org/extra/clang-tidy/checks/cert/dcl58-cpp.html
 class DontModifyStdNamespaceCheck : public ClangTidyCheck {
 public:
   DontModifyStdNamespaceCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace cert
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cert
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CERT_DONT_MODIFY_STD_NAMESPACE_H

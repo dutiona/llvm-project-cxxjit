@@ -28,7 +28,7 @@ test(const Allocator& a)
 
     m1 = std::move(m0);
     assert(m1.size()          == 0);
-    assert(m1.str()           == std::basic_string<CharT>());
+    assert(!m1.ready());
     if (std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value)
         assert(m1.get_allocator() == a);
     else
@@ -38,15 +38,21 @@ test(const Allocator& a)
 int main(int, char**)
 {
     test<char>   (std::allocator<std::sub_match<const char *> >());
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     test<wchar_t>(std::allocator<std::sub_match<const wchar_t *> >());
+#endif
 
-//  test_allocator has POCMA -> false
+    // test_allocator has POCMA -> false
     test<char>   (test_allocator<std::sub_match<const char*> >(3));
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     test<wchar_t>(test_allocator<std::sub_match<const wchar_t*> >(3));
+#endif
 
-//  other_allocator has POCMA -> true
+    // other_allocator has POCMA -> true
     test<char>   (other_allocator<std::sub_match<const char*> >(3));
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     test<wchar_t>(other_allocator<std::sub_match<const wchar_t*> >(3));
+#endif
 
   return 0;
 }

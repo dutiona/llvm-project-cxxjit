@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_BreakpointResolverFileRegex_h_
-#define liblldb_BreakpointResolverFileRegex_h_
+#ifndef LLDB_BREAKPOINT_BREAKPOINTRESOLVERFILEREGEX_H
+#define LLDB_BREAKPOINT_BREAKPOINTRESOLVERFILEREGEX_H
 
 #include <set>
 #include "lldb/Breakpoint/BreakpointResolver.h"
@@ -16,31 +16,29 @@
 
 namespace lldb_private {
 
-//----------------------------------------------------------------------
-/// @class BreakpointResolverFileRegex BreakpointResolverFileRegex.h
+/// \class BreakpointResolverFileRegex BreakpointResolverFileRegex.h
 /// "lldb/Breakpoint/BreakpointResolverFileRegex.h" This class sets
 /// breakpoints by file and line.  Optionally, it will look for inlined
 /// instances of the file and line specification.
-//----------------------------------------------------------------------
 
 class BreakpointResolverFileRegex : public BreakpointResolver {
 public:
   BreakpointResolverFileRegex(
-      Breakpoint *bkpt, RegularExpression &regex,
+      const lldb::BreakpointSP &bkpt, RegularExpression regex,
       const std::unordered_set<std::string> &func_name_set, bool exact_match);
 
   static BreakpointResolver *
-  CreateFromStructuredData(Breakpoint *bkpt,
+  CreateFromStructuredData(const lldb::BreakpointSP &bkpt,
                            const StructuredData::Dictionary &options_dict,
                            Status &error);
 
   StructuredData::ObjectSP SerializeToStructuredData() override;
 
-  ~BreakpointResolverFileRegex() override;
+  ~BreakpointResolverFileRegex() override = default;
 
   Searcher::CallbackReturn SearchCallback(SearchFilter &filter,
-                                          SymbolContext &context, Address *addr,
-                                          bool containing) override;
+                                          SymbolContext &context,
+                                          Address *addr) override;
 
   lldb::SearchDepth GetDepth() override;
 
@@ -58,7 +56,8 @@ public:
     return V->getResolverID() == BreakpointResolver::FileRegexResolver;
   }
 
-  lldb::BreakpointResolverSP CopyForBreakpoint(Breakpoint &breakpoint) override;
+  lldb::BreakpointResolverSP
+  CopyForBreakpoint(lldb::BreakpointSP &breakpoint) override;
 
 protected:
   friend class Breakpoint;
@@ -71,9 +70,11 @@ protected:
                                                     // comp_unit passed in.
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(BreakpointResolverFileRegex);
+  BreakpointResolverFileRegex(const BreakpointResolverFileRegex &) = delete;
+  const BreakpointResolverFileRegex &
+  operator=(const BreakpointResolverFileRegex &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_BreakpointResolverFileRegex_h_
+#endif // LLDB_BREAKPOINT_BREAKPOINTRESOLVERFILEREGEX_H

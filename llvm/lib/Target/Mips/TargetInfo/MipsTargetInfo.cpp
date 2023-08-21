@@ -6,9 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mips.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "TargetInfo/MipsTargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 using namespace llvm;
 
 Target &llvm::getTheMipsTarget() {
@@ -28,7 +27,7 @@ Target &llvm::getTheMips64elTarget() {
   return TheMips64elTarget;
 }
 
-extern "C" void LLVMInitializeMipsTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMipsTargetInfo() {
   RegisterTarget<Triple::mips,
                  /*HasJIT=*/true>
       X(getTheMipsTarget(), "mips", "MIPS (32-bit big endian)", "Mips");

@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBFrame_h_
-#define LLDB_SBFrame_h_
+#ifndef LLDB_API_SBFRAME_H
+#define LLDB_API_SBFRAME_H
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBValueList.h"
@@ -25,6 +25,8 @@ public:
   ~SBFrame();
 
   bool IsEqual(const lldb::SBFrame &that) const;
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -200,4 +202,4 @@ protected:
 
 } // namespace lldb
 
-#endif // LLDB_SBFrame_h_
+#endif // LLDB_API_SBFRAME_H

@@ -1,4 +1,4 @@
-; RUN: llc %s -start-after=codegenprepare -stop-after=expand-isel-pseudos -o - | FileCheck %s
+; RUN: llc %s -start-after=codegenprepare -stop-after=finalize-isel -o - | FileCheck %s
 
 ; PR39896: When code such as %conv below is dropped by SelectionDAG for having
 ; no users, don't just drop the dbg.value record associated with it. Instead,
@@ -16,12 +16,12 @@ define signext i16 @b() !dbg !12 {
 entry:
 ; CHECK: DBG_VALUE 23680, $noreg, ![[VARNUM:[0-9]+]],
   call void @llvm.dbg.value(metadata i16 23680, metadata !17, metadata !DIExpression()), !dbg !18
-  %0 = load i8, i8* @a, align 1, !dbg !18
+  %0 = load i8, ptr @a, align 1, !dbg !18
   %conv = sext i8 %0 to i16, !dbg !18
 ; CHECK: DBG_VALUE $noreg, $noreg, ![[VARNUM]],
   call void @llvm.dbg.value(metadata i16 %conv, metadata !17, metadata !DIExpression()), !dbg !18
   %call = call i32 (...) @optimize_me_not(), !dbg !18
-  %1 = load i8, i8* @a, align 1, !dbg !18
+  %1 = load i8, ptr @a, align 1, !dbg !18
   %conv1 = sext i8 %1 to i16, !dbg !18
   ret i16 %conv1, !dbg !18
 }

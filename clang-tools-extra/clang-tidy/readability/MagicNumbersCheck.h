@@ -9,19 +9,17 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_MAGICNUMBERSCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_MAGICNUMBERSCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
+#include "clang/Lex/Lexer.h"
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/SmallVector.h>
-#include <vector>
 
-namespace clang {
-namespace tidy {
-namespace readability {
+namespace clang::tidy::readability {
 
 /// Detects magic numbers, integer and floating point literals embedded in code.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/readability-magic-numbers.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/readability/magic-numbers.html
 class MagicNumbersCheck : public ClangTidyCheck {
 public:
   MagicNumbersCheck(StringRef Name, ClangTidyContext *Context);
@@ -40,9 +38,16 @@ private:
                         const FloatingLiteral *) const {
     return false;
   }
-
   bool isSyntheticValue(const clang::SourceManager *SourceManager,
                         const IntegerLiteral *Literal) const;
+
+  bool isBitFieldWidth(const clang::ast_matchers::MatchFinder::MatchResult &,
+                       const FloatingLiteral &) const {
+     return false;
+  }
+
+  bool isBitFieldWidth(const clang::ast_matchers::MatchFinder::MatchResult &Result,
+                       const IntegerLiteral &Literal) const;
 
   template <typename L>
   void checkBoundMatch(const ast_matchers::MatchFinder::MatchResult &Result,
@@ -64,6 +69,9 @@ private:
     if (isSyntheticValue(Result.SourceManager, MatchedLiteral))
       return;
 
+    if (isBitFieldWidth(Result, *MatchedLiteral))
+      return;
+
     const StringRef LiteralSourceText = Lexer::getSourceText(
         CharSourceRange::getTokenRange(MatchedLiteral->getSourceRange()),
         *Result.SourceManager, getLangOpts());
@@ -74,7 +82,10 @@ private:
   }
 
   const bool IgnoreAllFloatingPointValues;
+  const bool IgnoreBitFieldsWidths;
   const bool IgnorePowersOf2IntegerValues;
+  const StringRef RawIgnoredIntegerValues;
+  const StringRef RawIgnoredFloatingPointValues;
 
   constexpr static unsigned SensibleNumberOfMagicValueExceptions = 16;
 
@@ -89,8 +100,6 @@ private:
       IgnoredDoublePointValues;
 };
 
-} // namespace readability
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::readability
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_MAGICNUMBERSCHECK_H

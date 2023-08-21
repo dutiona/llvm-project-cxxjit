@@ -1,4 +1,4 @@
-//===-- FileSystem.cpp ------------------------------------------*- C++ -*-===//
+//===-- FileSystem.cpp ----------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,6 +8,7 @@
 
 #include "lldb/Host/windows/windows.h"
 
+#include <share.h>
 #include <shellapi.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -29,8 +30,8 @@ const char *FileSystem::PATH_CONVERSION_ERROR =
 Status FileSystem::Symlink(const FileSpec &src, const FileSpec &dst) {
   Status error;
   std::wstring wsrc, wdst;
-  if (!llvm::ConvertUTF8toWide(src.GetCString(), wsrc) ||
-      !llvm::ConvertUTF8toWide(dst.GetCString(), wdst))
+  if (!llvm::ConvertUTF8toWide(src.GetPath(), wsrc) ||
+      !llvm::ConvertUTF8toWide(dst.GetPath(), wdst))
     error.SetErrorString(PATH_CONVERSION_ERROR);
   if (error.Fail())
     return error;
@@ -50,7 +51,7 @@ Status FileSystem::Symlink(const FileSpec &src, const FileSpec &dst) {
 Status FileSystem::Readlink(const FileSpec &src, FileSpec &dst) {
   Status error;
   std::wstring wsrc;
-  if (!llvm::ConvertUTF8toWide(src.GetCString(), wsrc)) {
+  if (!llvm::ConvertUTF8toWide(src.GetPath(), wsrc)) {
     error.SetErrorString(PATH_CONVERSION_ERROR);
     return error;
   }

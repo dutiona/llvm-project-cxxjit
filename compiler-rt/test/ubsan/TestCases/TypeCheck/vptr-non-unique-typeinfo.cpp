@@ -3,8 +3,7 @@
 // RUN: %run %t
 //
 // REQUIRES: cxxabi
-// UNSUPPORTED: windows-msvc
-// XFAIL: i386-netbsd
+// UNSUPPORTED: target={{.*windows-msvc.*}}
 
 struct X {
   virtual ~X() {}

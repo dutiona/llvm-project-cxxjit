@@ -1,4 +1,5 @@
 ; RUN: llc < %s -mtriple=nvptx64-nvidia-cuda | FileCheck %s
+; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-cuda | %ptxas-verify %}
 
 ; CHECK: .target sm_{{[0-9]+}}, debug
 
@@ -7,21 +8,21 @@
 ; CHECK: )
 ; CHECK: {
 ; CHECK: .loc 1 1 0
-; CHECK: Lfunc_begin0:
+; CHECK: $L__func_begin0:
 ; CHECK: .loc 1 1 0
 ; CHECK: .loc 1 1 0
 ; CHECK: ret;
-; CHECK: Lfunc_end0:
+; CHECK: $L__func_end0:
 ; CHECK: }
 
 ; CHECK: .visible .func  (.param .b32 func_retval0) a(
 ; CHECK: .param .b32 a_param_0
 ; CHECK: )
 ; CHECK: {
-; CHECK: Lfunc_begin1:
+; CHECK: $L__func_begin1:
 ; CHECK-NOT: .loc
 ; CHECK: ret;
-; CHECK: Lfunc_end1:
+; CHECK: $L__func_end1:
 ; CHECK: }
 
 ; CHECK: .visible .func  (.param .b32 func_retval0) d(
@@ -29,10 +30,10 @@
 ; CHECK: )
 ; CHECK: {
 ; CHECK: .loc 1 3 0
-; CHECK: Lfunc_begin2:
+; CHECK: $L__func_begin2:
 ; CHECK: .loc 1 3 0
 ; CHECK: ret;
-; CHECK: Lfunc_end2:
+; CHECK: $L__func_end2:
 ; CHECK: }
 
 ; CHECK: .file 1 "{{.*}}b.c"
@@ -41,9 +42,9 @@
 define i32 @b(i32 %c) #0 !dbg !5 {
 entry:
   %c.addr = alloca i32, align 4
-  store i32 %c, i32* %c.addr, align 4
-  call void @llvm.dbg.declare(metadata i32* %c.addr, metadata !13, metadata !DIExpression()), !dbg !14
-  %0 = load i32, i32* %c.addr, align 4, !dbg !14
+  store i32 %c, ptr %c.addr, align 4
+  call void @llvm.dbg.declare(metadata ptr %c.addr, metadata !13, metadata !DIExpression()), !dbg !14
+  %0 = load i32, ptr %c.addr, align 4, !dbg !14
   %add = add nsw i32 %0, 1, !dbg !14
   ret i32 %add, !dbg !14
 }
@@ -52,8 +53,8 @@ entry:
 define i32 @a(i32 %b) #0 {
 entry:
   %b.addr = alloca i32, align 4
-  store i32 %b, i32* %b.addr, align 4
-  %0 = load i32, i32* %b.addr, align 4
+  store i32 %b, ptr %b.addr, align 4
+  %0 = load i32, ptr %b.addr, align 4
   %add = add nsw i32 %0, 1
   ret i32 %add
 }
@@ -65,9 +66,9 @@ declare void @llvm.dbg.declare(metadata, metadata, metadata) #1
 define i32 @d(i32 %e) #0 !dbg !10 {
 entry:
   %e.addr = alloca i32, align 4
-  store i32 %e, i32* %e.addr, align 4
-  call void @llvm.dbg.declare(metadata i32* %e.addr, metadata !15, metadata !DIExpression()), !dbg !16
-  %0 = load i32, i32* %e.addr, align 4, !dbg !16
+  store i32 %e, ptr %e.addr, align 4
+  call void @llvm.dbg.declare(metadata ptr %e.addr, metadata !15, metadata !DIExpression()), !dbg !16
+  %0 = load i32, ptr %e.addr, align 4, !dbg !16
   %add = add nsw i32 %0, 1, !dbg !16
   ret i32 %add, !dbg !16
 }
@@ -150,21 +151,81 @@ entry:
 ; CHECK-NEXT: .b32 .debug_abbrev                   // Offset Into Abbrev. Section
 ; CHECK-NEXT: .b8 8                                // Address Size (in bytes)
 ; CHECK-NEXT: .b8 1                                // Abbrev [1] 0xb:0xb0 DW_TAG_compile_unit
-; CHECK-NEXT: .b8 99,108,97,110,103,32,118,101,114,115,105,111,110,32,51,46,53,46,48,32,40,116,114,117,110,107,32,50,48,52,49,54,52,41,32,40,108,108,118,109 // DW_AT_producer
-; CHECK-NEXT: .b8 47,116,114,117,110,107,32,50,48,52,49,56,51,41
+; CHECK-NEXT: .b8 99                               // DW_AT_producer
+; CHECK-NEXT: .b8 108
+; CHECK-NEXT: .b8 97
+; CHECK-NEXT: .b8 110
+; CHECK-NEXT: .b8 103
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 118
+; CHECK-NEXT: .b8 101
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 115
+; CHECK-NEXT: .b8 105
+; CHECK-NEXT: .b8 111
+; CHECK-NEXT: .b8 110
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 51
+; CHECK-NEXT: .b8 46
+; CHECK-NEXT: .b8 53
+; CHECK-NEXT: .b8 46
+; CHECK-NEXT: .b8 48
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 40
+; CHECK-NEXT: .b8 116
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 117
+; CHECK-NEXT: .b8 110
+; CHECK-NEXT: .b8 107
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 50
+; CHECK-NEXT: .b8 48
+; CHECK-NEXT: .b8 52
+; CHECK-NEXT: .b8 49
+; CHECK-NEXT: .b8 54
+; CHECK-NEXT: .b8 52
+; CHECK-NEXT: .b8 41
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 40
+; CHECK-NEXT: .b8 108
+; CHECK-NEXT: .b8 108
+; CHECK-NEXT: .b8 118
+; CHECK-NEXT: .b8 109
+; CHECK-NEXT: .b8 47
+; CHECK-NEXT: .b8 116
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 117
+; CHECK-NEXT: .b8 110
+; CHECK-NEXT: .b8 107
+; CHECK-NEXT: .b8 32
+; CHECK-NEXT: .b8 50
+; CHECK-NEXT: .b8 48
+; CHECK-NEXT: .b8 52
+; CHECK-NEXT: .b8 49
+; CHECK-NEXT: .b8 56
+; CHECK-NEXT: .b8 51
+; CHECK-NEXT: .b8 41
 ; CHECK-NEXT: .b8 0
 ; CHECK-NEXT: .b8 12                               // DW_AT_language
 ; CHECK-NEXT: .b8 0
-; CHECK-NEXT: .b8 98,46,99                         // DW_AT_name
+; CHECK-NEXT: .b8 98                               // DW_AT_name
+; CHECK-NEXT: .b8 46
+; CHECK-NEXT: .b8 99
 ; CHECK-NEXT: .b8 0
 ; CHECK-NEXT: .b32 .debug_line                     // DW_AT_stmt_list
-; CHECK-NEXT: .b8 47,115,111,117,114,99,101        // DW_AT_comp_dir
+; CHECK-NEXT: .b8 47                               // DW_AT_comp_dir
+; CHECK-NEXT: .b8 115
+; CHECK-NEXT: .b8 111
+; CHECK-NEXT: .b8 117
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 99
+; CHECK-NEXT: .b8 101
 ; CHECK-NEXT: .b8 0
-; CHECK-NEXT: .b64 Lfunc_begin0                    // DW_AT_low_pc
-; CHECK-NEXT: .b64 Lfunc_end2                      // DW_AT_high_pc
+; CHECK-NEXT: .b64 $L__func_begin0                 // DW_AT_low_pc
+; CHECK-NEXT: .b64 $L__func_end2                   // DW_AT_high_pc
 ; CHECK-NEXT: .b8 2                                // Abbrev [2] 0x65:0x27 DW_TAG_subprogram
-; CHECK-NEXT: .b64 Lfunc_begin0                    // DW_AT_low_pc
-; CHECK-NEXT: .b64 Lfunc_end0                      // DW_AT_high_pc
+; CHECK-NEXT: .b64 $L__func_begin0                 // DW_AT_low_pc
+; CHECK-NEXT: .b64 $L__func_end0                   // DW_AT_high_pc
 ; CHECK-NEXT: .b8 1                                // DW_AT_frame_base
 ; CHECK-NEXT: .b8 156
 ; CHECK-NEXT: .b8 98                               // DW_AT_name
@@ -182,8 +243,8 @@ entry:
 ; CHECK-NEXT: .b32 179                             // DW_AT_type
 ; CHECK-NEXT: .b8 0                                // End Of Children Mark
 ; CHECK-NEXT: .b8 2                                // Abbrev [2] 0x8c:0x27 DW_TAG_subprogram
-; CHECK-NEXT: .b64 Lfunc_begin2                    // DW_AT_low_pc
-; CHECK-NEXT: .b64 Lfunc_end2                      // DW_AT_high_pc
+; CHECK-NEXT: .b64 $L__func_begin2                 // DW_AT_low_pc
+; CHECK-NEXT: .b64 $L__func_end2                   // DW_AT_high_pc
 ; CHECK-NEXT: .b8 1                                // DW_AT_frame_base
 ; CHECK-NEXT: .b8 156
 ; CHECK-NEXT: .b8 100                              // DW_AT_name
@@ -201,18 +262,18 @@ entry:
 ; CHECK-NEXT: .b32 179                             // DW_AT_type
 ; CHECK-NEXT: .b8 0                                // End Of Children Mark
 ; CHECK-NEXT: .b8 4                                // Abbrev [4] 0xb3:0x7 DW_TAG_base_type
-; CHECK-NEXT: .b8 105,110,116                      // DW_AT_name
+; CHECK-NEXT: .b8 105                              // DW_AT_name
+; CHECK-NEXT: .b8 110
+; CHECK-NEXT: .b8 116
 ; CHECK-NEXT: .b8 0
 ; CHECK-NEXT: .b8 5                                // DW_AT_encoding
 ; CHECK-NEXT: .b8 4                                // DW_AT_byte_size
 ; CHECK-NEXT: .b8 0                                // End Of Children Mark
 ; CHECK-NEXT: }
-; CHECK-NEXT: .section .debug_macinfo
-; CHECK-NEXT: {
-; CHECK-NEXT: .b8 0                                // End Of Macro List Mark
-; CHECK:      }
+; CHECK-NEXT: .section .debug_loc { }
+; CHECK-NOT: debug_
 
-attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "frame-pointer"="all" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { nounwind readnone }
 
 !llvm.ident = !{!0, !0}

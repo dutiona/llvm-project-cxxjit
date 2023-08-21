@@ -18,19 +18,18 @@
 #include "clang/Analysis/CFG.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/DataTypes.h"
 #include <cassert>
+#include <optional>
 #include <string>
 #include <utility>
 
 namespace clang {
 
 class AnalysisDeclContext;
-class FunctionDecl;
 class LocationContext;
 
 /// ProgramPoints can be "tagged" as representing points specific to a given
@@ -42,12 +41,11 @@ public:
   virtual ~ProgramPointTag();
   virtual StringRef getTagDescription() const = 0;
 
-protected:
   /// Used to implement 'isKind' in subclasses.
-  const void *getTagKind() { return TagKind; }
+  const void *getTagKind() const { return TagKind; }
 
 private:
-  const void *TagKind;
+  const void *const TagKind;
 };
 
 class SimpleProgramPointTag : public ProgramPointTag {
@@ -146,12 +144,11 @@ public:
     return t;
   }
 
-  /// Convert to the specified ProgramPoint type, returning None if this
+  /// Convert to the specified ProgramPoint type, returning std::nullopt if this
   /// ProgramPoint is not of the desired type.
-  template<typename T>
-  Optional<T> getAs() const {
+  template <typename T> std::optional<T> getAs() const {
     if (!T::isKind(*this))
-      return None;
+      return std::nullopt;
     T t;
     ProgramPoint& PP = t;
     PP = *this;
@@ -214,7 +211,7 @@ public:
     ID.AddPointer(getTag());
   }
 
-  void print(StringRef CR, llvm::raw_ostream &Out) const;
+  void printJson(llvm::raw_ostream &Out, const char *NL = "\n") const;
 
   LLVM_DUMP_METHOD void dump() const;
 
@@ -235,9 +232,9 @@ public:
     return reinterpret_cast<const CFGBlock*>(getData1());
   }
 
-  Optional<CFGElement> getFirstElement() const {
+  std::optional<CFGElement> getFirstElement() const {
     const CFGBlock *B = getBlock();
-    return B->empty() ? Optional<CFGElement>() : B->front();
+    return B->empty() ? std::optional<CFGElement>() : B->front();
   }
 
 private:
@@ -258,7 +255,7 @@ public:
   }
 
   const Stmt *getTerminator() const {
-    return getBlock()->getTerminator();
+    return getBlock()->getTerminatorStmt();
   }
 
 private:

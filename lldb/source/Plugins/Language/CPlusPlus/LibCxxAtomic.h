@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_LibCxxAtomic_h_
-#define liblldb_LibCxxAtomic_h_
+#ifndef LLDB_SOURCE_PLUGINS_LANGUAGE_CPLUSPLUS_LIBCXXATOMIC_H
+#define LLDB_SOURCE_PLUGINS_LANGUAGE_CPLUSPLUS_LIBCXXATOMIC_H
 
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/TypeSummary.h"
@@ -17,6 +17,9 @@
 
 namespace lldb_private {
 namespace formatters {
+
+lldb::ValueObjectSP GetLibCxxAtomicValue(ValueObject &valobj);
+
 bool LibCxxAtomicSummaryProvider(ValueObject &valobj, Stream &stream,
                                  const TypeSummaryOptions &options);
 
@@ -27,4 +30,4 @@ LibcxxAtomicSyntheticFrontEndCreator(CXXSyntheticChildren *,
 } // namespace formatters
 } // namespace lldb_private
 
-#endif // liblldb_LibCxxAtomic_h_
+#endif // LLDB_SOURCE_PLUGINS_LANGUAGE_CPLUSPLUS_LIBCXXATOMIC_H

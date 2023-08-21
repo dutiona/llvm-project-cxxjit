@@ -6,11 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// NOTE: Older versions of clang have a bug where they fail to evaluate
-// string_view::at as a constant expression.
-// XFAIL: clang-3.4, clang-3.3
-
-
 // <string_view>
 
 // constexpr const _CharT& at(size_type _pos) const;
@@ -40,8 +35,10 @@ int main(int, char**) {
     test ( "ABCDE", 5 );
     test ( "a", 1 );
 
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     test ( L"ABCDE", 5 );
     test ( L"a", 1 );
+#endif
 
 #if TEST_STD_VER >= 11
     test ( u"ABCDE", 5 );

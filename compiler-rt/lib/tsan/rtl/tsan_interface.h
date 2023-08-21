@@ -72,6 +72,13 @@ SANITIZER_INTERFACE_ATTRIBUTE void __tsan_vptr_read(void **vptr_p);
 SANITIZER_INTERFACE_ATTRIBUTE
 void __tsan_vptr_update(void **vptr_p, void *new_val);
 
+SANITIZER_INTERFACE_ATTRIBUTE
+void *__tsan_memcpy(void *dest, const void *src, uptr count);
+SANITIZER_INTERFACE_ATTRIBUTE
+void *__tsan_memset(void *dest, int ch, uptr count);
+SANITIZER_INTERFACE_ATTRIBUTE
+void *__tsan_memmove(void *dest, const void *src, uptr count);
+
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_func_entry(void *call_pc);
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_func_exit();
 
@@ -90,9 +97,14 @@ SANITIZER_INTERFACE_ATTRIBUTE
 void __tsan_external_write(void *addr, void *caller_pc, void *tag);
 
 SANITIZER_INTERFACE_ATTRIBUTE
-void __tsan_read_range(void *addr, unsigned long size);  // NOLINT
+void __tsan_read_range(void *addr, unsigned long size);
 SANITIZER_INTERFACE_ATTRIBUTE
-void __tsan_write_range(void *addr, unsigned long size);  // NOLINT
+void __tsan_write_range(void *addr, unsigned long size);
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_read_range_pc(void *addr, unsigned long size, void *pc);
+SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_write_range_pc(void *addr, unsigned long size, void *pc);
 
 // User may provide function that would be called right when TSan detects
 // an error. The argument 'report' is an opaque pointer that can be used to
@@ -187,11 +199,12 @@ namespace __tsan {
 
 // These should match declarations from public tsan_interface_atomic.h header.
 typedef unsigned char      a8;
-typedef unsigned short     a16;  // NOLINT
+typedef unsigned short a16;
 typedef unsigned int       a32;
-typedef unsigned long long a64;  // NOLINT
+typedef unsigned long long a64;
 #if !SANITIZER_GO && (defined(__SIZEOF_INT128__) \
-    || (__clang_major__ * 100 + __clang_minor__ >= 302)) && !defined(__mips64)
+    || (__clang_major__ * 100 + __clang_minor__ >= 302)) && \
+    !defined(__mips64) && !defined(__s390x__)
 __extension__ typedef __int128 a128;
 # define __TSAN_HAS_INT128 1
 #else
@@ -199,7 +212,7 @@ __extension__ typedef __int128 a128;
 #endif
 
 // Part of ABI, do not change.
-// https://github.com/llvm/llvm-project/blob/master/libcxx/include/atomic
+// https://github.com/llvm/llvm-project/blob/main/libcxx/include/atomic
 typedef enum {
   mo_relaxed,
   mo_consume,
@@ -410,6 +423,7 @@ void __tsan_go_atomic32_compare_exchange(ThreadState *thr, uptr cpc, uptr pc,
 SANITIZER_INTERFACE_ATTRIBUTE
 void __tsan_go_atomic64_compare_exchange(ThreadState *thr, uptr cpc, uptr pc,
                                          u8 *a);
+
 }  // extern "C"
 
 }  // namespace __tsan

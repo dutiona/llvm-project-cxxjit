@@ -10,13 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_FRONTEND_PRECOMPILED_PREAMBLE_H
-#define LLVM_CLANG_FRONTEND_PRECOMPILED_PREAMBLE_H
+#ifndef LLVM_CLANG_FRONTEND_PRECOMPILEDPREAMBLE_H
+#define LLVM_CLANG_FRONTEND_PRECOMPILEDPREAMBLE_H
 
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/Support/AlignOf.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MD5.h"
 #include <cstddef>
 #include <memory>
@@ -25,6 +25,7 @@
 
 namespace llvm {
 class MemoryBuffer;
+class MemoryBufferRef;
 namespace vfs {
 class FileSystem;
 }
@@ -33,12 +34,13 @@ class FileSystem;
 namespace clang {
 class CompilerInstance;
 class CompilerInvocation;
+class Decl;
 class DeclGroupRef;
 class PCHContainerOperations;
 
 /// Runs lexer to compute suggested preamble bounds.
 PreambleBounds ComputePreambleBounds(const LangOptions &LangOpts,
-                                     llvm::MemoryBuffer *Buffer,
+                                     const llvm::MemoryBufferRef &Buffer,
                                      unsigned MaxLines);
 
 class PreambleCallbacks;
@@ -83,8 +85,9 @@ public:
         std::shared_ptr<PCHContainerOperations> PCHContainerOps,
         bool StoreInMemory, PreambleCallbacks &Callbacks);
 
-  PrecompiledPreamble(PrecompiledPreamble &&) = default;
-  PrecompiledPreamble &operator=(PrecompiledPreamble &&) = default;
+  PrecompiledPreamble(PrecompiledPreamble &&);
+  PrecompiledPreamble &operator=(PrecompiledPreamble &&);
+  ~PrecompiledPreamble();
 
   /// PreambleBounds used to build the preamble.
   PreambleBounds getBounds() const;
@@ -94,11 +97,16 @@ public:
   /// be used for logging and debugging purposes only.
   std::size_t getSize() const;
 
+  /// Returned string is not null-terminated.
+  llvm::StringRef getContents() const {
+    return {PreambleBytes.data(), PreambleBytes.size()};
+  }
+
   /// Check whether PrecompiledPreamble can be reused for the new contents(\p
   /// MainFileBuffer) of the main file.
   bool CanReuse(const CompilerInvocation &Invocation,
-                const llvm::MemoryBuffer *MainFileBuffer, PreambleBounds Bounds,
-                llvm::vfs::FileSystem *VFS) const;
+                const llvm::MemoryBufferRef &MainFileBuffer,
+                PreambleBounds Bounds, llvm::vfs::FileSystem &VFS) const;
 
   /// Changes options inside \p CI to use PCH from this preamble. Also remaps
   /// main file to \p MainFileBuffer and updates \p VFS to ensure the preamble
@@ -120,85 +128,11 @@ public:
                         llvm::MemoryBuffer *MainFileBuffer) const;
 
 private:
-  PrecompiledPreamble(PCHStorage Storage, std::vector<char> PreambleBytes,
+  PrecompiledPreamble(std::unique_ptr<PCHStorage> Storage,
+                      std::vector<char> PreambleBytes,
                       bool PreambleEndsAtStartOfLine,
-                      llvm::StringMap<PreambleFileHash> FilesInPreamble);
-
-  /// A temp file that would be deleted on destructor call. If destructor is not
-  /// called for any reason, the file will be deleted at static objects'
-  /// destruction.
-  /// An assertion will fire if two TempPCHFiles are created with the same name,
-  /// so it's not intended to be used outside preamble-handling.
-  class TempPCHFile {
-  public:
-    // A main method used to construct TempPCHFile.
-    static llvm::ErrorOr<TempPCHFile> CreateNewPreamblePCHFile();
-
-    /// Call llvm::sys::fs::createTemporaryFile to create a new temporary file.
-    static llvm::ErrorOr<TempPCHFile> createInSystemTempDir(const Twine &Prefix,
-                                                            StringRef Suffix);
-    /// Create a new instance of TemporaryFile for file at \p Path. Use with
-    /// extreme caution, there's an assertion checking that there's only a
-    /// single instance of TempPCHFile alive for each path.
-    static llvm::ErrorOr<TempPCHFile> createFromCustomPath(const Twine &Path);
-
-  private:
-    TempPCHFile(std::string FilePath);
-
-  public:
-    TempPCHFile(TempPCHFile &&Other);
-    TempPCHFile &operator=(TempPCHFile &&Other);
-
-    TempPCHFile(const TempPCHFile &) = delete;
-    ~TempPCHFile();
-
-    /// A path where temporary file is stored.
-    llvm::StringRef getFilePath() const;
-
-  private:
-    void RemoveFileIfPresent();
-
-  private:
-    llvm::Optional<std::string> FilePath;
-  };
-
-  class InMemoryPreamble {
-  public:
-    std::string Data;
-  };
-
-  class PCHStorage {
-  public:
-    enum class Kind { Empty, InMemory, TempFile };
-
-    PCHStorage() = default;
-    PCHStorage(TempPCHFile File);
-    PCHStorage(InMemoryPreamble Memory);
-
-    PCHStorage(const PCHStorage &) = delete;
-    PCHStorage &operator=(const PCHStorage &) = delete;
-
-    PCHStorage(PCHStorage &&Other);
-    PCHStorage &operator=(PCHStorage &&Other);
-
-    ~PCHStorage();
-
-    Kind getKind() const;
-
-    TempPCHFile &asFile();
-    const TempPCHFile &asFile() const;
-
-    InMemoryPreamble &asMemory();
-    const InMemoryPreamble &asMemory() const;
-
-  private:
-    void destroy();
-    void setEmpty();
-
-  private:
-    Kind StorageKind = Kind::Empty;
-    llvm::AlignedCharArrayUnion<TempPCHFile, InMemoryPreamble> Storage = {};
-  };
+                      llvm::StringMap<PreambleFileHash> FilesInPreamble,
+                      llvm::StringSet<> MissingFiles);
 
   /// Data used to determine if a file used in the preamble has been changed.
   struct PreambleFileHash {
@@ -216,7 +150,7 @@ private:
 
     static PreambleFileHash createForFile(off_t Size, time_t ModTime);
     static PreambleFileHash
-    createForMemoryBuffer(const llvm::MemoryBuffer *Buffer);
+    createForMemoryBuffer(const llvm::MemoryBufferRef &Buffer);
 
     friend bool operator==(const PreambleFileHash &LHS,
                            const PreambleFileHash &RHS) {
@@ -244,13 +178,22 @@ private:
                        IntrusiveRefCntPtr<llvm::vfs::FileSystem> &VFS);
 
   /// Manages the memory buffer or temporary file that stores the PCH.
-  PCHStorage Storage;
+  std::unique_ptr<PCHStorage> Storage;
   /// Keeps track of the files that were used when computing the
   /// preamble, with both their buffer size and their modification time.
   ///
   /// If any of the files have changed from one compile to the next,
   /// the preamble must be thrown away.
   llvm::StringMap<PreambleFileHash> FilesInPreamble;
+  /// Files that were not found during preamble building. If any of these now
+  /// exist then the preamble should not be reused.
+  ///
+  /// Storing *all* the missing files that could invalidate the preamble would
+  /// make it too expensive to revalidate (when the include path has many
+  /// entries, each #include will miss half of them on average).
+  /// Instead, we track only files that could have satisfied an #include that
+  /// was ultimately not found.
+  llvm::StringSet<> MissingFiles;
   /// The contents of the file that was used to precompile the preamble. Only
   /// contains first PreambleBounds::Size bytes. Used to compare if the relevant
   /// part of the file has not changed, so that preamble can be reused.
@@ -264,7 +207,7 @@ class PreambleCallbacks {
 public:
   virtual ~PreambleCallbacks() = default;
 
-  /// Called before FrontendAction::BeginSourceFile.
+  /// Called before FrontendAction::Execute.
   /// Can be used to store references to various CompilerInstance fields
   /// (e.g. SourceManager) that may be interesting to the consumers of other
   /// callbacks.
@@ -281,17 +224,22 @@ public:
   /// used instead, but having only this method allows a simpler API.
   virtual void HandleTopLevelDecl(DeclGroupRef DG);
   /// Creates wrapper class for PPCallbacks so we can also process information
-  /// about includes that are inside of a preamble
+  /// about includes that are inside of a preamble. Called after BeforeExecute.
   virtual std::unique_ptr<PPCallbacks> createPPCallbacks();
   /// The returned CommentHandler will be added to the preprocessor if not null.
   virtual CommentHandler *getCommentHandler();
+  /// Determines which function bodies are parsed, by default skips everything.
+  /// Only used if FrontendOpts::SkipFunctionBodies is true.
+  /// See ASTConsumer::shouldSkipFunctionBody.
+  virtual bool shouldSkipFunctionBody(Decl *D) { return true; }
 };
 
 enum class BuildPreambleError {
   CouldntCreateTempFile = 1,
   CouldntCreateTargetInfo,
   BeginSourceFileFailed,
-  CouldntEmitPCH
+  CouldntEmitPCH,
+  BadInputs
 };
 
 class BuildPreambleErrorCategory final : public std::error_category {

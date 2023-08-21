@@ -18,10 +18,12 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace clang;
 
@@ -107,7 +109,7 @@ static std::string generateReproducerMetaInfo(const ClangInvocationInfo &Info) {
 }
 
 /// Generates a reproducer for a set of arguments from a specific invocation.
-static llvm::Optional<driver::Driver::CompilationDiagnosticReport>
+static std::optional<driver::Driver::CompilationDiagnosticReport>
 generateReproducerForInvocationArguments(ArrayRef<const char *> Argv,
                                          const ClangInvocationInfo &Info) {
   using namespace driver;
@@ -133,7 +135,7 @@ generateReproducerForInvocationArguments(ArrayRef<const char *> Argv,
     }
   }
 
-  return None;
+  return std::nullopt;
 }
 
 std::string GetExecutablePath(const char *Argv0, bool CanonicalPrefixes);
@@ -161,7 +163,7 @@ int cc1gen_reproducer_main(ArrayRef<const char *> Argv, const char *Argv0,
   // Parse the invocation descriptor.
   StringRef Input = Argv[0];
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Buffer =
-      llvm::MemoryBuffer::getFile(Input);
+      llvm::MemoryBuffer::getFile(Input, /*IsText=*/true);
   if (!Buffer) {
     llvm::errs() << "error: failed to read " << Input << ": "
                  << Buffer.getError().message() << "\n";
@@ -179,7 +181,7 @@ int cc1gen_reproducer_main(ArrayRef<const char *> Argv, const char *Argv0,
     DriverArgs.push_back(Arg.c_str());
   std::string Path = GetExecutablePath(Argv0, /*CanonicalPrefixes=*/true);
   DriverArgs[0] = Path.c_str();
-  llvm::Optional<driver::Driver::CompilationDiagnosticReport> Report =
+  std::optional<driver::Driver::CompilationDiagnosticReport> Report =
       generateReproducerForInvocationArguments(DriverArgs, InvocationInfo);
 
   // Emit the information about the reproduce files to stdout.

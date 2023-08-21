@@ -15,7 +15,6 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Stmt.h"
-#include "clang/Basic/MemoryBufferCache.h"
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
@@ -23,8 +22,10 @@
 #include "clang/Sema/SemaConsumer.h"
 #include "clang/Sema/TemplateInstCallback.h"
 #include "clang/Serialization/ASTWriter.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
+#include "clang/Serialization/InMemoryModuleCache.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 #include "llvm/Support/CrashRecoveryContext.h"
+#include "llvm/Support/TimeProfiler.h"
 
 #include <cstdio>
 #include <memory>
@@ -43,14 +44,13 @@ public:
   ResetStackCleanup(llvm::CrashRecoveryContext *Context, const void *Top)
       : llvm::CrashRecoveryContextCleanupBase<ResetStackCleanup, const void>(
             Context, Top) {}
-  void recoverResources() override {
-    llvm::RestorePrettyStackState(resource);
-  }
+  void recoverResources() override { llvm::RestorePrettyStackState(resource); }
 };
 
 /// If a crash happens while the parser is active, an entry is printed for it.
 class PrettyStackTraceParserEntry : public llvm::PrettyStackTraceEntry {
   const Parser &P;
+
 public:
   PrettyStackTraceParserEntry(const Parser &p) : P(p) {}
   void print(raw_ostream &OS) const override;
@@ -89,7 +89,7 @@ void PrettyStackTraceParserEntry::print(raw_ostream &OS) const {
   }
 }
 
-}  // namespace
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Public interface to the file
@@ -99,9 +99,8 @@ void PrettyStackTraceParserEntry::print(raw_ostream &OS) const {
 /// the file is parsed.  This inserts the parsed decls into the translation unit
 /// held by Ctx.
 ///
-void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
-                     ASTContext &Ctx, bool PrintStats,
-                     TranslationUnitKind TUKind,
+void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer, ASTContext &Ctx,
+                     bool PrintStats, TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
                      bool SkipFunctionBodies) {
 
@@ -140,8 +139,8 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   PrettyStackTraceParserEntry CrashInfo(P);
 
   // Recover resources if we crash before exiting this method.
-  llvm::CrashRecoveryContextCleanupRegistrar<Parser>
-    CleanupParser(ParseOP.get());
+  llvm::CrashRecoveryContextCleanupRegistrar<Parser> CleanupParser(
+      ParseOP.get());
 
   S.getPreprocessor().EnterMainSourceFile();
   ExternalASTSource *External = S.getASTContext().getExternalSource();
@@ -154,10 +153,15 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   bool HaveLexer = S.getPreprocessor().getCurrentLexer();
 
   if (HaveLexer) {
+    llvm::TimeTraceScope TimeScope("Frontend");
     P.Initialize();
     Parser::DeclGroupPtrTy ADecl;
-    for (bool AtEOF = P.ParseFirstTopLevelDecl(ADecl); !AtEOF;
-         AtEOF = P.ParseTopLevelDecl(ADecl)) {
+    Sema::ModuleImportState ImportState;
+    EnterExpressionEvaluationContext PotentiallyEvaluated(
+        S, Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+
+    for (bool AtEOF = P.ParseFirstTopLevelDecl(ADecl, ImportState); !AtEOF;
+         AtEOF = P.ParseTopLevelDecl(ADecl, ImportState)) {
       // If we got a null return and something *was* parsed, ignore it.  This
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
@@ -172,13 +176,34 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
 
   if (S.getLangOpts().isJITEnabled()) {
     llvm::BitstreamWriter Stream(S.getASTContext().ASTBufferForJIT);
-    MemoryBufferCache PCMCache;
+    InMemoryModuleCache PCMCache;
     ASTWriter Writer(Stream, S.getASTContext().ASTBufferForJIT, PCMCache, {},
-                     /*IncludeTimestamps*/true,
-                     /*TreatAllFilesAsTransient*/true);
+                     /*IncludeTimestamps*/ true,
+                     /*TreatAllFilesAsTransient*/ true);
     Writer.WriteAST(S, std::string(), nullptr, "", /*hasErrors*/ false);
   }
 
+  // For C++20 modules, the codegen for module initializers needs to be altered
+  // and to be able to use a name based on the module name.
+
+  // At this point, we should know if we are building a non-header C++20 module.
+  if (S.getLangOpts().CPlusPlusModules) {
+    // If we are building the module from source, then the top level module
+    // will be here.
+    Module *CodegenModule = S.getCurrentModule();
+    bool Interface = true;
+    if (CodegenModule)
+      // We only use module initializers for importable module (including
+      // partition implementation units).
+      Interface = S.currentModuleIsInterface();
+    else if (S.getLangOpts().isCompilingModuleInterface())
+      // If we are building the module from a PCM file, then the module can be
+      // found here.
+      CodegenModule = S.getPreprocessor().getCurrentModule();
+
+    if (Interface && CodegenModule)
+      S.getASTContext().setModuleForCodeGen(CodegenModule);
+  }
   Consumer->HandleTranslationUnit(S.getASTContext());
 
   // Finalize the template instantiation observer chain.
@@ -191,7 +216,8 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   std::swap(OldCollectStats, S.CollectStats);
   if (PrintStats) {
     llvm::errs() << "\nSTATISTICS:\n";
-    if (HaveLexer) P.getActions().PrintStats();
+    if (HaveLexer)
+      P.getActions().PrintStats();
     S.getASTContext().PrintStats();
     Decl::PrintStats();
     Stmt::PrintStats();

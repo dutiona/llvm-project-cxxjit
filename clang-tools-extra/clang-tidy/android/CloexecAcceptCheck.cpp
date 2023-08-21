@@ -12,9 +12,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace android {
+namespace clang::tidy::android {
 
 void CloexecAcceptCheck::registerMatchers(MatchFinder *Finder) {
   auto SockAddrPointerType =
@@ -29,7 +27,7 @@ void CloexecAcceptCheck::registerMatchers(MatchFinder *Finder) {
 }
 
 void CloexecAcceptCheck::check(const MatchFinder::MatchResult &Result) {
-  const std::string &ReplacementText =
+  std::string ReplacementText =
       (Twine("accept4(") + getSpellingArg(Result, 0) + ", " +
        getSpellingArg(Result, 1) + ", " + getSpellingArg(Result, 2) +
        ", SOCK_CLOEXEC)")
@@ -41,6 +39,4 @@ void CloexecAcceptCheck::check(const MatchFinder::MatchResult &Result) {
       ReplacementText);
 }
 
-} // namespace android
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::android

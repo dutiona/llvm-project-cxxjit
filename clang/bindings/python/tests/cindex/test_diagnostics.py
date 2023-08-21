@@ -20,13 +20,13 @@ class TestDiagnostics(unittest.TestCase):
         self.assertEqual(tu.diagnostics[0].location.line, 1)
         self.assertEqual(tu.diagnostics[0].location.column, 11)
         self.assertEqual(tu.diagnostics[0].spelling,
-                'control reaches end of non-void function')
+                'non-void function does not return a value')
 
     def test_diagnostic_note(self):
         # FIXME: We aren't getting notes here for some reason.
         tu = get_tu('#define A x\nvoid *A = 1;\n')
         self.assertEqual(len(tu.diagnostics), 1)
-        self.assertEqual(tu.diagnostics[0].severity, Diagnostic.Warning)
+        self.assertEqual(tu.diagnostics[0].severity, Diagnostic.Error)
         self.assertEqual(tu.diagnostics[0].location.line, 2)
         self.assertEqual(tu.diagnostics[0].location.column, 7)
         self.assertIn('incompatible', tu.diagnostics[0].spelling)
@@ -41,7 +41,7 @@ class TestDiagnostics(unittest.TestCase):
         self.assertEqual(tu.diagnostics[0].severity, Diagnostic.Warning)
         self.assertEqual(tu.diagnostics[0].location.line, 1)
         self.assertEqual(tu.diagnostics[0].location.column, 26)
-        self.assertRegexpMatches(tu.diagnostics[0].spelling,
+        self.assertRegex(tu.diagnostics[0].spelling,
             'use of GNU old-style.*')
         self.assertEqual(len(tu.diagnostics[0].fixits), 1)
         self.assertEqual(tu.diagnostics[0].fixits[0].range.start.line, 1)
@@ -53,10 +53,10 @@ class TestDiagnostics(unittest.TestCase):
     def test_diagnostic_range(self):
         tu = get_tu('void f() { int i = "a"; }')
         self.assertEqual(len(tu.diagnostics), 1)
-        self.assertEqual(tu.diagnostics[0].severity, Diagnostic.Warning)
+        self.assertEqual(tu.diagnostics[0].severity, Diagnostic.Error)
         self.assertEqual(tu.diagnostics[0].location.line, 1)
         self.assertEqual(tu.diagnostics[0].location.column, 16)
-        self.assertRegexpMatches(tu.diagnostics[0].spelling,
+        self.assertRegex(tu.diagnostics[0].spelling,
             'incompatible pointer to.*')
         self.assertEqual(len(tu.diagnostics[0].fixits), 0)
         self.assertEqual(len(tu.diagnostics[0].ranges), 1)
@@ -97,10 +97,10 @@ class TestDiagnostics(unittest.TestCase):
         children = d.children
         self.assertEqual(len(children), 1)
         self.assertEqual(children[0].severity, Diagnostic.Note)
-        self.assertRegexpMatches(children[0].spelling,
+        self.assertRegex(children[0].spelling,
                 '.*declared here')
         self.assertEqual(children[0].location.line, 1)
-        self.assertEqual(children[0].location.column, 1)
+        self.assertEqual(children[0].location.column, 6)
 
     def test_diagnostic_string_repr(self):
         tu = get_tu('struct MissingSemicolon{}')

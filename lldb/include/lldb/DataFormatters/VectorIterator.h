@@ -7,21 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_VectorIterator_h_
-#define liblldb_VectorIterator_h_
+#ifndef LLDB_DATAFORMATTERS_VECTORITERATOR_H
+#define LLDB_DATAFORMATTERS_VECTORITERATOR_H
 
 #include "lldb/lldb-forward.h"
 
 #include "lldb/DataFormatters/TypeSynthetic.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Utility/ConstString.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace lldb_private {
 namespace formatters {
 class VectorIteratorSyntheticFrontEnd : public SyntheticChildrenFrontEnd {
 public:
   VectorIteratorSyntheticFrontEnd(lldb::ValueObjectSP valobj_sp,
-                                  ConstString item_name);
+                                  llvm::ArrayRef<ConstString> item_names);
 
   size_t CalculateNumChildren() override;
 
@@ -31,15 +32,15 @@ public:
 
   bool MightHaveChildren() override;
 
-  size_t GetIndexOfChildWithName(const ConstString &name) override;
+  size_t GetIndexOfChildWithName(ConstString name) override;
 
 private:
   ExecutionContextRef m_exe_ctx_ref;
-  ConstString m_item_name;
+  llvm::SmallVector<ConstString, 2> m_item_names;
   lldb::ValueObjectSP m_item_sp;
 };
 
 } // namespace formatters
 } // namespace lldb_private
 
-#endif // liblldb_CF_h_
+#endif // LLDB_DATAFORMATTERS_VECTORITERATOR_H

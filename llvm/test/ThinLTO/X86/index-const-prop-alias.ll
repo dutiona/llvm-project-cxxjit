@@ -16,27 +16,27 @@
 ; RUN: llvm-dis %t5.1.3.import.bc -o - | FileCheck %s --check-prefix=PRESERVED
 
 ; We currently don't support importing aliases
-; IMPORT:       @g.alias = external dso_local global i32
+; IMPORT:       @g.alias = external global i32
 ; IMPORT-NEXT:  @g = internal global i32 42, align 4 #0
 ; IMPORT:  attributes #0 = { "thinlto-internalize" }
 
 ; CODEGEN:      define dso_local i32 @main
 ; CODEGEN-NEXT:    ret i32 42
 
-; PRESERVED:      @g.alias = external dso_local global i32
-; PRESERVED-NEXT: @g = available_externally dso_local global i32 42, align 4
+; PRESERVED:      @g.alias = external global i32
+; PRESERVED-NEXT: @g = available_externally global i32 42, align 4
 
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
 @g.alias = external global i32
 @g = external global i32
 
 define i32 @main() {
-  %v = load i32, i32* @g
+  %v = load i32, ptr @g
   ret i32 %v
 }
 
-define i32* @ret_ptr() {
-  ret i32* @g.alias
+define ptr @ret_ptr() {
+  ret ptr @g.alias
 }

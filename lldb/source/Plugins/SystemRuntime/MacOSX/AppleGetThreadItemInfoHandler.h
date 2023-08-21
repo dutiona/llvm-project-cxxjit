@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_AppleGetThreadItemInfoHandler_h_
-#define lldb_AppleGetThreadItemInfoHandler_h_
+#ifndef LLDB_SOURCE_PLUGINS_SYSTEMRUNTIME_MACOSX_APPLEGETTHREADITEMINFOHANDLER_H
+#define LLDB_SOURCE_PLUGINS_SYSTEMRUNTIME_MACOSX_APPLEGETTHREADITEMINFOHANDLER_H
 
 #include <map>
 #include <mutex>
@@ -47,43 +47,40 @@ public:
   ~AppleGetThreadItemInfoHandler();
 
   struct GetThreadItemInfoReturnInfo {
-    lldb::addr_t item_buffer_ptr;  /* the address of the item buffer from
-                                      libBacktraceRecording */
-    lldb::addr_t item_buffer_size; /* the size of the item buffer from
+    lldb::addr_t item_buffer_ptr = LLDB_INVALID_ADDRESS; /* the address of the
+                                     item buffer from libBacktraceRecording */
+    lldb::addr_t item_buffer_size = 0; /* the size of the item buffer from
                                       libBacktraceRecording */
 
-    GetThreadItemInfoReturnInfo()
-        : item_buffer_ptr(LLDB_INVALID_ADDRESS), item_buffer_size(0) {}
+    GetThreadItemInfoReturnInfo() = default;
   };
 
-  //----------------------------------------------------------
   /// Get the information about a work item by calling
   /// __introspection_dispatch_thread_get_item_info.  If there's a page of
   /// memory that needs to be freed, pass in the address and size and it will
   /// be freed before getting the list of queues.
   ///
-  /// @param [in] thread_id
+  /// \param [in] thread_id
   ///     The thread to get the extended backtrace for.
   ///
-  /// @param [in] page_to_free
+  /// \param [in] page_to_free
   ///     An address of an inferior process vm page that needs to be
   ///     deallocated,
   ///     LLDB_INVALID_ADDRESS if this is not needed.
   ///
-  /// @param [in] page_to_free_size
+  /// \param [in] page_to_free_size
   ///     The size of the vm page that needs to be deallocated if an address was
   ///     passed in to page_to_free.
   ///
-  /// @param [out] error
+  /// \param [out] error
   ///     This object will be updated with the error status / error string from
   ///     any failures encountered.
   ///
-  /// @returns
+  /// \returns
   ///     The result of the inferior function call execution.  If there was a
   ///     failure of any kind while getting
   ///     the information, the item_buffer_ptr value will be
   ///     LLDB_INVALID_ADDRESS.
-  //----------------------------------------------------------
   GetThreadItemInfoReturnInfo GetThreadItemInfo(Thread &thread,
                                                 lldb::tid_t thread_id,
                                                 lldb::addr_t page_to_free,
@@ -110,4 +107,4 @@ private:
 
 } // using namespace lldb_private
 
-#endif // lldb_AppleGetThreadItemInfoHandler_h_
+#endif // LLDB_SOURCE_PLUGINS_SYSTEMRUNTIME_MACOSX_APPLEGETTHREADITEMINFOHANDLER_H

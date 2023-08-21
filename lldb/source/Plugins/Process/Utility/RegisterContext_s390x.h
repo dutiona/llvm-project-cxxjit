@@ -6,12 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_RegisterContext_s390x_h_
-#define liblldb_RegisterContext_s390x_h_
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_REGISTERCONTEXT_S390X_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_REGISTERCONTEXT_S390X_H
 
-//---------------------------------------------------------------------------
 // SystemZ ehframe, dwarf regnums
-//---------------------------------------------------------------------------
 
 // EHFrame and DWARF Register numbers (eRegisterKindEHFrame &
 // eRegisterKindDWARF)

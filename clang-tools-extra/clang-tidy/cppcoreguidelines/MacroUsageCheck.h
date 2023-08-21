@@ -9,28 +9,32 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_MACROUSAGECHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_MACROUSAGECHECK_H
 
-#include "../ClangTidy.h"
-#include "clang/Lex/Preprocessor.h"
+#include "../ClangTidyCheck.h"
+#include "clang/Lex/MacroInfo.h"
 #include <string>
 
 namespace clang {
-namespace tidy {
-namespace cppcoreguidelines {
+class MacroDirective;
+namespace tidy::cppcoreguidelines {
 
 /// Find macro usage that is considered problematic because better language
 /// constructs exist for the task.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines-macro-usage.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines/macro-usage.html
 class MacroUsageCheck : public ClangTidyCheck {
 public:
   MacroUsageCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context),
         AllowedRegexp(Options.get("AllowedRegexp", "^DEBUG_*")),
-        CheckCapsOnly(Options.get("CheckCapsOnly", 0)),
-        IgnoreCommandLineMacros(Options.get("IgnoreCommandLineMacros", 1)) {}
+        CheckCapsOnly(Options.get("CheckCapsOnly", false)),
+        IgnoreCommandLineMacros(Options.get("IgnoreCommandLineMacros", true)) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus11;
+  }
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
-  void registerPPCallbacks(CompilerInstance &Compiler) override;
+  void registerPPCallbacks(const SourceManager &SM, Preprocessor *PP,
+                           Preprocessor *ModuleExpanderPP) override;
   void warnMacro(const MacroDirective *MD, StringRef MacroName);
   void warnNaming(const MacroDirective *MD, StringRef MacroName);
 
@@ -43,8 +47,7 @@ private:
   bool IgnoreCommandLineMacros;
 };
 
-} // namespace cppcoreguidelines
-} // namespace tidy
+} // namespace tidy::cppcoreguidelines
 } // namespace clang
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_MACROUSAGECHECK_H

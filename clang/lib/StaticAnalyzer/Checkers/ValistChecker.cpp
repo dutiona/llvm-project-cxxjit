@@ -15,6 +15,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CallDescription.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 
@@ -45,8 +46,8 @@ public:
     CK_NumCheckKinds
   };
 
-  DefaultBool ChecksEnabled[CK_NumCheckKinds];
-  CheckName CheckNames[CK_NumCheckKinds];
+  bool ChecksEnabled[CK_NumCheckKinds] = {false};
+  CheckerNameRef CheckNames[CK_NumCheckKinds];
 
   void checkPreStmt(const VAArgExpr *VAA, CheckerContext &C) const;
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
@@ -77,20 +78,20 @@ private:
       ID.AddPointer(&X);
       ID.AddPointer(Reg);
     }
-    std::shared_ptr<PathDiagnosticPiece>
-    getEndPath(BugReporterContext &BRC, const ExplodedNode *EndPathNode,
-               BugReport &BR) override {
+    PathDiagnosticPieceRef getEndPath(BugReporterContext &BRC,
+                                      const ExplodedNode *EndPathNode,
+                                      PathSensitiveBugReport &BR) override {
       if (!IsLeak)
         return nullptr;
 
-      PathDiagnosticLocation L = PathDiagnosticLocation::createEndOfPath(
-          EndPathNode, BRC.getSourceManager());
+      PathDiagnosticLocation L = BR.getLocation();
       // Do not add the statement itself as a range in case of leak.
-      return std::make_shared<PathDiagnosticEventPiece>(L, BR.getDescription(), false);
+      return std::make_shared<PathDiagnosticEventPiece>(L, BR.getDescription(),
+                                                        false);
     }
-    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
-                                                   BugReporterContext &BRC,
-                                                   BugReport &BR) override;
+    PathDiagnosticPieceRef VisitNode(const ExplodedNode *N,
+                                     BugReporterContext &BRC,
+                                     PathSensitiveBugReport &BR) override;
 
   private:
     const MemRegion *Reg;
@@ -99,40 +100,41 @@ private:
 };
 
 const SmallVector<ValistChecker::VAListAccepter, 15>
-    ValistChecker::VAListAccepters = {
-        {{"vfprintf", 3}, 2},
-        {{"vfscanf", 3}, 2},
-        {{"vprintf", 2}, 1},
-        {{"vscanf", 2}, 1},
-        {{"vsnprintf", 4}, 3},
-        {{"vsprintf", 3}, 2},
-        {{"vsscanf", 3}, 2},
-        {{"vfwprintf", 3}, 2},
-        {{"vfwscanf", 3}, 2},
-        {{"vwprintf", 2}, 1},
-        {{"vwscanf", 2}, 1},
-        {{"vswprintf", 4}, 3},
-        // vswprintf is the wide version of vsnprintf,
-        // vsprintf has no wide version
-        {{"vswscanf", 3}, 2}};
-const CallDescription ValistChecker::VaStart("__builtin_va_start", 2),
-    ValistChecker::VaCopy("__builtin_va_copy", 2),
-    ValistChecker::VaEnd("__builtin_va_end", 1);
+    ValistChecker::VAListAccepters = {{{{"vfprintf"}, 3}, 2},
+                                      {{{"vfscanf"}, 3}, 2},
+                                      {{{"vprintf"}, 2}, 1},
+                                      {{{"vscanf"}, 2}, 1},
+                                      {{{"vsnprintf"}, 4}, 3},
+                                      {{{"vsprintf"}, 3}, 2},
+                                      {{{"vsscanf"}, 3}, 2},
+                                      {{{"vfwprintf"}, 3}, 2},
+                                      {{{"vfwscanf"}, 3}, 2},
+                                      {{{"vwprintf"}, 2}, 1},
+                                      {{{"vwscanf"}, 2}, 1},
+                                      {{{"vswprintf"}, 4}, 3},
+                                      // vswprintf is the wide version of
+                                      // vsnprintf, vsprintf has no wide version
+                                      {{{"vswscanf"}, 3}, 2}};
+
+const CallDescription ValistChecker::VaStart({"__builtin_va_start"}, /*Args=*/2,
+                                             /*Params=*/1),
+    ValistChecker::VaCopy({"__builtin_va_copy"}, 2),
+    ValistChecker::VaEnd({"__builtin_va_end"}, 1);
 } // end anonymous namespace
 
 void ValistChecker::checkPreCall(const CallEvent &Call,
                                  CheckerContext &C) const {
   if (!Call.isGlobalCFunction())
     return;
-  if (Call.isCalled(VaStart))
+  if (VaStart.matches(Call))
     checkVAListStartCall(Call, C, false);
-  else if (Call.isCalled(VaCopy))
+  else if (VaCopy.matches(Call))
     checkVAListStartCall(Call, C, true);
-  else if (Call.isCalled(VaEnd))
+  else if (VaEnd.matches(Call))
     checkVAListEndCall(Call, C);
   else {
     for (auto FuncInfo : VAListAccepters) {
-      if (!Call.isCalled(FuncInfo.Func))
+      if (!FuncInfo.Func.matches(Call))
         continue;
       bool Symbolic;
       const MemRegion *VAList =
@@ -175,7 +177,7 @@ const MemRegion *ValistChecker::getVAListAsRegion(SVal SV, const Expr *E,
     if (isa<ParmVarDecl>(DeclReg->getDecl()))
       Reg = C.getState()->getSVal(SV.castAs<Loc>()).getAsRegion();
   }
-  IsSymbolic = Reg && Reg->getAs<SymbolicRegion>();
+  IsSymbolic = Reg && Reg->getBaseRegion()->getAs<SymbolicRegion>();
   // Some VarRegion based VA lists reach here as ElementRegions.
   const auto *EReg = dyn_cast_or_null<ElementRegion>(Reg);
   return (EReg && VaListModelledAsArray) ? EReg->getSuperRegion() : Reg;
@@ -253,9 +255,9 @@ void ValistChecker::reportUninitializedAccess(const MemRegion *VAList,
       BT_uninitaccess.reset(new BugType(CheckNames[CK_Uninitialized],
                                         "Uninitialized va_list",
                                         categories::MemoryError));
-    auto R = llvm::make_unique<BugReport>(*BT_uninitaccess, Msg, N);
+    auto R = std::make_unique<PathSensitiveBugReport>(*BT_uninitaccess, Msg, N);
     R->markInteresting(VAList);
-    R->addVisitor(llvm::make_unique<ValistBugVisitor>(VAList));
+    R->addVisitor(std::make_unique<ValistBugVisitor>(VAList));
     C.emitReport(std::move(R));
   }
 }
@@ -282,7 +284,7 @@ void ValistChecker::reportLeakedVALists(const RegionVector &LeakedVALists,
     const ExplodedNode *StartNode = getStartCallSite(N, Reg);
     PathDiagnosticLocation LocUsedForUniqueing;
 
-    if (const Stmt *StartCallStmt = PathDiagnosticLocation::getStmt(StartNode))
+    if (const Stmt *StartCallStmt = StartNode->getStmtForDiagnostics())
       LocUsedForUniqueing = PathDiagnosticLocation::createBegin(
           StartCallStmt, C.getSourceManager(), StartNode->getLocationContext());
 
@@ -294,11 +296,11 @@ void ValistChecker::reportLeakedVALists(const RegionVector &LeakedVALists,
       OS << " " << VariableName;
     OS << Msg2;
 
-    auto R = llvm::make_unique<BugReport>(
+    auto R = std::make_unique<PathSensitiveBugReport>(
         *BT_leakedvalist, OS.str(), N, LocUsedForUniqueing,
         StartNode->getLocationContext()->getDecl());
     R->markInteresting(Reg);
-    R->addVisitor(llvm::make_unique<ValistBugVisitor>(Reg, true));
+    R->addVisitor(std::make_unique<ValistBugVisitor>(Reg, true));
     C.emitReport(std::move(R));
   }
 }
@@ -373,13 +375,12 @@ void ValistChecker::checkVAListEndCall(const CallEvent &Call,
   C.addTransition(State);
 }
 
-std::shared_ptr<PathDiagnosticPiece> ValistChecker::ValistBugVisitor::VisitNode(
-    const ExplodedNode *N, BugReporterContext &BRC,
-    BugReport &) {
+PathDiagnosticPieceRef ValistChecker::ValistBugVisitor::VisitNode(
+    const ExplodedNode *N, BugReporterContext &BRC, PathSensitiveBugReport &) {
   ProgramStateRef State = N->getState();
   ProgramStateRef StatePrev = N->getFirstPred()->getState();
 
-  const Stmt *S = PathDiagnosticLocation::getStmt(N);
+  const Stmt *S = N->getStmtForDiagnostics();
   if (!S)
     return nullptr;
 
@@ -403,7 +404,7 @@ void ento::registerValistBase(CheckerManager &mgr) {
   mgr.registerChecker<ValistChecker>();
 }
 
-bool ento::shouldRegisterValistBase(const LangOptions &LO) {
+bool ento::shouldRegisterValistBase(const CheckerManager &mgr) {
   return true;
 }
 
@@ -411,10 +412,11 @@ bool ento::shouldRegisterValistBase(const LangOptions &LO) {
   void ento::register##name##Checker(CheckerManager &mgr) {                    \
     ValistChecker *checker = mgr.getChecker<ValistChecker>();                  \
     checker->ChecksEnabled[ValistChecker::CK_##name] = true;                   \
-    checker->CheckNames[ValistChecker::CK_##name] = mgr.getCurrentCheckName(); \
+    checker->CheckNames[ValistChecker::CK_##name] =                            \
+        mgr.getCurrentCheckerName();                                           \
   }                                                                            \
                                                                                \
-  bool ento::shouldRegister##name##Checker(const LangOptions &LO) {            \
+  bool ento::shouldRegister##name##Checker(const CheckerManager &mgr) {            \
     return true;                                                               \
   }
 

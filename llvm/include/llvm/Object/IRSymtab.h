@@ -26,8 +26,10 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/IR/Comdat.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/Object/SymbolicFile.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
 #include <cassert>
@@ -79,6 +81,9 @@ struct Module {
 /// This is equivalent to an IR comdat.
 struct Comdat {
   Str Name;
+
+  // llvm::Comdat::SelectionKind
+  Word SelectionKind;
 };
 
 /// Contains the information needed by linkers for symbol resolution, as well as
@@ -125,12 +130,13 @@ struct Uncommon {
   Str SectionName;
 };
 
+
 struct Header {
   /// Version number of the symtab format. This number should be incremented
   /// when the format changes, but it does not need to be incremented if a
   /// change to LLVM would cause it to create a different symbol table.
   Word Version;
-  enum { kCurrentVersion = 1 };
+  enum { kCurrentVersion = 3 };
 
   /// The producer's version string (LLVM_VERSION_STRING " " LLVM_REVISION).
   /// Consumers should rebuild the symbol table from IR if the producer's
@@ -147,6 +153,9 @@ struct Header {
 
   /// COFF-specific: linker directives.
   Str COFFLinkerOpts;
+
+  /// Dependent Library Specifiers
+  Range<Str> DependentLibraries;
 };
 
 } // end namespace storage
@@ -231,6 +240,7 @@ class Reader {
   ArrayRef<storage::Comdat> Comdats;
   ArrayRef<storage::Symbol> Symbols;
   ArrayRef<storage::Uncommon> Uncommons;
+  ArrayRef<storage::Str> DependentLibraries;
 
   StringRef str(storage::Str S) const { return S.get(Strtab); }
 
@@ -251,6 +261,7 @@ public:
     Comdats = range(header().Comdats);
     Symbols = range(header().Symbols);
     Uncommons = range(header().Uncommons);
+    DependentLibraries = range(header().DependentLibraries);
   }
 
   using symbol_range = iterator_range<object::content_iterator<SymbolRef>>;
@@ -273,16 +284,28 @@ public:
   StringRef getSourceFileName() const { return str(header().SourceFileName); }
 
   /// Returns a table with all the comdats used by this file.
-  std::vector<StringRef> getComdatTable() const {
-    std::vector<StringRef> ComdatTable;
+  std::vector<std::pair<StringRef, llvm::Comdat::SelectionKind>>
+  getComdatTable() const {
+    std::vector<std::pair<StringRef, llvm::Comdat::SelectionKind>> ComdatTable;
     ComdatTable.reserve(Comdats.size());
     for (auto C : Comdats)
-      ComdatTable.push_back(str(C.Name));
+      ComdatTable.push_back({str(C.Name), llvm::Comdat::SelectionKind(
+                                              uint32_t(C.SelectionKind))});
     return ComdatTable;
   }
 
   /// COFF-specific: returns linker options specified in the input file.
   StringRef getCOFFLinkerOpts() const { return str(header().COFFLinkerOpts); }
+
+  /// Returns dependent library specifiers
+  std::vector<StringRef> getDependentLibraries() const {
+    std::vector<StringRef> Specifiers;
+    Specifiers.reserve(DependentLibraries.size());
+    for (auto S : DependentLibraries) {
+      Specifiers.push_back(str(S));
+    }
+    return Specifiers;
+  }
 };
 
 /// Ephemeral symbols produced by Reader::symbols() and

@@ -22,7 +22,9 @@
 #define stringer(x) _stringer(x)
 
 // Detect compiler.
-#if KMP_COMPILER_ICC
+#if KMP_COMPILER_ICX
+#define KMP_COMPILER __VERSION__
+#elif KMP_COMPILER_ICC
 #if __INTEL_COMPILER == 1010
 #define KMP_COMPILER "Intel(R) C++ Compiler 10.1"
 #elif __INTEL_COMPILER == 1100
@@ -49,10 +51,14 @@
 #define KMP_COMPILER "Intel(R) C++ Compiler 17.0"
 #elif __INTEL_COMPILER == 1800
 #define KMP_COMPILER "Intel(R) C++ Compiler 18.0"
-#elif __INTEL_COMPILER == 9998
-#define KMP_COMPILER "Intel(R) C++ Compiler mainline"
-#elif __INTEL_COMPILER == 9999
-#define KMP_COMPILER "Intel(R) C++ Compiler mainline"
+#elif __INTEL_COMPILER == 1900
+#define KMP_COMPILER "Intel(R) C++ Compiler 19.0"
+#elif __INTEL_COMPILER == 1910
+#define KMP_COMPILER "Intel(R) C++ Compiler 19.1"
+#elif __INTEL_COMPILER > 1910
+#define KMP_COMPILER                                                           \
+  "Intel(R) C++ Compiler Classic " stringer(__INTEL_COMPILER) "." stringer(    \
+      __INTEL_COMPILER_UPDATE)
 #endif
 #elif KMP_COMPILER_CLANG
 #define KMP_COMPILER                                                           \
@@ -88,16 +94,7 @@
 int const __kmp_version_major = KMP_VERSION_MAJOR;
 int const __kmp_version_minor = KMP_VERSION_MINOR;
 int const __kmp_version_build = KMP_VERSION_BUILD;
-int const __kmp_openmp_version =
-#if OMP_50_ENABLED
-    201611;
-#elif OMP_45_ENABLED
-    201511;
-#elif OMP_40_ENABLED
-    201307;
-#else
-    201107;
-#endif
+int const __kmp_openmp_version = 201611;
 
 /* Do NOT change the format of this string!  Intel(R) Thread Profiler checks for
    a specific format some changes in the recognition routine there need to be
@@ -182,12 +179,12 @@ void __kmp_print_version_1(void) {
       &buffer, "%sthread affinity support: %s\n", KMP_VERSION_PREF_STR,
 #if KMP_AFFINITY_SUPPORTED
       (KMP_AFFINITY_CAPABLE()
-           ? (__kmp_affinity_type == affinity_none ? "not used" : "yes")
+           ? (__kmp_affinity.type == affinity_none ? "not used" : "yes")
            : "no")
 #else
       "no"
 #endif
-          );
+  );
   __kmp_printf("%s", buffer.str);
   __kmp_str_buf_free(&buffer);
   K_DIAG(1, ("KMP_VERSION is true\n"));

@@ -12,6 +12,8 @@
 
 #include <vector>
 
+#include "test_macros.h"
+
 struct X
 {
     std::vector<X> q;
@@ -20,5 +22,5 @@ struct X
 int main(int, char**)
 {
 
-  return 0;
+    return 0;
 }

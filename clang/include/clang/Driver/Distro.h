@@ -9,6 +9,7 @@
 #ifndef LLVM_CLANG_DRIVER_DISTRO_H
 #define LLVM_CLANG_DRIVER_DISTRO_H
 
+#include "llvm/ADT/Triple.h"
 #include "llvm/Support/VirtualFileSystem.h"
 
 namespace clang {
@@ -22,6 +23,8 @@ namespace driver {
 class Distro {
 public:
   enum DistroType {
+    // Special value means that no detection was performed yet.
+    UninitializedDistro,
     // NB: Releases of a particular Linux distro should be kept together
     // in this enum, because some tests are done by integer comparison against
     // the first and last known member in the family, e.g. IsRedHat().
@@ -33,6 +36,9 @@ public:
     DebianJessie,
     DebianStretch,
     DebianBuster,
+    DebianBullseye,
+    DebianBookworm,
+    DebianTrixie,
     Exherbo,
     RHEL5,
     RHEL6,
@@ -63,6 +69,14 @@ public:
     UbuntuBionic,
     UbuntuCosmic,
     UbuntuDisco,
+    UbuntuEoan,
+    UbuntuFocal,
+    UbuntuGroovy,
+    UbuntuHirsute,
+    UbuntuImpish,
+    UbuntuJammy,
+    UbuntuKinetic,
+    UbuntuLunar,
     UnknownDistro
   };
 
@@ -81,7 +95,7 @@ public:
   Distro(DistroType D) : DistroVal(D) {}
 
   /// Detects the distribution using specified VFS.
-  explicit Distro(llvm::vfs::FileSystem &VFS);
+  explicit Distro(llvm::vfs::FileSystem &VFS, const llvm::Triple &TargetOrHost);
 
   bool operator==(const Distro &Other) const {
     return DistroVal == Other.DistroVal;
@@ -107,25 +121,19 @@ public:
     return DistroVal == Fedora || (DistroVal >= RHEL5 && DistroVal <= RHEL7);
   }
 
-  bool IsOpenSUSE() const {
-    return DistroVal == OpenSUSE;
-  }
+  bool IsOpenSUSE() const { return DistroVal == OpenSUSE; }
 
   bool IsDebian() const {
-    return DistroVal >= DebianLenny && DistroVal <= DebianBuster;
+    return DistroVal >= DebianLenny && DistroVal <= DebianTrixie;
   }
 
   bool IsUbuntu() const {
-    return DistroVal >= UbuntuHardy && DistroVal <= UbuntuDisco;
+    return DistroVal >= UbuntuHardy && DistroVal <= UbuntuLunar;
   }
 
-  bool IsAlpineLinux() const {
-    return DistroVal == AlpineLinux;
-  }
+  bool IsAlpineLinux() const { return DistroVal == AlpineLinux; }
 
-  bool IsGentoo() const {
-    return DistroVal == Gentoo;
-  }
+  bool IsGentoo() const { return DistroVal == Gentoo; }
 
   /// @}
 };

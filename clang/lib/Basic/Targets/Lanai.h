@@ -78,7 +78,9 @@ public:
     return TargetInfo::VoidPtrBuiltinVaList;
   }
 
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override { return None; }
+  ArrayRef<Builtin::Info> getTargetBuiltins() const override {
+    return std::nullopt;
+  }
 
   bool validateAsmConstraint(const char *&Name,
                              TargetInfo::ConstraintInfo &info) const override {
@@ -86,6 +88,8 @@ public:
   }
 
   const char *getClobbers() const override { return ""; }
+
+  bool hasBitIntType() const override { return true; }
 };
 } // namespace targets
 } // namespace clang

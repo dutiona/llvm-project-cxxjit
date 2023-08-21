@@ -52,7 +52,7 @@ public:
 
   ArrayRef<Builtin::Info> getTargetBuiltins() const override {
     // FIXME: Implement.
-    return None;
+    return std::nullopt;
   }
 
   bool allowsLargerPreferedTypeAlignment() const override { return false; }
@@ -64,8 +64,14 @@ public:
   ArrayRef<const char *> getGCCRegNames() const override;
 
   ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    // No aliases.
-    return None;
+    // Make r0 - r3 be recognized by llc (f.e., in clobber list)
+    static const TargetInfo::GCCRegAlias GCCRegAliases[] = {
+        {{"r0"}, "pc"},
+        {{"r1"}, "sp"},
+        {{"r2"}, "sr"},
+        {{"r3"}, "cg"},
+    };
+    return llvm::ArrayRef(GCCRegAliases);
   }
 
   bool validateAsmConstraint(const char *&Name,

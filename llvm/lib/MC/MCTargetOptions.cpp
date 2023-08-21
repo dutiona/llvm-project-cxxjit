@@ -12,13 +12,18 @@
 using namespace llvm;
 
 MCTargetOptions::MCTargetOptions()
-    : SanitizeAddress(false), MCRelaxAll(false), MCNoExecStack(false),
-      MCFatalWarnings(false), MCNoWarn(false), MCNoDeprecatedWarn(false),
-      MCSaveTempLabels(false), MCUseDwarfDirectory(false),
-      MCIncrementalLinkerCompatible(false), MCPIECopyRelocations(false),
+    : MCRelaxAll(false), MCNoExecStack(false), MCFatalWarnings(false),
+      MCNoWarn(false), MCNoDeprecatedWarn(false), MCNoTypeCheck(false),
+      MCSaveTempLabels(false), MCIncrementalLinkerCompatible(false),
       ShowMCEncoding(false), ShowMCInst(false), AsmVerbose(false),
-      PreserveAsmComments(true) {}
+      PreserveAsmComments(true), Dwarf64(false),
+      EmitDwarfUnwind(EmitDwarfUnwindType::Default),
+      MCUseDwarfDirectory(DefaultDwarfDirectory) {}
 
 StringRef MCTargetOptions::getABIName() const {
   return ABIName;
+}
+
+StringRef MCTargetOptions::getAssemblyLanguage() const {
+  return AssemblyLanguage;
 }

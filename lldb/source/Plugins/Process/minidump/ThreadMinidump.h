@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ThreadMinidump_h_
-#define liblldb_ThreadMinidump_h_
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_MINIDUMP_THREADMINIDUMP_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_MINIDUMP_THREADMINIDUMP_H
 
 #include "MinidumpTypes.h"
 
@@ -20,7 +20,7 @@ namespace minidump {
 
 class ThreadMinidump : public Thread {
 public:
-  ThreadMinidump(Process &process, const MinidumpThread &td,
+  ThreadMinidump(Process &process, const minidump::Thread &td,
                  llvm::ArrayRef<uint8_t> gpregset_data);
 
   ~ThreadMinidump() override;
@@ -42,4 +42,4 @@ protected:
 } // namespace minidump
 } // namespace lldb_private
 
-#endif // liblldb_ThreadMinidump_h_
+#endif // LLDB_SOURCE_PLUGINS_PROCESS_MINIDUMP_THREADMINIDUMP_H

@@ -14,6 +14,7 @@
 #include "llvm/CodeGen/ScheduleDAG.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
@@ -36,6 +37,10 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "pre-RA-sched"
+
+STATISTIC(NumNewPredsAdded, "Number of times a  single predecessor was added");
+STATISTIC(NumTopoInits,
+          "Number of times the topological order has been recomputed");
 
 #ifndef NDEBUG
 static cl::opt<bool> StressSchedOpt(
@@ -457,6 +462,11 @@ void ScheduleDAGTopologicalSort::InitDAGTopologicalSorting() {
   // On insertion of the edge X->Y, the algorithm first marks by calling DFS
   // the nodes reachable from Y, and then shifts them using Shift to lie
   // immediately after X in Index2Node.
+
+  // Cancel pending updates, mark as valid.
+  Dirty = false;
+  Updates.clear();
+
   unsigned DAGSize = SUnits.size();
   std::vector<SUnit*> WorkList;
   WorkList.reserve(DAGSize);
@@ -497,6 +507,7 @@ void ScheduleDAGTopologicalSort::InitDAGTopologicalSorting() {
   }
 
   Visited.resize(DAGSize);
+  NumTopoInits++;
 
 #ifndef NDEBUG
   // Check correctness of the ordering
@@ -507,6 +518,31 @@ void ScheduleDAGTopologicalSort::InitDAGTopologicalSorting() {
     }
   }
 #endif
+}
+
+void ScheduleDAGTopologicalSort::FixOrder() {
+  // Recompute from scratch after new nodes have been added.
+  if (Dirty) {
+    InitDAGTopologicalSorting();
+    return;
+  }
+
+  // Otherwise apply updates one-by-one.
+  for (auto &U : Updates)
+    AddPred(U.first, U.second);
+  Updates.clear();
+}
+
+void ScheduleDAGTopologicalSort::AddPredQueued(SUnit *Y, SUnit *X) {
+  // Recomputing the order from scratch is likely more efficient than applying
+  // updates one-by-one for too many updates. The current cut-off is arbitrarily
+  // chosen.
+  Dirty = Dirty || Updates.size() > 10;
+
+  if (Dirty)
+    return;
+
+  Updates.emplace_back(Y, X);
 }
 
 void ScheduleDAGTopologicalSort::AddPred(SUnit *Y, SUnit *X) {
@@ -523,6 +559,8 @@ void ScheduleDAGTopologicalSort::AddPred(SUnit *Y, SUnit *X) {
     // Recompute topological indexes.
     Shift(Visited, LowerBound, UpperBound);
   }
+
+  NumNewPredsAdded++;
 }
 
 void ScheduleDAGTopologicalSort::RemovePred(SUnit *M, SUnit *N) {
@@ -539,8 +577,7 @@ void ScheduleDAGTopologicalSort::DFS(const SUnit *SU, int UpperBound,
     SU = WorkList.back();
     WorkList.pop_back();
     Visited.set(SU->NodeNum);
-    for (const SDep &SuccDep
-         : make_range(SU->Succs.rbegin(), SU->Succs.rend())) {
+    for (const SDep &SuccDep : llvm::reverse(SU->Succs)) {
       unsigned s = SuccDep.getSUnit()->NodeNum;
       // Edges to non-SUnits are allowed but ignored (e.g. ExitSU).
       if (s >= Node2Index.size())
@@ -581,8 +618,8 @@ std::vector<int> ScheduleDAGTopologicalSort::GetSubGraph(const SUnit &StartSU,
   do {
     const SUnit *SU = WorkList.back();
     WorkList.pop_back();
-    for (int I = SU->Succs.size()-1; I >= 0; --I) {
-      const SUnit *Succ = SU->Succs[I].getSUnit();
+    for (const SDep &SD : llvm::reverse(SU->Succs)) {
+      const SUnit *Succ = SD.getSUnit();
       unsigned s = Succ->NodeNum;
       // Edges to non-SUnits are allowed but ignored (e.g. ExitSU).
       if (Succ->isBoundaryNode())
@@ -615,8 +652,8 @@ std::vector<int> ScheduleDAGTopologicalSort::GetSubGraph(const SUnit &StartSU,
   do {
     const SUnit *SU = WorkList.back();
     WorkList.pop_back();
-    for (int I = SU->Preds.size()-1; I >= 0; --I) {
-      const SUnit *Pred = SU->Preds[I].getSUnit();
+    for (const SDep &SD : llvm::reverse(SU->Preds)) {
+      const SUnit *Pred = SD.getSUnit();
       unsigned s = Pred->NodeNum;
       // Edges to non-SUnits are allowed but ignored (e.g. EntrySU).
       if (Pred->isBoundaryNode())
@@ -664,6 +701,7 @@ void ScheduleDAGTopologicalSort::Shift(BitVector& Visited, int LowerBound,
 }
 
 bool ScheduleDAGTopologicalSort::WillCreateCycle(SUnit *TargetSU, SUnit *SU) {
+  FixOrder();
   // Is SU reachable from TargetSU via successor edges?
   if (IsReachable(SU, TargetSU))
     return true;
@@ -674,8 +712,17 @@ bool ScheduleDAGTopologicalSort::WillCreateCycle(SUnit *TargetSU, SUnit *SU) {
   return false;
 }
 
+void ScheduleDAGTopologicalSort::AddSUnitWithoutPredecessors(const SUnit *SU) {
+  assert(SU->NodeNum == Index2Node.size() && "Node cannot be added at the end");
+  assert(SU->NumPreds == 0 && "Can only add SU's with no predecessors");
+  Node2Index.push_back(Index2Node.size());
+  Index2Node.push_back(SU->NodeNum);
+  Visited.resize(Node2Index.size());
+}
+
 bool ScheduleDAGTopologicalSort::IsReachable(const SUnit *SU,
                                              const SUnit *TargetSU) {
+  FixOrder();
   // If insertion of the edge SU->TargetSU would create a cycle
   // then there is a path from TargetSU to SU.
   int UpperBound, LowerBound;

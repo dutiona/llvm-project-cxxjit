@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <mutex>
 
@@ -20,6 +20,8 @@
 
 #include <mutex>
 #include <type_traits>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

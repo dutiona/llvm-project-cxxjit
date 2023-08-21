@@ -13,13 +13,26 @@
 using namespace clang::ast_matchers;
 using namespace clang::ast_matchers::internal;
 
-namespace clang {
-namespace tidy {
-namespace hicpp {
+namespace clang::tidy::hicpp {
+
+SignedBitwiseCheck::SignedBitwiseCheck(StringRef Name,
+                                       ClangTidyContext *Context)
+    : ClangTidyCheck(Name, Context),
+      IgnorePositiveIntegerLiterals(
+          Options.get("IgnorePositiveIntegerLiterals", false)) {}
+
+void SignedBitwiseCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
+  Options.store(Opts, "IgnorePositiveIntegerLiterals",
+                IgnorePositiveIntegerLiterals);
+}
 
 void SignedBitwiseCheck::registerMatchers(MatchFinder *Finder) {
   const auto SignedIntegerOperand =
-      expr(ignoringImpCasts(hasType(isSignedInteger()))).bind("signed-operand");
+      (IgnorePositiveIntegerLiterals
+           ? expr(ignoringImpCasts(hasType(isSignedInteger())),
+                  unless(integerLiteral()))
+           : expr(ignoringImpCasts(hasType(isSignedInteger()))))
+          .bind("signed-operand");
 
   // The standard [bitmask.types] allows some integral types to be implemented
   // as signed types. Exclude these types from diagnosing for bitwise or(|) and
@@ -33,9 +46,7 @@ void SignedBitwiseCheck::registerMatchers(MatchFinder *Finder) {
 
   // Match binary bitwise operations on signed integer arguments.
   Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("^"), hasOperatorName("|"),
-                           hasOperatorName("&"), hasOperatorName("^="),
-                           hasOperatorName("|="), hasOperatorName("&=")),
+      binaryOperator(hasAnyOperatorName("^", "|", "&", "^=", "|=", "&="),
 
                      unless(allOf(hasLHS(IsStdBitmask), hasRHS(IsStdBitmask))),
 
@@ -47,8 +58,7 @@ void SignedBitwiseCheck::registerMatchers(MatchFinder *Finder) {
   // Shifting and complement is not allowed for any signed integer type because
   // the sign bit may corrupt the result.
   Finder->addMatcher(
-      binaryOperator(anyOf(hasOperatorName("<<"), hasOperatorName(">>"),
-                           hasOperatorName("<<="), hasOperatorName(">>=")),
+      binaryOperator(hasAnyOperatorName("<<", ">>", "<<=", ">>="),
                      hasEitherOperand(SignedIntegerOperand),
                      hasLHS(hasType(isInteger())), hasRHS(hasType(isInteger())))
           .bind("binary-sign-interference"),
@@ -68,26 +78,24 @@ void SignedBitwiseCheck::check(const MatchFinder::MatchResult &Result) {
          "No signed operand found in problematic bitwise operations");
 
   bool IsUnary = false;
-  SourceLocation Location;
+  SourceLocation OperatorLoc;
 
   if (const auto *UnaryOp = N.getNodeAs<UnaryOperator>("unary-signed")) {
     IsUnary = true;
-    Location = UnaryOp->getBeginLoc();
+    OperatorLoc = UnaryOp->getOperatorLoc();
   } else {
     if (const auto *BinaryOp =
             N.getNodeAs<BinaryOperator>("binary-no-sign-interference"))
-      Location = BinaryOp->getBeginLoc();
+      OperatorLoc = BinaryOp->getOperatorLoc();
     else if (const auto *BinaryOp =
                  N.getNodeAs<BinaryOperator>("binary-sign-interference"))
-      Location = BinaryOp->getBeginLoc();
+      OperatorLoc = BinaryOp->getOperatorLoc();
     else
       llvm_unreachable("unexpected matcher result");
   }
-  diag(Location, "use of a signed integer operand with a "
-                 "%select{binary|unary}0 bitwise operator")
-      << IsUnary << SignedOperand->getSourceRange();
+  diag(SignedOperand->getBeginLoc(), "use of a signed integer operand with a "
+                                     "%select{binary|unary}0 bitwise operator")
+      << IsUnary << SignedOperand->getSourceRange() << OperatorLoc;
 }
 
-} // namespace hicpp
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::hicpp

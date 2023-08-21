@@ -1,4 +1,4 @@
-//===--- ARCMT.cpp - Migration to ARC mode --------------------------------===//
+//===-- TransformActions.cpp - Migration to ARC mode ----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -540,7 +540,7 @@ void TransformActionsImpl::addRemoval(CharSourceRange range) {
       return;
     case Range_Contains:
       RI->End = newRange.End;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case Range_ExtendsBegin:
       newRange.End = RI->End;
       Removals.erase(RI);

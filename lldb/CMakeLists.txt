@@ -1,195 +1,158 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.13.4)
 
-if(POLICY CMP0075)
-  cmake_policy(SET CMP0075 NEW)
+if(NOT DEFINED LLVM_COMMON_CMAKE_UTILS)
+  set(LLVM_COMMON_CMAKE_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
 endif()
+include(${LLVM_COMMON_CMAKE_UTILS}/Modules/CMakePolicy.cmake
+  NO_POLICY_SCOPE)
 
-# Add path for custom modules
+# Add path for custom modules.
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
   )
 
-include(LLDBStandalone)
+# If we are not building as part of LLVM, build LLDB as a standalone project,
+# using LLVM as an external library.
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  project(lldb)
+  set(LLDB_BUILT_STANDALONE TRUE)
+  set(LLVM_INCLUDE_TESTS ON CACHE INTERNAL "")
+  if ("${CMAKE_VERSION}" VERSION_LESS "3.20.0")
+    message(WARNING
+      "Your CMake version is ${CMAKE_VERSION}. Starting with LLVM 17.0.0, the "
+      "minimum version of CMake required to build LLVM will become 3.20.0, and "
+      "using an older CMake will become an error. Please upgrade your CMake to "
+      "at least 3.20.0 now to avoid issues in the future!")
+  endif()
+endif()
+
+# Must go below project(..)
+include(GNUInstallDirs)
+
+option(LLDB_INCLUDE_TESTS "Generate build targets for the LLDB unit tests." ${LLVM_INCLUDE_TESTS})
+
+if(LLDB_BUILT_STANDALONE)
+  include(LLDBStandalone)
+
+  set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
+  set(CMAKE_CXX_STANDARD_REQUIRED YES)
+  set(CMAKE_CXX_EXTENSIONS NO)
+endif()
+
 include(LLDBConfig)
 include(AddLLDB)
 
-# Define the LLDB_CONFIGURATION_xxx matching the build type
-if( uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
-  add_definitions( -DLLDB_CONFIGURATION_DEBUG )
-else()
-  add_definitions( -DLLDB_CONFIGURATION_RELEASE )
-endif()
-
-if (LLDB_DISABLE_LIBEDIT)
-  add_definitions( -DLLDB_DISABLE_LIBEDIT )
-else()
-  find_package(LibEdit REQUIRED)
-endif()
-
-if(APPLE)
-  add_definitions(-DLLDB_USE_OS_LOG)
+# Define the LLDB_CONFIGURATION_xxx matching the build type.
+if(uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
+  add_definitions(-DLLDB_CONFIGURATION_DEBUG)
 endif()
 
 if (WIN32)
   add_definitions(-D_ENABLE_EXTENDED_ALIGNED_STORAGE)
 endif()
 
-add_subdirectory(docs)
-if (NOT LLDB_DISABLE_PYTHON)
-  add_subdirectory(scripts)
-endif ()
-add_subdirectory(source)
-add_subdirectory(tools)
+if (LLDB_ENABLE_PYTHON)
+  set(cachestring_LLDB_PYTHON_RELATIVE_PATH
+    "Path where Python modules are installed, relative to LLDB's install prefix")
+  set(cachestring_LLDB_PYTHON_EXE_RELATIVE_PATH
+    "Path to python interpreter exectuable, relative to python's install prefix")
+  set(cachestring_LLDB_PYTHON_EXT_SUFFIX
+    "Filename extension for native code python modules")
 
-option(LLDB_INCLUDE_TESTS "Generate build targets for the LLDB unit tests." ${LLVM_INCLUDE_TESTS})
-option(LLDB_TEST_USE_CUSTOM_C_COMPILER "Use the C compiler provided via LLDB_TEST_C_COMPILER for building test inferiors (instead of the just-built compiler). Defaults to OFF." OFF)
-option(LLDB_TEST_USE_CUSTOM_CXX_COMPILER "Use the C++ compiler provided via LLDB_TEST_CXX_COMPILER for building test inferiors (instead of the just-built compiler). Defaults to OFF." OFF)
-if(LLDB_INCLUDE_TESTS)
-
-  # Set the path to the default lldb test executable.
-  set(LLDB_DEFAULT_TEST_EXECUTABLE "${LLVM_RUNTIME_OUTPUT_INTDIR}/lldb${CMAKE_EXECUTABLE_SUFFIX}")
-
-  # Set the paths to default llvm tools.
-  set(LLDB_DEFAULT_TEST_DSYMUTIL "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/dsymutil${CMAKE_EXECUTABLE_SUFFIX}")
-  set(LLDB_DEFAULT_TEST_FILECHECK "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/FileCheck${CMAKE_EXECUTABLE_SUFFIX}")
-
-  if (NOT LLDB_TEST_USE_CUSTOM_C_COMPILER AND TARGET clang)
-    set(LLDB_DEFAULT_TEST_C_COMPILER "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
-  else()
-    set(LLDB_DEFAULT_TEST_C_COMPILER "")
-  endif()
-
-  if (NOT LLDB_TEST_USE_CUSTOM_CXX_COMPILER AND TARGET clang)
-    set(LLDB_DEFAULT_TEST_CXX_COMPILER "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/clang++${CMAKE_EXECUTABLE_SUFFIX}")
-  else()
-    set(LLDB_DEFAULT_TEST_CXX_COMPILER "")
-  endif()
-
-  set(LLDB_TEST_EXECUTABLE "${LLDB_DEFAULT_TEST_EXECUTABLE}" CACHE PATH "lldb executable used for testing")
-  set(LLDB_TEST_C_COMPILER "${LLDB_DEFAULT_TEST_C_COMPILER}" CACHE PATH "C Compiler to use for building LLDB test inferiors")
-  set(LLDB_TEST_CXX_COMPILER "${LLDB_DEFAULT_TEST_CXX_COMPILER}" CACHE PATH "C++ Compiler to use for building LLDB test inferiors")
-  set(LLDB_TEST_DSYMUTIL "${LLDB_DEFAULT_TEST_DSYMUTIL}" CACHE PATH "dsymutil used for generating dSYM bundles")
-  set(LLDB_TEST_FILECHECK "${LLDB_DEFAULT_TEST_FILECHECK}" CACHE PATH "FileCheck used for testing purposes")
-
-  if (("${LLDB_TEST_C_COMPILER}" STREQUAL "") OR
-      ("${LLDB_TEST_CXX_COMPILER}" STREQUAL ""))
-    message(FATAL_ERROR "LLDB test compilers not specified.  Tests will not run")
-  endif()
-
-  set(LLDB_TEST_DEPS lldb)
-
-  # darwin-debug is an hard dependency for the testsuite.
-  if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-    list(APPEND LLDB_TEST_DEPS darwin-debug)
-  endif()
-
-  if(TARGET lldb-server)
-    list(APPEND LLDB_TEST_DEPS lldb-server)
-  endif()
-
-  if(TARGET debugserver)
-    list(APPEND LLDB_TEST_DEPS debugserver)
-  endif()
-
-  if(TARGET lldb-mi)
-    list(APPEND LLDB_TEST_DEPS lldb-mi)
-  endif()
-
-  if(TARGET lldb-instr)
-    list(APPEND LLDB_TEST_DEPS lldb-instr)
-  endif()
-
-  if(NOT LLDB_BUILT_STANDALONE)
-    list(APPEND LLDB_TEST_DEPS yaml2obj)
-  endif()
-
-  if(TARGET liblldb)
-    list(APPEND LLDB_TEST_DEPS liblldb)
-  endif()
-
-  # Add dependencies if we test with the in-tree clang.
-  # This works with standalone builds as they import the clang target.
-  if(TARGET clang)
-    list(APPEND LLDB_TEST_DEPS clang)
-    if(APPLE)
-      # If we build clang, we should build libcxx.
-      # FIXME: Standalone builds should import the cxx target as well.
-      if(LLDB_BUILT_STANDALONE)
-        # For now check that the include directory exists.
-        set(cxx_dir "${LLVM_BINARY_DIR}/include/c++")
-        if(NOT EXISTS ${cxx_dir})
-          message(WARNING "LLDB test suite requires libc++ in llvm/projects/libcxx or an existing build symlinked to ${cxx_dir}")
-        endif()
-      else()
-        list(APPEND LLDB_TEST_DEPS cxx)
+  foreach(var LLDB_PYTHON_RELATIVE_PATH LLDB_PYTHON_EXE_RELATIVE_PATH LLDB_PYTHON_EXT_SUFFIX)
+    if(NOT DEFINED ${var} AND NOT CMAKE_CROSSCOMPILING)
+      execute_process(
+        COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/bindings/python/get-python-config.py
+          ${var}
+        OUTPUT_VARIABLE value
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+      file(TO_CMAKE_PATH "${value}" value)
+      set(${var} ${value} CACHE STRING ${cachestring_${var}})
+    else()
+      if ("${${var}}" STREQUAL "")
+        message(FATAL_ERROR
+          "Crosscompiling LLDB with Python requires manually setting ${var}.")
       endif()
     endif()
-  endif()
+  endforeach()
+endif ()
 
-  if(TARGET dsymutil)
-    list(APPEND LLDB_TEST_DEPS dsymutil)
-  endif()
+if (LLDB_ENABLE_LUA)
+  find_program(Lua_EXECUTABLE lua5.3)
+  set(LLDB_LUA_DEFAULT_RELATIVE_PATH "lib/lua/5.3")
+  set(LLDB_LUA_RELATIVE_PATH ${LLDB_LUA_DEFAULT_RELATIVE_PATH}
+    CACHE STRING "Path where Lua modules are installed, relative to install prefix")
+endif ()
 
-  add_custom_target(lldb-test-deps DEPENDS ${LLDB_TEST_DEPS})
+if (LLDB_ENABLE_PYTHON OR LLDB_ENABLE_LUA)
+  add_subdirectory(bindings)
+endif ()
 
-  add_subdirectory(test)
-  add_subdirectory(unittests)
-  add_subdirectory(lit)
-  add_subdirectory(utils/lldb-dotest)
+# We need the headers generated by instrinsics_gen before we can compile
+# any source file in LLDB as the imported Clang modules might include
+# some of these generated headers. This approach is copied from Clang's main
+# CMakeLists.txt, so it should kept in sync the code in Clang which was added
+# in llvm-svn 308844.
+if(LLVM_ENABLE_MODULES)
+  list(APPEND LLVM_COMMON_DEPENDS intrinsics_gen)
 endif()
 
-if (NOT LLDB_DISABLE_PYTHON)
-    if(NOT LLDB_BUILD_FRAMEWORK)
-      set(use_python_wrapper_from_src_dir -m)
-    endif()
-    if(LLDB_USE_SYSTEM_SIX)
-      set(use_six_py_from_system --useSystemSix)
-    endif()
-    get_target_property(lldb_scripts_dir swig_wrapper BINARY_DIR)
-    get_target_property(liblldb_build_dir liblldb LIBRARY_OUTPUT_DIRECTORY)
+if(CMAKE_CROSSCOMPILING AND LLDB_BUILT_STANDALONE AND NOT LLDB_TABLEGEN_EXE)
+  set(LLVM_USE_HOST_TOOLS ON)
+  include(CrossCompile)
+  if (NOT NATIVE_LLVM_DIR OR NOT NATIVE_Clang_DIR)
+    message(FATAL_ERROR
+      "Crosscompiling standalone requires the variables NATIVE_{CLANG,LLVM}_DIR
+      for building the native lldb-tblgen used during the build process.")
+  endif()
+  llvm_create_cross_target(lldb NATIVE "" Release
+    -DLLVM_DIR=${NATIVE_LLVM_DIR}
+    -DClang_DIR=${NATIVE_Clang_DIR})
+endif()
 
-    # Add a Post-Build Event to copy over Python files and create the symlink
-    # to liblldb.so for the Python API(hardlink on Windows)
-    add_custom_target(finish_swig ALL
-        COMMAND
-           ${PYTHON_EXECUTABLE} ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py
-               --srcRoot=${LLDB_SOURCE_DIR}
-               --targetDir=${liblldb_build_dir}
-               --cfgBldDir=${lldb_scripts_dir}
-               --prefix=${CMAKE_BINARY_DIR}
-               --cmakeBuildConfiguration=${CMAKE_CFG_INTDIR}
-               --lldbLibDir=lib${LLVM_LIBDIR_SUFFIX}
-               ${use_python_wrapper_from_src_dir}
-               ${use_six_py_from_system}
-        VERBATIM
-        DEPENDS ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py
-        DEPENDS ${lldb_scripts_dir}/lldb.py
-        COMMENT "Python script sym-linking LLDB Python API")
+# TableGen
+add_subdirectory(utils/TableGen)
 
-    if (TARGET readline)
-      set(readline_dep readline)
-    endif()
-    add_dependencies(finish_swig swig_wrapper liblldb lldb-argdumper ${readline_dep})
+add_subdirectory(source)
+add_subdirectory(tools)
+add_subdirectory(docs)
 
-    # Ensure we do the python post-build step when building lldb.
-    add_dependencies(lldb finish_swig)
+if (LLDB_ENABLE_PYTHON)
+  if(LLDB_BUILD_FRAMEWORK)
+    set(lldb_python_target_dir "${LLDB_FRAMEWORK_ABSOLUTE_BUILD_DIR}/LLDB.framework/Resources/Python/lldb")
+  else()
+    set(lldb_python_target_dir "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/${LLDB_PYTHON_RELATIVE_PATH}/lldb")
+  endif()
+  get_target_property(lldb_python_bindings_dir swig_wrapper_python BINARY_DIR)
+  finish_swig_python("lldb-python" "${lldb_python_bindings_dir}" "${lldb_python_target_dir}")
+endif()
 
-    if(LLDB_BUILD_FRAMEWORK)
-      add_dependencies(lldb-framework finish_swig)
-    endif()
+if (LLDB_ENABLE_LUA)
+  if(LLDB_BUILD_FRAMEWORK)
+    set(lldb_lua_target_dir "${LLDB_FRAMEWORK_ABSOLUTE_BUILD_DIR}/LLDB.framework/Resources/Lua")
+  else()
+    set(lldb_lua_target_dir "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/${LLDB_LUA_RELATIVE_PATH}")
+  endif()
+  get_target_property(lldb_lua_bindings_dir swig_wrapper_lua BINARY_DIR)
+  finish_swig_lua("lldb-lua" "${lldb_lua_bindings_dir}" "${lldb_lua_target_dir}")
+endif()
 
-    # Add a Post-Build Event to copy the custom Python DLL to the lldb binaries dir so that Windows can find it when launching
-    # lldb.exe or any other executables that were linked with liblldb.
-    if (WIN32 AND NOT "${PYTHON_DLL}" STREQUAL "")
-        # When using the Visual Studio CMake generator the lldb binaries end up in Release/bin, Debug/bin etc.
-        file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin" LLDB_BIN_DIR)
-        file(TO_NATIVE_PATH "${PYTHON_DLL}" PYTHON_DLL_NATIVE_PATH)
-        add_custom_command(
-            TARGET finish_swig
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy ${PYTHON_DLL_NATIVE_PATH} ${LLDB_BIN_DIR} VERBATIM
-            COMMENT "Copying Python DLL to LLDB binaries directory.")
-    endif ()
-endif ()
+set(LLDB_INCLUDE_UNITTESTS ON)
+if (NOT TARGET llvm_gtest)
+  set(LLDB_INCLUDE_UNITTESTS OFF)
+endif()
+
+if(LLDB_INCLUDE_TESTS)
+  add_subdirectory(test)
+  if (LLDB_INCLUDE_UNITTESTS)
+    add_subdirectory(unittests)
+  endif()
+  add_subdirectory(utils)
+endif()
+
+if(LLDB_BUILT_STANDALONE AND NOT LLVM_ENABLE_IDE)
+  llvm_distribution_add_targets()
+endif()

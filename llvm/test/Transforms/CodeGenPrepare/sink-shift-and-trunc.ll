@@ -1,5 +1,5 @@
 ; REQUIRES: aarch64-registered-target
-; RUN: opt -codegenprepare -mtriple=arm64-apple=ios -S -o - %s | FileCheck %s
+; RUN: opt < %s -codegenprepare -mtriple=arm64-apple-ios -S | FileCheck %s
 
 @first_ones = external global [65536 x i8]
 
@@ -18,8 +18,8 @@ entry:
   br i1 %tobool, label %if.end, label %if.then, !dbg !40
 
 if.then:                                          ; preds = %entry
-  %arrayidx3 = getelementptr inbounds [65536 x i8], [65536 x i8]* @first_ones, i64 0, i64 %x.sroa.5.0.extract.shift, !dbg !41
-  %0 = load i8, i8* %arrayidx3, align 1, !dbg !42
+  %arrayidx3 = getelementptr inbounds [65536 x i8], ptr @first_ones, i64 0, i64 %x.sroa.5.0.extract.shift, !dbg !41
+  %0 = load i8, ptr %arrayidx3, align 1, !dbg !42
   %conv = zext i8 %0 to i32, !dbg !43
   br label %return, !dbg !44
 
@@ -32,8 +32,8 @@ if.end:                                           ; preds = %entry
 
 if.then7:                                         ; preds = %if.end
   %idxprom10 = and i64 %x.sroa.3.0.extract.shift, 65535, !dbg !48
-  %arrayidx11 = getelementptr inbounds [65536 x i8], [65536 x i8]* @first_ones, i64 0, i64 %idxprom10, !dbg !49
-  %1 = load i8, i8* %arrayidx11, align 1, !dbg !50
+  %arrayidx11 = getelementptr inbounds [65536 x i8], ptr @first_ones, i64 0, i64 %idxprom10, !dbg !49
+  %1 = load i8, ptr %arrayidx11, align 1, !dbg !50
   %conv12 = zext i8 %1 to i32, !dbg !51
   %add = add nsw i32 %conv12, 16, !dbg !52
   br label %return, !dbg !53
@@ -47,8 +47,8 @@ if.end13:                                         ; preds = %if.end
 
 if.then17:                                        ; preds = %if.end13
   %idxprom20 = and i64 %x.sroa.1.0.extract.shift, 65535, !dbg !56
-  %arrayidx21 = getelementptr inbounds [65536 x i8], [65536 x i8]* @first_ones, i64 0, i64 %idxprom20, !dbg !57
-  %2 = load i8, i8* %arrayidx21, align 1, !dbg !58
+  %arrayidx21 = getelementptr inbounds [65536 x i8], ptr @first_ones, i64 0, i64 %idxprom20, !dbg !57
+  %2 = load i8, ptr %arrayidx21, align 1, !dbg !58
   %conv22 = zext i8 %2 to i32, !dbg !59
   %add23 = add nsw i32 %conv22, 32, !dbg !60
   br label %return, !dbg !61
@@ -56,6 +56,23 @@ if.then17:                                        ; preds = %if.end13
 return:                                           ; preds = %if.then17, %if.end13, %if.then7, %if.then
   %retval.0 = phi i32 [ %conv, %if.then ], [ %add, %if.then7 ], [ %add23, %if.then17 ], [ 64, %if.end13 ], !dbg !62
   ret i32 %retval.0, !dbg !63
+}
+
+; CodeGenPrepare was erasing the unused lshr instruction, but then further
+; processing the instruction after it was freed. If this bug is still present,
+; this test will always crash in an LLVM built with ASAN enabled, and may
+; crash even if ASAN is not enabled.
+
+define i32 @shift_unused(i32 %a) {
+; CHECK-LABEL: @shift_unused(
+; CHECK-NEXT:  BB2:
+; CHECK-NEXT:    ret i32 [[A:%.*]]
+;
+  %as = lshr i32 %a, 3
+  br label %BB2
+
+BB2:
+  ret i32 %a
 }
 
 ; CHECK: [[shift1_loc]] = !DILocation(line: 1

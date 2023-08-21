@@ -9,13 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NEWDELETEOVERLOADS_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NEWDELETEOVERLOADS_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "llvm/ADT/SmallVector.h"
 #include <map>
 
-namespace clang {
-namespace tidy {
-namespace misc {
+namespace clang::tidy::misc {
 
 class NewDeleteOverloadsCheck : public ClangTidyCheck {
   std::map<const clang::CXXRecordDecl *,
@@ -25,13 +23,14 @@ class NewDeleteOverloadsCheck : public ClangTidyCheck {
 public:
   NewDeleteOverloadsCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void onEndOfTranslationUnit() override;
 };
 
-} // namespace misc
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::misc
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MISC_NEWDELETEOVERLOADS_H

@@ -11,13 +11,12 @@
 // template <class... Types> class tuple;
 
 // template <size_t I, class... Types>
-// class tuple_element<I, tuple<Types...> >
+// struct tuple_element<I, tuple<Types...> >
 // {
-// public:
 //     typedef Ti type;
 // };
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 #include <tuple>
 #include <type_traits>
@@ -28,8 +27,7 @@ int main(int, char**)
     using E1 = typename std::tuple_element<1, T &>::type; // expected-error{{undefined template}}
     using E2 = typename std::tuple_element<3, T>::type;
     using E3 = typename std::tuple_element<4, T const>::type;
-        // expected-error@__tuple:* 2 {{static_assert failed}}
-
+        // expected-error-re@*:* 2 {{{{(static_assert|static assertion)}} failed}}
 
   return 0;
 }

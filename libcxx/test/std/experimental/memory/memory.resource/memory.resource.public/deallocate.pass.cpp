@@ -6,9 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// <experimental/memory_resource>
+// UNSUPPORTED: c++03
 
-// UNSUPPORTED: c++98, c++03
+// test_memory_resource requires RTTI for dynamic_cast
+// UNSUPPORTED: no-rtti
+
+// <experimental/memory_resource>
 
 //------------------------------------------------------------------------------
 // TESTING void * memory_resource::deallocate(void *, size_t, size_t = max_align)
@@ -20,13 +23,16 @@
 //  C) 'deallocate' is not marked as 'noexcept'.
 //  D) Invoking 'deallocate' invokes 'do_deallocate' with the same arguments.
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 #include <experimental/memory_resource>
 #include <type_traits>
 #include <cstddef>
 #include <cassert>
 
-#include "test_memory_resource.hpp"
+#include "test_memory_resource.h"
+
+#include "test_macros.h"
 
 using std::experimental::pmr::memory_resource;
 

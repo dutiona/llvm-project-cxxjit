@@ -19,7 +19,9 @@
 #include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <iterator>
 
+#include "test_macros.h"
 #include "min_allocator.h"
 
 int main(int, char**)

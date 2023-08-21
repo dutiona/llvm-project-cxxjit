@@ -54,6 +54,11 @@ enum class SymbolKind : uint8_t {
 
   Parameter,
   Using,
+  TemplateTypeParm,
+  TemplateTemplateParm,
+  NonTypeTemplateParm,
+
+  Concept, /// C++20 concept.
 };
 
 enum class SymbolLanguage : uint8_t {
@@ -72,6 +77,7 @@ enum class SymbolSubKind : uint8_t {
   AccessorSetter,
   UsingTypename,
   UsingValue,
+  UsingEnum,
 };
 
 typedef uint16_t SymbolPropertySet;
@@ -118,8 +124,12 @@ enum class SymbolRole : uint32_t {
   RelationContainedBy = 1 << 17,
   RelationIBTypeOf = 1 << 18,
   RelationSpecializationOf = 1 << 19,
+
+  // Symbol only references the name of the object as written. For example, a
+  // constructor references the class declaration using that role.
+  NameReference = 1 << 20,
 };
-static const unsigned SymbolRoleBitNum = 20;
+static const unsigned SymbolRoleBitNum = 21;
 typedef unsigned SymbolRoleSet;
 
 /// Represents a relation to another symbol for a symbol occurrence.

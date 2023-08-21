@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple i686-mingw32 -ast-dump %s | FileCheck %s
-// RUN: %clang_cc1 -triple i686-mingw32 -std=c++1z -ast-dump %s | FileCheck %s -check-prefix=CHECK-1Z
+// RUN: %clang_cc1 -triple i686-mingw32 %std_cxx11-14 -ast-dump %s | FileCheck %s
+// RUN: %clang_cc1 -triple i686-mingw32 %std_cxx17- -ast-dump %s | FileCheck %s -check-prefix=CHECK-1Z
 
 template<class T>
 class P {
@@ -13,7 +13,7 @@ enum B {};
 typedef int C;
 }
 
-// CHECK: VarDecl {{0x[0-9a-fA-F]+}} <line:[[@LINE+1]]:1, col:36> col:15 ImplicitConstrArray 'foo::A [2]'
+// CHECK: VarDecl {{0x[0-9a-fA-F]+}} <line:[[@LINE+1]]:1, col:36> col:15 ImplicitConstrArray 'foo::A[2]'
 static foo::A ImplicitConstrArray[2];
 
 int main() {
@@ -47,9 +47,9 @@ struct D {
 void construct() {
   using namespace foo;
   A a = A(12);
-  // CHECK: CXXConstructExpr {{0x[0-9a-fA-F]+}} <col:9, col:13> 'foo::A' 'void (int){{( __attribute__\(\(thiscall\)\))?}}'
+  // CHECK: CXXConstructExpr {{0x[0-9a-fA-F]+}} <col:9, col:13> 'A':'foo::A' 'void (int){{( __attribute__\(\(thiscall\)\))?}}'
   D d = D(12);
-  // CHECK: CXXConstructExpr {{0x[0-9a-fA-F]+}} <col:9, col:13> 'D' 'void (int){{( __attribute__\(\(thiscall\)\))?}}'
+  // CHECK: CXXConstructExpr {{0x[0-9a-fA-F]+}} <col:9, col:13> 'D':'D' 'void (int){{( __attribute__\(\(thiscall\)\))?}}'
 }
 
 namespace PR38987 {
@@ -92,6 +92,70 @@ struct map {
 
 }; // namespace std
 
+// CHECK: NamespaceDecl {{.*}} attributed_decl
+namespace attributed_decl {
+  void f() {
+    // CHECK: DeclStmt {{.*}} <line:[[@LINE+1]]:5, col:28>
+    [[maybe_unused]] int i1;
+    // CHECK: DeclStmt {{.*}} <line:[[@LINE+1]]:5, col:35>
+    __attribute__((unused)) int i2;
+    // CHECK: DeclStmt {{.*}} <line:[[@LINE+1]]:5, col:35>
+    int __attribute__((unused)) i3;
+    // CHECK: DeclStmt {{.*}} <<built-in>:{{.*}}, {{.*}}:[[@LINE+1]]:40>
+    __declspec(dllexport) extern int i4;
+    // CHECK: DeclStmt {{.*}} <line:[[@LINE+1]]:5, col:40>
+    extern int __declspec(dllexport) i5;
+  }
+}
+
+// CHECK-1Z: NamespaceDecl {{.*}} attributed_case
+namespace attributed_case {
+void f(int n) {
+  switch (n) {
+  case 0:
+    n--;
+    // CHECK: AttributedStmt {{.*}} <line:[[@LINE+2]]:5, line:[[@LINE+4]]:35>
+    // CHECK: FallThroughAttr {{.*}} <line:[[@LINE+1]]:20>
+    __attribute__((fallthrough))
+    // CHECK: FallThroughAttr {{.*}} <line:[[@LINE+1]]:22>
+      __attribute__((fallthrough));
+  case 1:
+    n++;
+    break;
+  }
+}
+} // namespace attributed_case
+
+// CHECK: NamespaceDecl {{.*}} attributed_stmt
+namespace attributed_stmt {
+  // In DO_PRAGMA and _Pragma cases, `LoopHintAttr` comes from <scratch space>
+  // file.
+
+  #define DO_PRAGMA(x) _Pragma (#x)
+
+  void f() {
+    // CHECK: AttributedStmt {{.*}} <line:[[@LINE-3]]:24, line:[[@LINE+2]]:33>
+    DO_PRAGMA (unroll(2))
+    for (int i = 0; i < 10; ++i);
+
+    // CHECK: AttributedStmt {{.*}} <line:[[@LINE+2]]:5, line:[[@LINE+3]]:33>
+    // CHECK: LoopHintAttr {{.*}} <line:[[@LINE+1]]:13, col:22>
+    #pragma unroll(2)
+    for (int i = 0; i < 10; ++i);
+
+    // CHECK: AttributedStmt {{.*}} <line:[[@LINE+2]]:5, line:[[@LINE+5]]:33>
+    // CHECK: LoopHintAttr {{.*}} <line:[[@LINE+1]]:19, col:41>
+    #pragma clang loop vectorize(enable)
+    // CHECK: LoopHintAttr {{.*}} <line:[[@LINE+1]]:19, col:42>
+    #pragma clang loop interleave(enable)
+    for (int i = 0; i < 10; ++i);
+
+    // CHECK: AttributedStmt {{.*}} <line:[[@LINE+1]]:5, line:[[@LINE+2]]:33>
+    _Pragma("unroll(2)")
+    for (int i = 0; i < 10; ++i);
+  }
+}
+
 #if __cplusplus >= 201703L
 // CHECK-1Z: FunctionDecl {{.*}} construct_with_init_list
 std::map<int, int> construct_with_init_list() {
@@ -110,7 +174,7 @@ namespace in_class_init {
 
   // CHECK-1Z: CXXRecordDecl {{.*}} struct B definition
   struct B {
-    // CHECK-1Z: FieldDecl {{.*}} a 'in_class_init::A'
+    // CHECK-1Z: FieldDecl {{.*}} a 'A':'in_class_init::A'
     // CHECK-1Z-NEXT: InitListExpr {{.*}} <col:11, col:12
     A a = {};
   };
@@ -128,7 +192,7 @@ namespace delegating_constructor_init {
   // CHECK-1Z: CXXRecordDecl {{.*}} struct C definition
   struct C : B {
     // CHECK-1Z: CXXConstructorDecl {{.*}} C
-    // CHECK-1Z-NEXT: CXXCtorInitializer 'delegating_constructor_init::B'
+    // CHECK-1Z-NEXT: CXXCtorInitializer 'B':'delegating_constructor_init::B'
     // CHECK-1Z-NEXT: CXXConstructExpr {{.*}} <col:11, col:15
     // CHECK-1Z-NEXT: InitListExpr {{.*}} <col:13, col:14
     C() : B({}) {};

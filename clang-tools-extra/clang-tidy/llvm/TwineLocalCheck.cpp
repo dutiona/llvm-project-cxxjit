@@ -13,14 +13,14 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace llvm {
+namespace clang::tidy::llvm_check {
 
 void TwineLocalCheck::registerMatchers(MatchFinder *Finder) {
   auto TwineType =
-      qualType(hasDeclaration(recordDecl(hasName("::llvm::Twine"))));
-  Finder->addMatcher(varDecl(hasType(TwineType)).bind("variable"), this);
+      qualType(hasDeclaration(cxxRecordDecl(hasName("::llvm::Twine"))));
+  Finder->addMatcher(
+      varDecl(unless(parmVarDecl()), hasType(TwineType)).bind("variable"),
+      this);
 }
 
 void TwineLocalCheck::check(const MatchFinder::MatchResult &Result) {
@@ -60,6 +60,4 @@ void TwineLocalCheck::check(const MatchFinder::MatchResult &Result) {
   }
 }
 
-} // namespace llvm
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::llvm_check

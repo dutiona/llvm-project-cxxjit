@@ -7,12 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBTypeSynthetic_h_
-#define LLDB_SBTypeSynthetic_h_
+#ifndef LLDB_API_SBTYPESYNTHETIC_H
+#define LLDB_API_SBTYPESYNTHETIC_H
 
 #include "lldb/API/SBDefines.h"
-
-#ifndef LLDB_DISABLE_PYTHON
 
 namespace lldb {
 
@@ -31,6 +29,8 @@ public:
   SBTypeSynthetic(const lldb::SBTypeSynthetic &rhs);
 
   ~SBTypeSynthetic();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -77,6 +77,4 @@ protected:
 
 } // namespace lldb
 
-#endif // LLDB_DISABLE_PYTHON
-
-#endif // LLDB_SBTypeSynthetic_h_
+#endif // LLDB_API_SBTYPESYNTHETIC_H

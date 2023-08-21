@@ -273,7 +273,7 @@ void ASTFieldVisitor::ReportError(QualType T) {
       os << (*I)->getName();
     }
   }
-  os << " (type " << FieldChain.back()->getType().getAsString() << ")";
+  os << " (type " << FieldChain.back()->getType() << ")";
 
   // Note that this will fire for every translation unit that uses this
   // class.  This is suboptimal, but at least scan-build will merge
@@ -314,6 +314,6 @@ void ento::registerLLVMConventionsChecker(CheckerManager &mgr) {
   mgr.registerChecker<LLVMConventionsChecker>();
 }
 
-bool ento::shouldRegisterLLVMConventionsChecker(const LangOptions &LO) {
+bool ento::shouldRegisterLLVMConventionsChecker(const CheckerManager &mgr) {
   return true;
 }

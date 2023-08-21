@@ -1,4 +1,4 @@
-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
 @gBar = local_unnamed_addr global i32 2, align 4, !dbg !0
@@ -6,21 +6,21 @@ target triple = "x86_64-pc-linux-gnu"
 
 ; Function Attrs: norecurse nounwind readonly
 define i32 @foo() local_unnamed_addr #0 !dbg !14 {
-  %1 = load i32, i32* @gFoo, align 4, !dbg !17
+  %1 = load i32, ptr @gFoo, align 4, !dbg !17
   ret i32 %1, !dbg !18
 }
 
 ; Function Attrs: norecurse nounwind readonly
 define i32 @bar() local_unnamed_addr #0 !dbg !19 {
-  %1 = load i32, i32* @gBar, align 4, !dbg !20
+  %1 = load i32, ptr @gBar, align 4, !dbg !20
   ret i32 %1, !dbg !21
 }
 
 define void @baz() local_unnamed_addr !dbg !22 {
   %1 = tail call i32 @rand(), !dbg !25
-  store i32 %1, i32* @gFoo, align 4, !dbg !26
+  store i32 %1, ptr @gFoo, align 4, !dbg !26
   %2 = tail call i32 @rand(), !dbg !27
-  store i32 %2, i32* @gBar, align 4, !dbg !28
+  store i32 %2, ptr @gBar, align 4, !dbg !28
   ret void, !dbg !29
 }
 

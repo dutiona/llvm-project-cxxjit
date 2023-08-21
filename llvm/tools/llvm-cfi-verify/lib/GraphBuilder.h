@@ -24,6 +24,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/Binary.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -32,7 +33,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -46,8 +46,8 @@ using Instr = llvm::cfi_verify::FileAnalysis::Instr;
 namespace llvm {
 namespace cfi_verify {
 
-extern unsigned long long SearchLengthForUndef;
-extern unsigned long long SearchLengthForConditionalBranch;
+extern uint64_t SearchLengthForUndef;
+extern uint64_t SearchLengthForConditionalBranch;
 
 struct ConditionalBranchNode {
   uint64_t Address;
@@ -102,7 +102,7 @@ public:
   // (i.e. the upwards traversal did not make it to a branch node) flows to the
   // provided node in GraphResult::OrphanedNodes.
   static GraphResult buildFlowGraph(const FileAnalysis &Analysis,
-                                    uint64_t Address);
+                                    object::SectionedAddress Address);
 
 private:
   // Implementation function that actually builds the flow graph. Retrieves a

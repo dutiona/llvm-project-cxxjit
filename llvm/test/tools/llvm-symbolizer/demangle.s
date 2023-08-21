@@ -25,5 +25,17 @@ _Z1cv:
 # RUN: llvm-symbolizer --no-demangle -C --obj %t.o 0 \
 # RUN:    | FileCheck %s --check-prefix=DEMANGLED_FUNCTION_NAME
 
+# Check that for llvm-addr2line the default is not to demangle.
+# RUN: llvm-addr2line -fe %t.o 0 \
+# RUN:    | FileCheck %s --check-prefix=MANGLED_FUNCTION_NAME
+# RUN: llvm-addr2line -fCe %t.o 0 \
+# RUN:    | FileCheck %s --check-prefix=DEMANGLED_FUNCTION_NAME
+
+# pprof passes -demangle=false
+# RUN: llvm-symbolizer -demangle=false --obj %t.o 0 \
+# RUN:    | FileCheck %s --check-prefix=MANGLED_FUNCTION_NAME
+# RUN: llvm-symbolizer -demangle=true --obj %t.o 0 \
+# RUN:    | FileCheck %s --check-prefix=DEMANGLED_FUNCTION_NAME
+
 # MANGLED_FUNCTION_NAME: _Z1cv
 # DEMANGLED_FUNCTION_NAME: c()

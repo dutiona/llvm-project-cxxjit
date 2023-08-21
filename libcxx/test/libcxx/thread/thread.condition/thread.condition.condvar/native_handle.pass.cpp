@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads, libcpp-has-thread-api-external
+// UNSUPPORTED: no-threads, libcpp-has-thread-api-external
 
 // XFAIL: windows
 
@@ -19,6 +19,8 @@
 
 #include <condition_variable>
 #include <cassert>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

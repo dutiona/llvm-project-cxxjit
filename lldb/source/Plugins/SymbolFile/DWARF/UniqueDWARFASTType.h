@@ -6,26 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_UniqueDWARFASTType_h_
-#define lldb_UniqueDWARFASTType_h_
+#ifndef LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_UNIQUEDWARFASTTYPE_H
+#define LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_UNIQUEDWARFASTTYPE_H
 
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 
 #include "DWARFDIE.h"
-#include "lldb/Symbol/Declaration.h"
+#include "lldb/Core/Declaration.h"
 
 class UniqueDWARFASTType {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
-  UniqueDWARFASTType()
-      : m_type_sp(), m_die(), m_declaration(),
-        m_byte_size(
-            -1) // Set to negative value to make sure we have a valid value
-  {}
+  UniqueDWARFASTType() : m_type_sp(), m_die(), m_declaration() {}
 
   UniqueDWARFASTType(lldb::TypeSP &type_sp, const DWARFDIE &die,
                      const lldb_private::Declaration &decl, int32_t byte_size)
@@ -36,7 +30,7 @@ public:
       : m_type_sp(rhs.m_type_sp), m_die(rhs.m_die),
         m_declaration(rhs.m_declaration), m_byte_size(rhs.m_byte_size) {}
 
-  ~UniqueDWARFASTType() {}
+  ~UniqueDWARFASTType() = default;
 
   UniqueDWARFASTType &operator=(const UniqueDWARFASTType &rhs) {
     if (this != &rhs) {
@@ -51,14 +45,14 @@ public:
   lldb::TypeSP m_type_sp;
   DWARFDIE m_die;
   lldb_private::Declaration m_declaration;
-  int32_t m_byte_size;
+  int32_t m_byte_size = -1;
 };
 
 class UniqueDWARFASTTypeList {
 public:
   UniqueDWARFASTTypeList() : m_collection() {}
 
-  ~UniqueDWARFASTTypeList() {}
+  ~UniqueDWARFASTTypeList() = default;
 
   uint32_t GetSize() { return (uint32_t)m_collection.size(); }
 
@@ -78,14 +72,14 @@ class UniqueDWARFASTTypeMap {
 public:
   UniqueDWARFASTTypeMap() : m_collection() {}
 
-  ~UniqueDWARFASTTypeMap() {}
+  ~UniqueDWARFASTTypeMap() = default;
 
-  void Insert(const lldb_private::ConstString &name,
+  void Insert(lldb_private::ConstString name,
               const UniqueDWARFASTType &entry) {
     m_collection[name.GetCString()].Append(entry);
   }
 
-  bool Find(const lldb_private::ConstString &name, const DWARFDIE &die,
+  bool Find(lldb_private::ConstString name, const DWARFDIE &die,
             const lldb_private::Declaration &decl, const int32_t byte_size,
             UniqueDWARFASTType &entry) const {
     const char *unique_name_cstr = name.GetCString();
@@ -102,4 +96,4 @@ protected:
   collection m_collection;
 };
 
-#endif // lldb_UniqueDWARFASTType_h_
+#endif // LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_UNIQUEDWARFASTTYPE_H

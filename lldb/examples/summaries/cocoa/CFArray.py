@@ -217,7 +217,7 @@ def CFArray_SummaryProvider(valobj, dict):
         logger >> "provider gave me " + str(summary)
         if summary is None:
             summary = '<variable is not NSArray>'
-        elif isinstance(summary, basestring):
+        elif isinstance(summary, str):
             pass
         else:
             # we format it like it were a CFString to make it look the same as

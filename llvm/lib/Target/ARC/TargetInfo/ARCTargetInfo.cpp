@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ARC.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "TargetInfo/ARCTargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 
 using namespace llvm;
 
@@ -16,6 +16,6 @@ Target &llvm::getTheARCTarget() {
   return TheARCTarget;
 }
 
-extern "C" void LLVMInitializeARCTargetInfo() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeARCTargetInfo() {
   RegisterTarget<Triple::arc> X(getTheARCTarget(), "arc", "ARC", "ARC");
 }

@@ -12,14 +12,9 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace hicpp {
+namespace clang::tidy::hicpp {
 
 void ExceptionBaseclassCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   Finder->addMatcher(
       cxxThrowExpr(
           unless(has(expr(anyOf(isTypeDependent(), isValueDependent())))),
@@ -33,7 +28,7 @@ void ExceptionBaseclassCheck::registerMatchers(MatchFinder *Finder) {
                     hasType(substTemplateTypeParmType().bind("templ_type")))),
                 anything()),
           // Bind to the declaration of the type of the value that
-          // is thrown. 'anything()' is necessary to always suceed
+          // is thrown. 'anything()' is necessary to always succeed
           // in the 'eachOf' because builtin types are not
           // 'namedDecl'.
           eachOf(has(expr(hasType(namedDecl().bind("decl")))), anything()))
@@ -55,12 +50,10 @@ void ExceptionBaseclassCheck::check(const MatchFinder::MatchResult &Result) {
     diag(BadThrow->getSubExpr()->getBeginLoc(),
          "type %0 is a template instantiation of %1", DiagnosticIDs::Note)
         << BadThrow->getSubExpr()->getType()
-        << Template->getReplacedParameter()->getDecl();
+        << Template->getReplacedParameter();
 
   if (const auto *TypeDecl = Result.Nodes.getNodeAs<NamedDecl>("decl"))
     diag(TypeDecl->getBeginLoc(), "type defined here", DiagnosticIDs::Note);
 }
 
-} // namespace hicpp
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::hicpp

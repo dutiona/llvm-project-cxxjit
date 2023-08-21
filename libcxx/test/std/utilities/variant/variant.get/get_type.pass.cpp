@@ -1,4 +1,3 @@
-// -*- C++ -*-
 //===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -7,9 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
+// UNSUPPORTED: c++03, c++11, c++14
 
-// XFAIL: dylib-has-no-bad_variant_access && !libcpp-no-exceptions
+// Throwing bad_variant_access is supported starting in macosx10.13
+// XFAIL: use_system_cxx_lib && target={{.+}}-apple-macosx10.{{9|10|11|12}} && !no-exceptions
 
 // <variant>
 
@@ -21,7 +21,8 @@
 // variant<Types...>&& v);
 
 #include "test_macros.h"
-#include "variant_test_helpers.hpp"
+#include "test_workarounds.h"
+#include "variant_test_helpers.h"
 #include <cassert>
 #include <type_traits>
 #include <utility>
@@ -31,25 +32,21 @@ void test_const_lvalue_get() {
   {
     using V = std::variant<int, const long>;
     constexpr V v(42);
-#ifndef __clang__ // Avoid https://bugs.llvm.org/show_bug.cgi?id=15481
-    ASSERT_NOEXCEPT(std::get<int>(v));
-#endif
-    ASSERT_SAME_TYPE(decltype(std::get<0>(v)), const int &);
+    ASSERT_NOT_NOEXCEPT(std::get<int>(v));
+    ASSERT_SAME_TYPE(decltype(std::get<int>(v)), const int &);
     static_assert(std::get<int>(v) == 42, "");
   }
   {
     using V = std::variant<int, const long>;
     const V v(42);
     ASSERT_NOT_NOEXCEPT(std::get<int>(v));
-    ASSERT_SAME_TYPE(decltype(std::get<0>(v)), const int &);
+    ASSERT_SAME_TYPE(decltype(std::get<int>(v)), const int &);
     assert(std::get<int>(v) == 42);
   }
   {
     using V = std::variant<int, const long>;
     constexpr V v(42l);
-#ifndef __clang__ // Avoid https://bugs.llvm.org/show_bug.cgi?id=15481
-    ASSERT_NOEXCEPT(std::get<const long>(v));
-#endif
+    ASSERT_NOT_NOEXCEPT(std::get<const long>(v));
     ASSERT_SAME_TYPE(decltype(std::get<const long>(v)), const long &);
     static_assert(std::get<const long>(v) == 42, "");
   }

@@ -1,4 +1,4 @@
-//===-- ListenerTest.cpp ----------------------------------------*- C++ -*-===//
+//===-- ListenerTest.cpp --------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -98,16 +98,16 @@ TEST(ListenerTest, GetEventWait) {
   // broadcast sends.
   std::future<void> async_broadcast =
       std::async(std::launch::async, delayed_broadcast);
-  EXPECT_TRUE(listener_sp->GetEvent(event_sp, llvm::None));
+  EXPECT_TRUE(listener_sp->GetEvent(event_sp, std::nullopt));
   async_broadcast.get();
 
   async_broadcast = std::async(std::launch::async, delayed_broadcast);
-  EXPECT_TRUE(
-      listener_sp->GetEventForBroadcaster(&broadcaster, event_sp, llvm::None));
+  EXPECT_TRUE(listener_sp->GetEventForBroadcaster(&broadcaster, event_sp,
+                                                  std::nullopt));
   async_broadcast.get();
 
   async_broadcast = std::async(std::launch::async, delayed_broadcast);
   EXPECT_TRUE(listener_sp->GetEventForBroadcasterWithType(
-      &broadcaster, event_mask, event_sp, llvm::None));
+      &broadcaster, event_mask, event_sp, std::nullopt));
   async_broadcast.get();
 }

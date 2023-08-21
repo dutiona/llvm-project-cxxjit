@@ -6,9 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// \file This file describes the interface of the MachineFunctionPass
+/// \file
+/// This file describes the interface of the MachineFunctionPass
 /// responsible for assigning the generic virtual registers to register bank.
-
+///
 /// By default, the reg bank selector relies on local decisions to
 /// assign the register bank. In other words, it looks at one instruction
 /// at a time to decide where the operand of that instruction should live.
@@ -65,10 +66,10 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
-#include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
+#include "llvm/CodeGen/RegisterBankInfo.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -252,7 +253,7 @@ public:
 
   public:
     MBBInsertPoint(MachineBasicBlock &MBB, bool Beginning = true)
-        : InsertPoint(), MBB(MBB), Beginning(Beginning) {
+        : MBB(MBB), Beginning(Beginning) {
       // If we try to insert before phis, we should use the insertion
       // points on the incoming edges.
       assert((!Beginning || MBB.getFirstNonPHI() == MBB.begin()) &&
@@ -298,7 +299,7 @@ public:
 
   public:
     EdgeInsertPoint(MachineBasicBlock &Src, MachineBasicBlock &Dst, Pass &P)
-        : InsertPoint(), Src(Src), DstOrSplit(&Dst), P(P) {}
+        : Src(Src), DstOrSplit(&Dst), P(P) {}
 
     bool isSplit() const override {
       return Src.succ_size() > 1 && DstOrSplit->pred_size() > 1;
@@ -406,7 +407,7 @@ public:
     }
   };
 
-private:
+protected:
   /// Helper class used to represent the cost for mapping an instruction.
   /// When mapping an instruction, we may introduce some repairing code.
   /// In most cases, the repairing code is local to the instruction,
@@ -523,7 +524,7 @@ private:
   /// \p OnlyAssign == true means that \p Reg just needs to be assigned a
   /// register bank.  I.e., no repairing is necessary to have the
   /// assignment match.
-  bool assignmentMatch(unsigned Reg,
+  bool assignmentMatch(Register Reg,
                        const RegisterBankInfo::ValueMapping &ValMapping,
                        bool &OnlyAssign) const;
 
@@ -562,7 +563,7 @@ private:
   bool repairReg(MachineOperand &MO,
                  const RegisterBankInfo::ValueMapping &ValMapping,
                  RegBankSelect::RepairingPlacement &RepairPt,
-                 const iterator_range<SmallVectorImpl<unsigned>::const_iterator>
+                 const iterator_range<SmallVectorImpl<Register>::const_iterator>
                      &NewVRegs);
 
   /// Return the cost of the instruction needed to map \p MO to \p ValMapping.
@@ -633,6 +634,17 @@ public:
         MachineFunctionProperties::Property::RegBankSelected);
   }
 
+  MachineFunctionProperties getClearedProperties() const override {
+    return MachineFunctionProperties()
+      .set(MachineFunctionProperties::Property::NoPHIs);
+  }
+
+  /// Check that our input is fully legal: we require the function to have the
+  /// Legalized property, so it should be.
+  ///
+  /// FIXME: This should be in the MachineVerifier.
+  bool checkFunctionIsLegal(MachineFunction &MF) const;
+
   /// Walk through \p MF and assign a register bank to every virtual register
   /// that are still mapped to nothing.
   /// The target needs to provide a RegisterBankInfo and in particular
@@ -656,6 +668,8 @@ public:
   ///           MIRBuilder.buildInstr(COPY, Tmp, ArgReg)
   ///           inst.getOperand(argument.getOperandNo()).setReg(Tmp)
   /// \endcode
+  bool assignRegisterBanks(MachineFunction &MF);
+
   bool runOnMachineFunction(MachineFunction &MF) override;
 };
 

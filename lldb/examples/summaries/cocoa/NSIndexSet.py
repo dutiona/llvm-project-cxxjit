@@ -163,7 +163,7 @@ def NSIndexSet_SummaryProvider(valobj, dict):
         logger >> "got summary " + str(summary)
         if summary is None:
             summary = '<variable is not NSIndexSet>'
-        if isinstance(summary, basestring):
+        if isinstance(summary, str):
             return summary
         else:
             summary = str(summary) + (' indexes' if summary != 1 else ' index')

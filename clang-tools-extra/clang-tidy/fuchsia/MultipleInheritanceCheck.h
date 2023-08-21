@@ -9,28 +9,29 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_MULTIPLE_INHERITANCE_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_MULTIPLE_INHERITANCE_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace fuchsia {
+namespace clang::tidy::fuchsia {
 
-/// Mulitple implementation inheritance is discouraged.
+/// Multiple implementation inheritance is discouraged.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/fuchsia-multiple-inheritance.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/fuchsia/multiple-inheritance.html
 class MultipleInheritanceCheck : public ClangTidyCheck {
 public:
   MultipleInheritanceCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
   void onEndOfTranslationUnit() override { InterfaceMap.clear(); }
 
 private:
-  void addNodeToInterfaceMap(const CXXRecordDecl *Node, bool isInterface);
-  bool getInterfaceStatus(const CXXRecordDecl *Node, bool &isInterface) const;
+  void addNodeToInterfaceMap(const CXXRecordDecl *Node, bool IsInterface);
+  bool getInterfaceStatus(const CXXRecordDecl *Node, bool &IsInterface) const;
   bool isCurrentClassInterface(const CXXRecordDecl *Node) const;
   bool isInterface(const CXXRecordDecl *Node);
 
@@ -40,8 +41,6 @@ private:
   llvm::StringMap<bool> InterfaceMap;
 };
 
-} // namespace fuchsia
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::fuchsia
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_MULTIPLE_INHERITANCE_H

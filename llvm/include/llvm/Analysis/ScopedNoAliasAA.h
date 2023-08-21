@@ -15,7 +15,6 @@
 #define LLVM_ANALYSIS_SCOPEDNOALIASAA_H
 
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include <memory>
@@ -27,9 +26,7 @@ class MDNode;
 class MemoryLocation;
 
 /// A simple AA result which uses scoped-noalias metadata to answer queries.
-class ScopedNoAliasAAResult : public AAResultBase<ScopedNoAliasAAResult> {
-  friend AAResultBase<ScopedNoAliasAAResult>;
-
+class ScopedNoAliasAAResult : public AAResultBase {
 public:
   /// Handle invalidation events from the new pass manager.
   ///
@@ -39,9 +36,12 @@ public:
     return false;
   }
 
-  AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB);
-  ModRefInfo getModRefInfo(const CallBase *Call, const MemoryLocation &Loc);
-  ModRefInfo getModRefInfo(const CallBase *Call1, const CallBase *Call2);
+  AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB,
+                    AAQueryInfo &AAQI, const Instruction *CtxI);
+  ModRefInfo getModRefInfo(const CallBase *Call, const MemoryLocation &Loc,
+                           AAQueryInfo &AAQI);
+  ModRefInfo getModRefInfo(const CallBase *Call1, const CallBase *Call2,
+                           AAQueryInfo &AAQI);
 
 private:
   bool mayAliasInScopes(const MDNode *Scopes, const MDNode *NoAlias) const;

@@ -16,12 +16,22 @@
 #define LLVM_LIB_TARGET_WEBASSEMBLY_WEBASSEMBLYINSTRINFO_H
 
 #include "WebAssemblyRegisterInfo.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "WebAssemblyGenInstrInfo.inc"
 
+#define GET_INSTRINFO_OPERAND_ENUM
+#include "WebAssemblyGenInstrInfo.inc"
+
 namespace llvm {
+
+namespace WebAssembly {
+
+int16_t getNamedOperandIdx(uint16_t Opcode, uint16_t NamedIndex);
+
+}
 
 class WebAssemblySubtarget;
 
@@ -33,11 +43,10 @@ public:
 
   const WebAssemblyRegisterInfo &getRegisterInfo() const { return RI; }
 
-  bool isReallyTriviallyReMaterializable(const MachineInstr &MI,
-                                         AliasAnalysis *AA) const override;
+  bool isReallyTriviallyReMaterializable(const MachineInstr &MI) const override;
 
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
   MachineInstr *commuteInstructionImpl(MachineInstr &MI, bool NewMI,
                                        unsigned OpIdx1,
@@ -55,6 +64,14 @@ public:
                         int *BytesAdded = nullptr) const override;
   bool
   reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
+
+  ArrayRef<std::pair<int, const char *>>
+  getSerializableTargetIndices() const override;
+
+  const MachineOperand &getCalleeOperand(const MachineInstr &MI) const override;
+
+  bool isExplicitTargetIndexDef(const MachineInstr &MI, int &Index,
+                                int64_t &Offset) const override;
 };
 
 } // end namespace llvm

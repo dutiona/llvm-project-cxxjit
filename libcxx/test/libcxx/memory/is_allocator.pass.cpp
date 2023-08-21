@@ -8,7 +8,7 @@
 //
 
 // <memory>
-// UNSUPPORTED: c++98, c++03, c++11, c++14
+// UNSUPPORTED: c++03, c++11, c++14
 
 // template<typename _Alloc>
 // struct __is_allocator;
@@ -25,19 +25,19 @@
 template <typename T>
 void test_allocators()
 {
-	static_assert(!std::__is_allocator<T>::value, "" );
-	static_assert( std::__is_allocator<std::allocator<T>>::value, "" );
-	static_assert( std::__is_allocator<test_allocator<T>>::value, "" );
-	static_assert( std::__is_allocator<min_allocator<T>>::value, "" );
+    static_assert(!std::__is_allocator<T>::value, "" );
+    static_assert( std::__is_allocator<std::allocator<T>>::value, "" );
+    static_assert( std::__is_allocator<test_allocator<T>>::value, "" );
+    static_assert( std::__is_allocator<min_allocator<T>>::value, "" );
 }
 
 
 int main(int, char**)
 {
-//	test_allocators<void>();
-	test_allocators<char>();
-	test_allocators<int>();
-	test_allocators<std::string>();
+    // test_allocators<void>();
+    test_allocators<char>();
+    test_allocators<int>();
+    test_allocators<std::string>();
 
-  return 0;
+    return 0;
 }

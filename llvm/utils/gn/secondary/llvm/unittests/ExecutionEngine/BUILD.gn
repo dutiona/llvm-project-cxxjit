@@ -1,4 +1,4 @@
-import("//llvm/utils/unittest/unittest.gni")
+import("//third-party/unittest/unittest.gni")
 
 unittest("ExecutionEngineTests") {
   deps = [
@@ -10,7 +10,5 @@ unittest("ExecutionEngineTests") {
     "//llvm/lib/MC",
     "//llvm/lib/Support",
   ]
-  sources = [
-    "ExecutionEngineTest.cpp",
-  ]
+  sources = [ "ExecutionEngineTest.cpp" ]
 }

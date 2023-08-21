@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBBreakpointName_h_
-#define LLDB_SBBreakpointName_h_
+#ifndef LLDB_API_SBBREAKPOINTNAME_H
+#define LLDB_API_SBBREAKPOINTNAME_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -38,6 +38,8 @@ public:
   bool operator==(const lldb::SBBreakpointName &rhs);
 
   bool operator!=(const lldb::SBBreakpointName &rhs);
+
+  explicit operator bool() const;
 
   bool IsValid() const;
   
@@ -83,9 +85,12 @@ public:
 
   void SetScriptCallbackFunction(const char *callback_function_name);
 
-  void SetCommandLineCommands(SBStringList &commands);
+  SBError SetScriptCallbackFunction(const char *callback_function_name,
+                                    SBStructuredData &extra_args);
 
-  bool GetCommandLineCommands(SBStringList &commands);
+  void SetCommandLineCommands(lldb::SBStringList &commands);
+
+  bool GetCommandLineCommands(lldb::SBStringList &commands);
 
   SBError SetScriptCallbackBody(const char *script_body_text);
   
@@ -114,4 +119,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBBreakpointName_h_
+#endif // LLDB_API_SBBREAKPOINTNAME_H

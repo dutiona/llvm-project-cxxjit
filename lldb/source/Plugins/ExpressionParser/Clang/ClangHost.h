@@ -6,17 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_PLUGINS_EXPRESSIONPARSER_CLANG_CLANGHOST_H
-#define LLDB_PLUGINS_EXPRESSIONPARSER_CLANG_CLANGHOST_H
+#ifndef LLDB_SOURCE_PLUGINS_EXPRESSIONPARSER_CLANG_CLANGHOST_H
+#define LLDB_SOURCE_PLUGINS_EXPRESSIONPARSER_CLANG_CLANGHOST_H
 
 namespace lldb_private {
 
 class FileSpec;
 
-#if defined(__APPLE__)
-bool ComputeClangDirectory(FileSpec &lldb_shlib_spec, FileSpec &file_spec,
-                           bool verify);
-#endif
+bool ComputeClangResourceDirectory(FileSpec &lldb_shlib_spec,
+                                   FileSpec &file_spec, bool verify);
 
 FileSpec GetClangResourceDir();
 

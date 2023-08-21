@@ -11,14 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "MILexer.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
-#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <string>
@@ -37,7 +32,7 @@ class Cursor {
   const char *End = nullptr;
 
 public:
-  Cursor(NoneType) {}
+  Cursor(std::nullopt_t) {}
 
   explicit Cursor(StringRef Str) {
     Ptr = Str.data();
@@ -104,6 +99,20 @@ static Cursor skipComment(Cursor C) {
   return C;
 }
 
+/// Machine operands can have comments, enclosed between /* and */.
+/// This eats up all tokens, including /* and */.
+static Cursor skipMachineOperandComment(Cursor C) {
+  if (C.peek() != '/' || C.peek(1) != '*')
+    return C;
+
+  while (C.peek() != '*' || C.peek(1) != '/')
+    C.advance();
+
+  C.advance();
+  C.advance();
+  return C;
+}
+
 /// Return true if the given character satisfies the following regular
 /// expression: [-a-zA-Z$._0-9]
 static bool isIdentifierChar(char C) {
@@ -149,7 +158,7 @@ static Cursor lexStringConstant(Cursor C, ErrorCallbackType ErrorCallback) {
       ErrorCallback(
           C.location(),
           "end of machine instruction reached before the closing '\"'");
-      return None;
+      return std::nullopt;
     }
   }
   C.advance();
@@ -201,10 +210,13 @@ static MIToken::TokenKind getIdentifierKind(StringRef Identifier) {
       .Case("contract", MIToken::kw_contract)
       .Case("afn", MIToken::kw_afn)
       .Case("reassoc", MIToken::kw_reassoc)
-      .Case("nuw" , MIToken::kw_nuw)
-      .Case("nsw" , MIToken::kw_nsw)
-      .Case("exact" , MIToken::kw_exact)
+      .Case("nuw", MIToken::kw_nuw)
+      .Case("nsw", MIToken::kw_nsw)
+      .Case("exact", MIToken::kw_exact)
+      .Case("nofpexcept", MIToken::kw_nofpexcept)
       .Case("debug-location", MIToken::kw_debug_location)
+      .Case("debug-instr-number", MIToken::kw_debug_instr_number)
+      .Case("dbg-instr-ref", MIToken::kw_dbg_instr_ref)
       .Case("same_value", MIToken::kw_cfi_same_value)
       .Case("offset", MIToken::kw_cfi_offset)
       .Case("rel_offset", MIToken::kw_cfi_rel_offset)
@@ -213,13 +225,15 @@ static MIToken::TokenKind getIdentifierKind(StringRef Identifier) {
       .Case("adjust_cfa_offset", MIToken::kw_cfi_adjust_cfa_offset)
       .Case("escape", MIToken::kw_cfi_escape)
       .Case("def_cfa", MIToken::kw_cfi_def_cfa)
+      .Case("llvm_def_aspace_cfa", MIToken::kw_cfi_llvm_def_aspace_cfa)
       .Case("remember_state", MIToken::kw_cfi_remember_state)
       .Case("restore", MIToken::kw_cfi_restore)
       .Case("restore_state", MIToken::kw_cfi_restore_state)
       .Case("undefined", MIToken::kw_cfi_undefined)
       .Case("register", MIToken::kw_cfi_register)
       .Case("window_save", MIToken::kw_cfi_window_save)
-      .Case("negate_ra_sign_state", MIToken::kw_cfi_aarch64_negate_ra_sign_state)
+      .Case("negate_ra_sign_state",
+            MIToken::kw_cfi_aarch64_negate_ra_sign_state)
       .Case("blockaddress", MIToken::kw_blockaddress)
       .Case("intrinsic", MIToken::kw_intrinsic)
       .Case("target-index", MIToken::kw_target_index)
@@ -235,28 +249,43 @@ static MIToken::TokenKind getIdentifierKind(StringRef Identifier) {
       .Case("dereferenceable", MIToken::kw_dereferenceable)
       .Case("invariant", MIToken::kw_invariant)
       .Case("align", MIToken::kw_align)
+      .Case("basealign", MIToken::kw_basealign)
       .Case("addrspace", MIToken::kw_addrspace)
       .Case("stack", MIToken::kw_stack)
       .Case("got", MIToken::kw_got)
       .Case("jump-table", MIToken::kw_jump_table)
       .Case("constant-pool", MIToken::kw_constant_pool)
       .Case("call-entry", MIToken::kw_call_entry)
+      .Case("custom", MIToken::kw_custom)
       .Case("liveout", MIToken::kw_liveout)
-      .Case("address-taken", MIToken::kw_address_taken)
       .Case("landing-pad", MIToken::kw_landing_pad)
+      .Case("inlineasm-br-indirect-target",
+            MIToken::kw_inlineasm_br_indirect_target)
+      .Case("ehfunclet-entry", MIToken::kw_ehfunclet_entry)
       .Case("liveins", MIToken::kw_liveins)
       .Case("successors", MIToken::kw_successors)
       .Case("floatpred", MIToken::kw_floatpred)
       .Case("intpred", MIToken::kw_intpred)
+      .Case("shufflemask", MIToken::kw_shufflemask)
       .Case("pre-instr-symbol", MIToken::kw_pre_instr_symbol)
       .Case("post-instr-symbol", MIToken::kw_post_instr_symbol)
+      .Case("heap-alloc-marker", MIToken::kw_heap_alloc_marker)
+      .Case("pcsections", MIToken::kw_pcsections)
+      .Case("cfi-type", MIToken::kw_cfi_type)
+      .Case("bbsections", MIToken::kw_bbsections)
+      .Case("bb_id", MIToken::kw_bb_id)
       .Case("unknown-size", MIToken::kw_unknown_size)
+      .Case("unknown-address", MIToken::kw_unknown_address)
+      .Case("distinct", MIToken::kw_distinct)
+      .Case("ir-block-address-taken", MIToken::kw_ir_block_address_taken)
+      .Case("machine-block-address-taken",
+            MIToken::kw_machine_block_address_taken)
       .Default(MIToken::Identifier);
 }
 
 static Cursor maybeLexIdentifier(Cursor C, MIToken &Token) {
   if (!isalpha(C.peek()) && C.peek() != '_')
-    return None;
+    return std::nullopt;
   auto Range = C;
   while (isIdentifierChar(C.peek()))
     C.advance();
@@ -270,7 +299,7 @@ static Cursor maybeLexMachineBasicBlock(Cursor C, MIToken &Token,
                                         ErrorCallbackType ErrorCallback) {
   bool IsReference = C.remaining().startswith("%bb.");
   if (!IsReference && !C.remaining().startswith("bb."))
-    return None;
+    return std::nullopt;
   auto Range = C;
   unsigned PrefixLength = IsReference ? 4 : 3;
   C.advance(PrefixLength); // Skip '%bb.' or 'bb.'
@@ -304,7 +333,7 @@ static Cursor maybeLexMachineBasicBlock(Cursor C, MIToken &Token,
 static Cursor maybeLexIndex(Cursor C, MIToken &Token, StringRef Rule,
                             MIToken::TokenKind Kind) {
   if (!C.remaining().startswith(Rule) || !isdigit(C.peek(Rule.size())))
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance(Rule.size());
   auto NumberRange = C;
@@ -317,7 +346,7 @@ static Cursor maybeLexIndex(Cursor C, MIToken &Token, StringRef Rule,
 static Cursor maybeLexIndexAndName(Cursor C, MIToken &Token, StringRef Rule,
                                    MIToken::TokenKind Kind) {
   if (!C.remaining().startswith(Rule) || !isdigit(C.peek(Rule.size())))
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance(Rule.size());
   auto NumberRange = C;
@@ -357,7 +386,7 @@ static Cursor maybeLexSubRegisterIndex(Cursor C, MIToken &Token,
                                        ErrorCallbackType ErrorCallback) {
   const StringRef Rule = "%subreg.";
   if (!C.remaining().startswith(Rule))
-    return None;
+    return std::nullopt;
   return lexName(C, Token, MIToken::SubRegisterIndex, Rule.size(),
                  ErrorCallback);
 }
@@ -366,7 +395,7 @@ static Cursor maybeLexIRBlock(Cursor C, MIToken &Token,
                               ErrorCallbackType ErrorCallback) {
   const StringRef Rule = "%ir-block.";
   if (!C.remaining().startswith(Rule))
-    return None;
+    return std::nullopt;
   if (isdigit(C.peek(Rule.size())))
     return maybeLexIndex(C, Token, Rule, MIToken::IRBlock);
   return lexName(C, Token, MIToken::NamedIRBlock, Rule.size(), ErrorCallback);
@@ -376,7 +405,7 @@ static Cursor maybeLexIRValue(Cursor C, MIToken &Token,
                               ErrorCallbackType ErrorCallback) {
   const StringRef Rule = "%ir.";
   if (!C.remaining().startswith(Rule))
-    return None;
+    return std::nullopt;
   if (isdigit(C.peek(Rule.size())))
     return maybeLexIndex(C, Token, Rule, MIToken::IRValue);
   return lexName(C, Token, MIToken::NamedIRValue, Rule.size(), ErrorCallback);
@@ -385,7 +414,7 @@ static Cursor maybeLexIRValue(Cursor C, MIToken &Token,
 static Cursor maybeLexStringConstant(Cursor C, MIToken &Token,
                                      ErrorCallbackType ErrorCallback) {
   if (C.peek() != '"')
-    return None;
+    return std::nullopt;
   return lexName(C, Token, MIToken::StringConstant, /*PrefixLength=*/0,
                  ErrorCallback);
 }
@@ -419,7 +448,7 @@ static Cursor lexNamedVirtualRegister(Cursor C, MIToken &Token) {
 static Cursor maybeLexRegister(Cursor C, MIToken &Token,
                                ErrorCallbackType ErrorCallback) {
   if (C.peek() != '%' && C.peek() != '$')
-    return None;
+    return std::nullopt;
 
   if (C.peek() == '%') {
     if (isdigit(C.peek(1)))
@@ -428,7 +457,7 @@ static Cursor maybeLexRegister(Cursor C, MIToken &Token,
     if (isRegisterChar(C.peek(1)))
       return lexNamedVirtualRegister(C, Token);
 
-    return None;
+    return std::nullopt;
   }
 
   assert(C.peek() == '$');
@@ -444,7 +473,7 @@ static Cursor maybeLexRegister(Cursor C, MIToken &Token,
 static Cursor maybeLexGlobalValue(Cursor C, MIToken &Token,
                                   ErrorCallbackType ErrorCallback) {
   if (C.peek() != '@')
-    return None;
+    return std::nullopt;
   if (!isdigit(C.peek(1)))
     return lexName(C, Token, MIToken::NamedGlobalValue, /*PrefixLength=*/1,
                    ErrorCallback);
@@ -461,7 +490,7 @@ static Cursor maybeLexGlobalValue(Cursor C, MIToken &Token,
 static Cursor maybeLexExternalSymbol(Cursor C, MIToken &Token,
                                      ErrorCallbackType ErrorCallback) {
   if (C.peek() != '&')
-    return None;
+    return std::nullopt;
   return lexName(C, Token, MIToken::ExternalSymbol, /*PrefixLength=*/1,
                  ErrorCallback);
 }
@@ -470,7 +499,7 @@ static Cursor maybeLexMCSymbol(Cursor C, MIToken &Token,
                                ErrorCallbackType ErrorCallback) {
   const StringRef Rule = "<mcsymbol ";
   if (!C.remaining().startswith(Rule))
-    return None;
+    return std::nullopt;
   auto Start = C;
   C.advance(Rule.size());
 
@@ -514,7 +543,7 @@ static Cursor maybeLexMCSymbol(Cursor C, MIToken &Token,
 }
 
 static bool isValidHexFloatingPointPrefix(char C) {
-  return C == 'H' || C == 'K' || C == 'L' || C == 'M';
+  return C == 'H' || C == 'K' || C == 'L' || C == 'M' || C == 'R';
 }
 
 static Cursor lexFloatingPointLiteral(Cursor Range, Cursor C, MIToken &Token) {
@@ -535,7 +564,7 @@ static Cursor lexFloatingPointLiteral(Cursor Range, Cursor C, MIToken &Token) {
 
 static Cursor maybeLexHexadecimalLiteral(Cursor C, MIToken &Token) {
   if (C.peek() != '0' || (C.peek(1) != 'x' && C.peek(1) != 'X'))
-    return None;
+    return std::nullopt;
   Cursor Range = C;
   C.advance(2);
   unsigned PrefLen = 2;
@@ -547,7 +576,7 @@ static Cursor maybeLexHexadecimalLiteral(Cursor C, MIToken &Token) {
     C.advance();
   StringRef StrVal = Range.upto(C);
   if (StrVal.size() <= PrefLen)
-    return None;
+    return std::nullopt;
   if (PrefLen == 2)
     Token.reset(MIToken::HexLiteral, Range.upto(C));
   else // It must be 3, which means that there was a floating-point prefix.
@@ -557,7 +586,7 @@ static Cursor maybeLexHexadecimalLiteral(Cursor C, MIToken &Token) {
 
 static Cursor maybeLexNumericalLiteral(Cursor C, MIToken &Token) {
   if (!isdigit(C.peek()) && (C.peek() != '-' || !isdigit(C.peek(1))))
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance();
   while (isdigit(C.peek()))
@@ -580,10 +609,10 @@ static MIToken::TokenKind getMetadataKeywordKind(StringRef Identifier) {
       .Default(MIToken::Error);
 }
 
-static Cursor maybeLexExlaim(Cursor C, MIToken &Token,
-                             ErrorCallbackType ErrorCallback) {
+static Cursor maybeLexExclaim(Cursor C, MIToken &Token,
+                              ErrorCallbackType ErrorCallback) {
   if (C.peek() != '!')
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance(1);
   if (isdigit(C.peek()) || !isIdentifierChar(C.peek())) {
@@ -640,7 +669,7 @@ static Cursor maybeLexSymbol(Cursor C, MIToken &Token) {
   } else
     Kind = symbolToken(C.peek());
   if (Kind == MIToken::Error)
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance(Length);
   Token.reset(Kind, Range.upto(C));
@@ -649,7 +678,7 @@ static Cursor maybeLexSymbol(Cursor C, MIToken &Token) {
 
 static Cursor maybeLexNewline(Cursor C, MIToken &Token) {
   if (!isNewlineChar(C.peek()))
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance();
   Token.reset(MIToken::Newline, Range.upto(C));
@@ -659,7 +688,7 @@ static Cursor maybeLexNewline(Cursor C, MIToken &Token) {
 static Cursor maybeLexEscapedIRValue(Cursor C, MIToken &Token,
                                      ErrorCallbackType ErrorCallback) {
   if (C.peek() != '`')
-    return None;
+    return std::nullopt;
   auto Range = C;
   C.advance();
   auto StrRange = C;
@@ -686,6 +715,8 @@ StringRef llvm::lexMIToken(StringRef Source, MIToken &Token,
     Token.reset(MIToken::Eof, C.remaining());
     return C.remaining();
   }
+
+  C = skipMachineOperandComment(C);
 
   if (Cursor R = maybeLexMachineBasicBlock(C, Token, ErrorCallback))
     return R.remaining();
@@ -717,7 +748,7 @@ StringRef llvm::lexMIToken(StringRef Source, MIToken &Token,
     return R.remaining();
   if (Cursor R = maybeLexNumericalLiteral(C, Token))
     return R.remaining();
-  if (Cursor R = maybeLexExlaim(C, Token, ErrorCallback))
+  if (Cursor R = maybeLexExclaim(C, Token, ErrorCallback))
     return R.remaining();
   if (Cursor R = maybeLexSymbol(C, Token))
     return R.remaining();

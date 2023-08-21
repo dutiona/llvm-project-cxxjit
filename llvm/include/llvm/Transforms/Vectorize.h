@@ -16,7 +16,6 @@
 
 namespace llvm {
 class BasicBlock;
-class BasicBlockPass;
 class Pass;
 
 //===----------------------------------------------------------------------===//
@@ -109,8 +108,9 @@ struct VectorizeConfig {
 //
 // LoopVectorize - Create a loop vectorization pass.
 //
-Pass *createLoopVectorizePass(bool InterleaveOnlyWhenForced = false,
-                              bool VectorizeOnlyWhenForced = false);
+Pass *createLoopVectorizePass();
+Pass *createLoopVectorizePass(bool InterleaveOnlyWhenForced,
+                              bool VectorizeOnlyWhenForced);
 
 //===----------------------------------------------------------------------===//
 //
@@ -137,6 +137,12 @@ bool vectorizeBasicBlock(Pass *P, BasicBlock &BB,
 // operations.
 //
 Pass *createLoadStoreVectorizerPass();
+
+//===----------------------------------------------------------------------===//
+//
+// Optimize partial vector operations using target cost models.
+//
+Pass *createVectorCombinePass();
 
 } // End llvm namespace
 

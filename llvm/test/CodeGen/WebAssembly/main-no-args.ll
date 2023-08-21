@@ -2,7 +2,6 @@
 
 ; Test main functions with alternate signatures.
 
-target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 target triple = "wasm32-unknown-unknown"
 
 define i32 @main() {
@@ -16,4 +15,4 @@ define i32 @main() {
 
 ; CHECK-LABEL: main:
 ; CHECK-NEXT: .functype main (i32, i32) -> (i32)
-; CHECK:      call __original_main@FUNCTION
+; CHECK:      call __original_main

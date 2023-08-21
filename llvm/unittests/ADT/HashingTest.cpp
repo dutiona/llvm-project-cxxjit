@@ -12,10 +12,12 @@
 
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/HashBuilder.h"
 #include "gtest/gtest.h"
 #include <deque>
 #include <list>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace llvm {
@@ -101,6 +103,17 @@ TEST(HashingTest, HashValueStdPair) {
             hash_value(std::make_pair(obj1, std::make_pair(obj2, obj3))));
 }
 
+TEST(HashingTest, HashValueStdTuple) {
+  EXPECT_EQ(hash_combine(), hash_value(std::make_tuple()));
+  EXPECT_EQ(hash_combine(42), hash_value(std::make_tuple(42)));
+  EXPECT_EQ(hash_combine(42, 'c'), hash_value(std::make_tuple(42, 'c')));
+
+  EXPECT_NE(hash_combine(43, 42), hash_value(std::make_tuple(42, 43)));
+  EXPECT_NE(hash_combine(42, 43), hash_value(std::make_tuple(42ull, 43ull)));
+  EXPECT_NE(hash_combine(42, 43), hash_value(std::make_tuple(42, 43ull)));
+  EXPECT_NE(hash_combine(42, 43), hash_value(std::make_tuple(42ull, 43)));
+}
+
 TEST(HashingTest, HashValueStdString) {
   std::string s = "Hello World!";
   EXPECT_EQ(hash_combine_range(s.c_str(), s.c_str() + s.size()), hash_value(s));
@@ -116,6 +129,23 @@ TEST(HashingTest, HashValueStdString) {
             hash_value(ws.substr(0, ws.size() - 1)));
   EXPECT_EQ(hash_combine_range(ws.c_str() + 1, ws.c_str() + ws.size() - 1),
             hash_value(ws.substr(1, ws.size() - 2)));
+}
+
+TEST(HashingTest, HashValueStdOptional) {
+  // Check that std::nullopt, false, and true all hash differently.
+  std::optional<bool> B, B0 = false, B1 = true;
+  EXPECT_NE(hash_value(B0), hash_value(B));
+  EXPECT_NE(hash_value(B1), hash_value(B));
+  EXPECT_NE(hash_value(B1), hash_value(B0));
+
+  // Check that std::nullopt, 0, and 1 all hash differently.
+  std::optional<int> I, I0 = 0, I1 = 1;
+  EXPECT_NE(hash_value(I0), hash_value(I));
+  EXPECT_NE(hash_value(I1), hash_value(I));
+  EXPECT_NE(hash_value(I1), hash_value(I0));
+
+  // Check std::nullopt hash the same way regardless of type.
+  EXPECT_EQ(hash_value(B), hash_value(I));
 }
 
 template <typename T, size_t N> T *begin(T (&arr)[N]) { return arr; }
@@ -391,4 +421,36 @@ TEST(HashingTest, HashCombineArgs18) {
 #undef CHECK_SAME
 }
 
+struct StructWithHashBuilderSupport {
+  char C;
+  int I;
+  template <typename HasherT, llvm::support::endianness Endianness>
+  friend void addHash(llvm::HashBuilderImpl<HasherT, Endianness> &HBuilder,
+                      const StructWithHashBuilderSupport &Value) {
+    HBuilder.add(Value.C, Value.I);
+  }
+};
+
+TEST(HashingTest, HashWithHashBuilder) {
+  StructWithHashBuilderSupport S{'c', 1};
+  EXPECT_NE(static_cast<size_t>(llvm::hash_value(S)), static_cast<size_t>(0));
 }
+
+struct StructWithHashBuilderAndHashValueSupport {
+  char C;
+  int I;
+  template <typename HasherT, llvm::support::endianness Endianness>
+  friend void addHash(llvm::HashBuilderImpl<HasherT, Endianness> &HBuilder,
+                      const StructWithHashBuilderAndHashValueSupport &Value) {}
+  friend hash_code
+  hash_value(const StructWithHashBuilderAndHashValueSupport &Value) {
+    return 0xbeef;
+  }
+};
+
+TEST(HashingTest, HashBuilderAndHashValue) {
+  StructWithHashBuilderAndHashValueSupport S{'c', 1};
+  EXPECT_EQ(static_cast<size_t>(hash_value(S)), static_cast<size_t>(0xbeef));
+}
+
+} // namespace

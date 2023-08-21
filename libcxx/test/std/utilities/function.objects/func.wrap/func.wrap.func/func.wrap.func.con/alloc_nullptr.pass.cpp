@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 // <functional>
-// REQUIRES: c++98 || c++03 || c++11 || c++14
+// REQUIRES: c++11 || c++14
 
 // class function<R(ArgTypes...)>
 
@@ -18,6 +18,7 @@
 #include <functional>
 #include <cassert>
 
+#include "test_macros.h"
 #include "min_allocator.h"
 
 int main(int, char**)

@@ -14,6 +14,8 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace clang {
@@ -35,8 +37,11 @@ public:
   bool operator==(const SymbolID &Sym) const {
     return HashValue == Sym.HashValue;
   }
+  bool operator!=(const SymbolID &Sym) const { return !(*this == Sym); }
   bool operator<(const SymbolID &Sym) const {
-    return HashValue < Sym.HashValue;
+    // Avoid lexicographic compare which requires swapping bytes or even memcmp!
+    return llvm::bit_cast<IntTy>(HashValue) <
+           llvm::bit_cast<IntTy>(Sym.HashValue);
   }
 
   // The stored hash is truncated to RawSize bytes.
@@ -49,16 +54,49 @@ public:
   std::string str() const;
   static llvm::Expected<SymbolID> fromStr(llvm::StringRef);
 
+  bool isNull() const { return *this == SymbolID(); }
+  explicit operator bool() const { return !isNull(); }
+
 private:
-  std::array<uint8_t, RawSize> HashValue;
+  using IntTy = uint64_t;
+  static_assert(sizeof(IntTy) == RawSize);
+  std::array<uint8_t, RawSize> HashValue{};
 };
 
-llvm::hash_code hash_value(const SymbolID &ID);
+inline llvm::hash_code hash_value(const SymbolID &ID) {
+  // We already have a good hash, just return the first bytes.
+  static_assert(sizeof(size_t) <= SymbolID::RawSize,
+                "size_t longer than SHA1!");
+  size_t Result;
+  memcpy(&Result, ID.raw().data(), sizeof(size_t));
+  return llvm::hash_code(Result);
+}
 
 // Write SymbolID into the given stream. SymbolID is encoded as ID.str().
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const SymbolID &ID);
 
 } // namespace clangd
 } // namespace clang
+
+namespace llvm {
+// Support SymbolIDs as DenseMap keys.
+template <> struct DenseMapInfo<clang::clangd::SymbolID> {
+  static inline clang::clangd::SymbolID getEmptyKey() {
+    static clang::clangd::SymbolID EmptyKey("EMPTYKEY");
+    return EmptyKey;
+  }
+  static inline clang::clangd::SymbolID getTombstoneKey() {
+    static clang::clangd::SymbolID TombstoneKey("TOMBSTONEKEY");
+    return TombstoneKey;
+  }
+  static unsigned getHashValue(const clang::clangd::SymbolID &Sym) {
+    return hash_value(Sym);
+  }
+  static bool isEqual(const clang::clangd::SymbolID &LHS,
+                      const clang::clangd::SymbolID &RHS) {
+    return LHS == RHS;
+  }
+};
+} // namespace llvm
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANGD_INDEX_SYMBOLID_H

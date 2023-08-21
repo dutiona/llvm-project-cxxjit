@@ -28,8 +28,8 @@ def InstBOp : Operand<i32> {
 
 def InstB : TestInstruction {
   bits<2> op;
-  let Inst{7-2} = {0,0,0,0,0,0};
-  let Inst{1-0} = op;
+  let Inst{7...2} = {0,0,0,0,0,0};
+  let Inst{1...0} = op;
   let OutOperandList = (outs InstBOp:$op);
   let AsmString = "InstB";
 }
@@ -41,4 +41,4 @@ def InstB : TestInstruction {
 // CHECK-NEXT: /* 22 */      MCD::OPC_Decode, {{[0-9]+}}, 1, 1, // Opcode: InstA
 // CHECK-NEXT: /* 26 */      MCD::OPC_Fail,
 
-// CHECK: if (DecodeInstBOp(MI, tmp, Address, Decoder) == MCDisassembler::Fail) { DecodeComplete = false; return MCDisassembler::Fail; }
+// CHECK: if (!Check(S, DecodeInstBOp(MI, tmp, Address, Decoder))) { DecodeComplete = false; return MCDisassembler::Fail; }

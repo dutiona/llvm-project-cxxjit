@@ -23,11 +23,11 @@
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace clang {
 
@@ -83,7 +83,8 @@ public:
   /// \param[in] R The region to find the default binding for.
   /// \return The default value bound to the region in the store, if a default
   /// binding exists.
-  virtual Optional<SVal> getDefaultBinding(Store store, const MemRegion *R) = 0;
+  virtual std::optional<SVal> getDefaultBinding(Store store,
+                                                const MemRegion *R) = 0;
 
   /// Return the default value bound to a LazyCompoundVal. The default binding
   /// is used to represent the value of any fields or elements within the
@@ -93,7 +94,7 @@ public:
   /// \param[in] lcv The lazy compound value.
   /// \return The default value bound to the LazyCompoundVal \c lcv, if a
   /// default binding exists.
-  Optional<SVal> getDefaultBinding(nonloc::LazyCompoundVal lcv) {
+  std::optional<SVal> getDefaultBinding(nonloc::LazyCompoundVal lcv) {
     return getDefaultBinding(lcv.getStore(), lcv.getRegion());
   }
 
@@ -148,14 +149,6 @@ public:
 
   virtual SVal getLValueElement(QualType elementType, NonLoc offset, SVal Base);
 
-  // FIXME: This should soon be eliminated altogether; clients should deal with
-  // region extents directly.
-  virtual DefinedOrUnknownSVal getSizeInElements(ProgramStateRef state,
-                                                 const MemRegion *region,
-                                                 QualType EleTy) {
-    return UnknownVal();
-  }
-
   /// ArrayToPointer - Used by ExprEngine::VistCast to handle implicit
   ///  conversions between arrays and pointers.
   virtual SVal ArrayToPointer(Loc Array, QualType ElementTy) = 0;
@@ -180,16 +173,17 @@ public:
   ///    dynamic_cast.
   ///  - We don't know (base is a symbolic region and we don't have
   ///    enough info to determine if the cast will succeed at run time).
-  /// The function returns an SVal representing the derived class; it's
-  /// valid only if Failed flag is set to false.
-  SVal attemptDownCast(SVal Base, QualType DerivedPtrType, bool &Failed);
+  /// The function returns an optional with SVal representing the derived class
+  /// in case of a successful cast and `std::nullopt` otherwise.
+  std::optional<SVal> evalBaseToDerived(SVal Base, QualType DerivedPtrType);
 
   const ElementRegion *GetElementZeroRegion(const SubRegion *R, QualType T);
 
   /// castRegion - Used by ExprEngine::VisitCast to handle casts from
   ///  a MemRegion* to a specific location type.  'R' is the region being
   ///  casted and 'CastToTy' the result type of the cast.
-  const MemRegion *castRegion(const MemRegion *region, QualType CastToTy);
+  std::optional<const MemRegion *> castRegion(const MemRegion *region,
+                                              QualType CastToTy);
 
   virtual StoreRef removeDeadBindings(Store store, const StackFrameContext *LCtx,
                                       SymbolReaper &SymReaper) = 0;
@@ -253,7 +247,8 @@ public:
   virtual bool scanReachableSymbols(Store S, const MemRegion *R,
                                     ScanReachableSymbols &Visitor) = 0;
 
-  virtual void print(Store store, raw_ostream &Out, const char* nl) = 0;
+  virtual void printJson(raw_ostream &Out, Store S, const char *NL,
+                         unsigned int Space, bool IsDot) const = 0;
 
   class BindingsHandler {
   public:
@@ -286,12 +281,6 @@ protected:
   const ElementRegion *MakeElementRegion(const SubRegion *baseRegion,
                                          QualType pointeeTy,
                                          uint64_t index = 0);
-
-  /// CastRetrievedVal - Used by subclasses of StoreManager to implement
-  ///  implicit casts that arise from loads from regions that are reinterpreted
-  ///  as another region.
-  SVal CastRetrievedVal(SVal val, const TypedValueRegion *region,
-                        QualType castTy);
 
 private:
   SVal getLValueFieldOrIvar(const Decl *decl, SVal base);
@@ -328,8 +317,6 @@ inline StoreRef &StoreRef::operator=(StoreRef const &newStore) {
 // FIXME: Do we need to pass ProgramStateManager anymore?
 std::unique_ptr<StoreManager>
 CreateRegionStoreManager(ProgramStateManager &StMgr);
-std::unique_ptr<StoreManager>
-CreateFieldsOnlyRegionStoreManager(ProgramStateManager &StMgr);
 
 } // namespace ento
 

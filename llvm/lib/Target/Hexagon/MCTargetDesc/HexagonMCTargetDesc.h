@@ -13,6 +13,7 @@
 #ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
 #define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
 
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include <cstdint>
 #include <string>
@@ -46,7 +47,6 @@
 
 namespace llvm {
 
-struct InstrItinerary;
 struct InstrStage;
 class FeatureBitset;
 class MCAsmBackend;
@@ -60,10 +60,7 @@ class MCTargetOptions;
 class Target;
 class Triple;
 class StringRef;
-class raw_ostream;
-class raw_pwrite_stream;
 
-Target &getTheHexagonTarget();
 extern cl::opt<bool> HexagonDisableCompound;
 extern cl::opt<bool> HexagonDisableDuplex;
 extern const InstrStage HexagonStages[];
@@ -79,11 +76,15 @@ namespace Hexagon_MC {
   /// etc. do not need to go through TargetRegistry.
   MCSubtargetInfo *createHexagonMCSubtargetInfo(const Triple &TT, StringRef CPU,
                                                 StringRef FS);
+  MCSubtargetInfo const *getArchSubtarget(MCSubtargetInfo const *STI);
+  void addArchSubtarget(MCSubtargetInfo const *STI,
+                        StringRef FS);
   unsigned GetELFFlags(const MCSubtargetInfo &STI);
+
+  llvm::ArrayRef<MCPhysReg> GetVectRegRev();
 }
 
 MCCodeEmitter *createHexagonMCCodeEmitter(const MCInstrInfo &MCII,
-                                          const MCRegisterInfo &MRI,
                                           MCContext &MCT);
 
 MCAsmBackend *createHexagonAsmBackend(const Target &T,
@@ -95,6 +96,7 @@ std::unique_ptr<MCObjectTargetWriter>
 createHexagonELFObjectWriter(uint8_t OSABI, StringRef CPU);
 
 unsigned HexagonGetLastSlot();
+unsigned HexagonConvertUnits(unsigned ItinUnits, unsigned *Lanes);
 
 } // End llvm namespace
 
@@ -108,6 +110,7 @@ unsigned HexagonGetLastSlot();
 //
 #define GET_INSTRINFO_ENUM
 #define GET_INSTRINFO_SCHED_ENUM
+#define GET_INSTRINFO_MC_HELPER_DECLS
 #include "HexagonGenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_ENUM

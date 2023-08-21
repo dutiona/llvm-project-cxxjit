@@ -48,13 +48,14 @@ struct ErrorDeadlySignal : ErrorBase {
       scariness.Scare(10, "stack-overflow");
     } else if (!signal.is_memory_access) {
       scariness.Scare(10, "signal");
-    } else if (signal.addr < GetPageSizeCached()) {
+    } else if (signal.is_true_faulting_addr &&
+               signal.addr < GetPageSizeCached()) {
       scariness.Scare(10, "null-deref");
     } else if (signal.addr == signal.pc) {
       scariness.Scare(60, "wild-jump");
-    } else if (signal.write_flag == SignalContext::WRITE) {
+    } else if (signal.write_flag == SignalContext::Write) {
       scariness.Scare(30, "wild-addr-write");
-    } else if (signal.write_flag == SignalContext::READ) {
+    } else if (signal.write_flag == SignalContext::Read) {
       scariness.Scare(20, "wild-addr-read");
     } else {
       scariness.Scare(25, "wild-addr");
@@ -157,6 +158,21 @@ struct ErrorCallocOverflow : ErrorBase {
   ErrorCallocOverflow(u32 tid, BufferedStackTrace *stack_, uptr count_,
                       uptr size_)
       : ErrorBase(tid, 10, "calloc-overflow"),
+        stack(stack_),
+        count(count_),
+        size(size_) {}
+  void Print();
+};
+
+struct ErrorReallocArrayOverflow : ErrorBase {
+  const BufferedStackTrace *stack;
+  uptr count;
+  uptr size;
+
+  ErrorReallocArrayOverflow() = default;  // (*)
+  ErrorReallocArrayOverflow(u32 tid, BufferedStackTrace *stack_, uptr count_,
+                            uptr size_)
+      : ErrorBase(tid, 10, "reallocarray-overflow"),
         stack(stack_),
         count(count_),
         size(size_) {}
@@ -315,6 +331,28 @@ struct ErrorBadParamsToAnnotateContiguousContainer : ErrorBase {
   void Print();
 };
 
+struct ErrorBadParamsToAnnotateDoubleEndedContiguousContainer : ErrorBase {
+  const BufferedStackTrace *stack;
+  uptr storage_beg, storage_end, old_container_beg, old_container_end,
+      new_container_beg, new_container_end;
+
+  ErrorBadParamsToAnnotateDoubleEndedContiguousContainer() = default;  // (*)
+  ErrorBadParamsToAnnotateDoubleEndedContiguousContainer(
+      u32 tid, BufferedStackTrace *stack_, uptr storage_beg_, uptr storage_end_,
+      uptr old_container_beg_, uptr old_container_end_, uptr new_container_beg_,
+      uptr new_container_end_)
+      : ErrorBase(tid, 10,
+                  "bad-__sanitizer_annotate_double_ended_contiguous_container"),
+        stack(stack_),
+        storage_beg(storage_beg_),
+        storage_end(storage_end_),
+        old_container_beg(old_container_beg_),
+        old_container_end(old_container_end_),
+        new_container_beg(new_container_beg_),
+        new_container_end(new_container_end_) {}
+  void Print();
+};
+
 struct ErrorODRViolation : ErrorBase {
   __asan_global global1, global2;
   u32 stack_id1, stack_id2;
@@ -356,40 +394,44 @@ struct ErrorGeneric : ErrorBase {
   u8 shadow_val;
 
   ErrorGeneric() = default;  // (*)
-  ErrorGeneric(u32 tid, uptr addr, uptr pc_, uptr bp_, uptr sp_, bool is_write_,
+  ErrorGeneric(u32 tid, uptr pc_, uptr bp_, uptr sp_, uptr addr, bool is_write_,
                uptr access_size_);
   void Print();
 };
 
 // clang-format off
-#define ASAN_FOR_EACH_ERROR_KIND(macro)         \
-  macro(DeadlySignal)                           \
-  macro(DoubleFree)                             \
-  macro(NewDeleteTypeMismatch)                  \
-  macro(FreeNotMalloced)                        \
-  macro(AllocTypeMismatch)                      \
-  macro(MallocUsableSizeNotOwned)               \
-  macro(SanitizerGetAllocatedSizeNotOwned)      \
-  macro(CallocOverflow)                         \
-  macro(PvallocOverflow)                        \
-  macro(InvalidAllocationAlignment)             \
-  macro(InvalidAlignedAllocAlignment)           \
-  macro(InvalidPosixMemalignAlignment)          \
-  macro(AllocationSizeTooBig)                   \
-  macro(RssLimitExceeded)                       \
-  macro(OutOfMemory)                            \
-  macro(StringFunctionMemoryRangesOverlap)      \
-  macro(StringFunctionSizeOverflow)             \
-  macro(BadParamsToAnnotateContiguousContainer) \
-  macro(ODRViolation)                           \
-  macro(InvalidPointerPair)                     \
+#define ASAN_FOR_EACH_ERROR_KIND(macro)                    \
+  macro(DeadlySignal)                                      \
+  macro(DoubleFree)                                        \
+  macro(NewDeleteTypeMismatch)                             \
+  macro(FreeNotMalloced)                                   \
+  macro(AllocTypeMismatch)                                 \
+  macro(MallocUsableSizeNotOwned)                          \
+  macro(SanitizerGetAllocatedSizeNotOwned)                 \
+  macro(CallocOverflow)                                    \
+  macro(ReallocArrayOverflow)                              \
+  macro(PvallocOverflow)                                   \
+  macro(InvalidAllocationAlignment)                        \
+  macro(InvalidAlignedAllocAlignment)                      \
+  macro(InvalidPosixMemalignAlignment)                     \
+  macro(AllocationSizeTooBig)                              \
+  macro(RssLimitExceeded)                                  \
+  macro(OutOfMemory)                                       \
+  macro(StringFunctionMemoryRangesOverlap)                 \
+  macro(StringFunctionSizeOverflow)                        \
+  macro(BadParamsToAnnotateContiguousContainer)            \
+  macro(BadParamsToAnnotateDoubleEndedContiguousContainer) \
+  macro(ODRViolation)                                      \
+  macro(InvalidPointerPair)                                \
   macro(Generic)
 // clang-format on
 
 #define ASAN_DEFINE_ERROR_KIND(name) kErrorKind##name,
 #define ASAN_ERROR_DESCRIPTION_MEMBER(name) Error##name name;
-#define ASAN_ERROR_DESCRIPTION_CONSTRUCTOR(name) \
-  ErrorDescription(Error##name const &e) : kind(kErrorKind##name), name(e) {}
+#define ASAN_ERROR_DESCRIPTION_CONSTRUCTOR(name)                    \
+  ErrorDescription(Error##name const &e) : kind(kErrorKind##name) { \
+    internal_memcpy(&name, &e, sizeof(name));                       \
+  }
 #define ASAN_ERROR_DESCRIPTION_PRINT(name) \
   case kErrorKind##name:                   \
     return name.Print();

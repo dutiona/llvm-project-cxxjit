@@ -20,8 +20,8 @@
 using namespace llvm;
 
 CFGHolder::CFGHolder(StringRef ModuleName, StringRef FunctionName)
-    : Context(llvm::make_unique<LLVMContext>()),
-      M(llvm::make_unique<Module>(ModuleName, *Context)) {
+    : Context(std::make_unique<LLVMContext>()),
+      M(std::make_unique<Module>(ModuleName, *Context)) {
   FunctionType *FTy = FunctionType::get(Type::getVoidTy(*Context), {}, false);
   F = Function::Create(FTy, Function::ExternalLinkage, FunctionName, M.get());
 }
@@ -126,15 +126,15 @@ void CFGBuilder::buildCFG(const std::vector<Arc> &NewArcs) {
   }
 }
 
-Optional<CFGBuilder::Update> CFGBuilder::getNextUpdate() const {
+std::optional<CFGBuilder::Update> CFGBuilder::getNextUpdate() const {
   if (UpdateIdx == Updates.size())
-    return None;
+    return std::nullopt;
   return Updates[UpdateIdx];
 }
 
-Optional<CFGBuilder::Update> CFGBuilder::applyUpdate() {
+std::optional<CFGBuilder::Update> CFGBuilder::applyUpdate() {
   if (UpdateIdx == Updates.size())
-    return None;
+    return std::nullopt;
   Update NextUpdate = Updates[UpdateIdx++];
   if (NextUpdate.Action == ActionKind::Insert)
     connect(NextUpdate.Edge);
@@ -267,10 +267,10 @@ TEST(CFGBuilder, Rebuild) {
   EXPECT_TRUE(isa<SwitchInst>(B.getOrAddBlock("d")->getTerminator()));
 }
 
-static_assert(is_trivially_copyable<succ_iterator>::value,
+static_assert(std::is_trivially_copyable_v<succ_iterator>,
               "trivially copyable");
-static_assert(is_trivially_copyable<succ_const_iterator>::value,
+static_assert(std::is_trivially_copyable_v<const_succ_iterator>,
               "trivially copyable");
-static_assert(is_trivially_copyable<succ_range>::value, "trivially copyable");
-static_assert(is_trivially_copyable<succ_const_range>::value,
+static_assert(std::is_trivially_copyable_v<succ_range>, "trivially copyable");
+static_assert(std::is_trivially_copyable_v<const_succ_range>,
               "trivially copyable");

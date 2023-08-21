@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_UserSettingsController_h_
-#define liblldb_UserSettingsController_h_
+#ifndef LLDB_CORE_USERSETTINGSCONTROLLER_H
+#define LLDB_CORE_USERSETTINGSCONTROLLER_H
 
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-forward.h"
@@ -17,22 +17,14 @@
 
 #include <vector>
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 namespace lldb_private {
 class CommandInterpreter;
-}
-namespace lldb_private {
 class ConstString;
-}
-namespace lldb_private {
 class ExecutionContext;
-}
-namespace lldb_private {
 class Property;
-}
-namespace lldb_private {
 class Stream;
 }
 
@@ -40,12 +32,12 @@ namespace lldb_private {
 
 class Properties {
 public:
-  Properties() : m_collection_sp() {}
+  Properties() = default;
 
   Properties(const lldb::OptionValuePropertiesSP &collection_sp)
       : m_collection_sp(collection_sp) {}
 
-  virtual ~Properties() {}
+  virtual ~Properties() = default;
 
   virtual lldb::OptionValuePropertiesSP GetValueProperties() const {
     // This function is virtual in case subclasses want to lazily implement
@@ -65,10 +57,11 @@ public:
 
   virtual Status DumpPropertyValue(const ExecutionContext *exe_ctx,
                                    Stream &strm, llvm::StringRef property_path,
-                                   uint32_t dump_mask);
+                                   uint32_t dump_mask, bool is_json = false);
 
   virtual void DumpAllPropertyValues(const ExecutionContext *exe_ctx,
-                                     Stream &strm, uint32_t dump_mask);
+                                     Stream &strm, uint32_t dump_mask,
+                                     bool is_json = false);
 
   virtual void DumpAllDescriptions(CommandInterpreter &interpreter,
                                    Stream &strm) const;
@@ -77,7 +70,7 @@ public:
                  std::vector<const Property *> &matching_properties) const;
 
   lldb::OptionValuePropertiesSP GetSubProperty(const ExecutionContext *exe_ctx,
-                                               const ConstString &name);
+                                               ConstString name);
 
   // We sometimes need to introduce a setting to enable experimental features,
   // but then we don't want the setting for these to cause errors when the
@@ -96,4 +89,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_UserSettingsController_h_
+#endif // LLDB_CORE_USERSETTINGSCONTROLLER_H

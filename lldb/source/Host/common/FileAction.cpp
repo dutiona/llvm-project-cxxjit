@@ -1,4 +1,4 @@
-//===-- FileAction.cpp ------------------------------------------*- C++ -*-===//
+//===-- FileAction.cpp ----------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,12 +14,9 @@
 
 using namespace lldb_private;
 
-//----------------------------------------------------------------------------
 // FileAction member functions
-//----------------------------------------------------------------------------
 
-FileAction::FileAction()
-    : m_action(eFileActionNone), m_fd(-1), m_arg(-1), m_file_spec() {}
+FileAction::FileAction() : m_file_spec() {}
 
 void FileAction::Clear() {
   m_action = eFileActionNone;
@@ -28,7 +25,9 @@ void FileAction::Clear() {
   m_file_spec.Clear();
 }
 
-llvm::StringRef FileAction::GetPath() const { return m_file_spec.GetCString(); }
+llvm::StringRef FileAction::GetPath() const {
+  return m_file_spec.GetPathAsConstString().AsCString();
+}
 
 const FileSpec &FileAction::GetFileSpec() const { return m_file_spec; }
 
@@ -84,7 +83,7 @@ void FileAction::Dump(Stream &stream) const {
     break;
   case eFileActionOpen:
     stream.Printf("open fd %d with '%s', OFLAGS = 0x%x", m_fd,
-                  m_file_spec.GetCString(), m_arg);
+                  m_file_spec.GetPath().c_str(), m_arg);
     break;
   }
 }

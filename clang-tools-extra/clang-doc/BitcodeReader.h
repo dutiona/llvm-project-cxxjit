@@ -18,10 +18,10 @@
 #include "BitcodeWriter.h"
 #include "Representation.h"
 #include "clang/AST/AST.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Bitcode/BitstreamReader.h"
+#include "llvm/Bitstream/BitstreamReader.h"
 #include "llvm/Support/Error.h"
+#include <optional>
 
 namespace clang {
 namespace doc {
@@ -61,11 +61,11 @@ private:
   // or block to be read.
   Cursor skipUntilRecordOrBlock(unsigned &BlockOrRecordID);
 
-  // Helper function to set up the approriate type of Info.
+  // Helper function to set up the appropriate type of Info.
   llvm::Expected<std::unique_ptr<Info>> readBlockToInfo(unsigned ID);
 
   llvm::BitstreamCursor &Stream;
-  Optional<llvm::BitstreamBlockInfo> BlockInfo;
+  std::optional<llvm::BitstreamBlockInfo> BlockInfo;
   FieldId CurrentReferenceField;
 };
 

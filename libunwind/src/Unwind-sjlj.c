@@ -1,4 +1,4 @@
-//===--------------------------- Unwind-sjlj.c ----------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -32,14 +32,26 @@ struct _Unwind_FunctionContext {
   // next function in stack of handlers
   struct _Unwind_FunctionContext *prev;
 
+#if defined(__ve__)
+  // VE requires to store 64 bit pointers in the buffer for SjLj exception.
+  // We expand the size of values defined here.  This size must be matched
+  // to the size returned by TargetMachine::getSjLjDataSize().
+
+  // set by calling function before registering to be the landing pad
+  uint64_t                        resumeLocation;
+
+  // set by personality handler to be parameters passed to landing pad function
+  uint64_t                        resumeParameters[4];
+#else
   // set by calling function before registering to be the landing pad
   uint32_t                        resumeLocation;
 
   // set by personality handler to be parameters passed to landing pad function
   uint32_t                        resumeParameters[4];
+#endif
 
   // set by calling function before registering
-  __personality_routine           personality; // arm offset=24
+  _Unwind_Personality_Fn personality;          // arm offset=24
   uintptr_t                       lsda;        // arm offset=28
 
   // variable length array, contains registers to restore
@@ -177,9 +189,10 @@ unwind_phase2(struct _Unwind_Exception *exception_object) {
 
     // check for no more frames
     if (c == NULL) {
-      _LIBUNWIND_TRACE_UNWINDING("unwind_phase2(ex_ojb=%p): unw_step() reached "
-                                 "bottom => _URC_END_OF_STACK",
-                                 (void *)exception_object);
+      _LIBUNWIND_TRACE_UNWINDING(
+          "unwind_phase2(ex_ojb=%p): __unw_step() reached "
+          "bottom => _URC_END_OF_STACK",
+          (void *)exception_object);
       return _URC_END_OF_STACK;
     }
 
@@ -215,7 +228,7 @@ unwind_phase2(struct _Unwind_Exception *exception_object) {
         // we may get control back if landing pad calls _Unwind_Resume()
         __Unwind_SjLj_SetTopOfFunctionStack(c);
         __builtin_longjmp(c->jbuf, 1);
-        // unw_resume() only returns if there was an error
+        // __unw_resume() only returns if there was an error
         return _URC_FATAL_PHASE2_ERROR;
       default:
         // something went wrong
@@ -242,9 +255,10 @@ unwind_phase2_forced(struct _Unwind_Exception *exception_object,
 
     // get next frame (skip over first which is _Unwind_RaiseException)
     if (c == NULL) {
-      _LIBUNWIND_TRACE_UNWINDING("unwind_phase2(ex_ojb=%p): unw_step() reached "
-                                 "bottom => _URC_END_OF_STACK",
-                                 (void *)exception_object);
+      _LIBUNWIND_TRACE_UNWINDING(
+          "unwind_phase2(ex_ojb=%p): __unw_step() reached "
+          "bottom => _URC_END_OF_STACK",
+          (void *)exception_object);
       return _URC_END_OF_STACK;
     }
 
@@ -266,7 +280,7 @@ unwind_phase2_forced(struct _Unwind_Exception *exception_object,
 
     // if there is a personality routine, tell it we are unwinding
     if (c->personality != NULL) {
-      __personality_routine p = (__personality_routine) c->personality;
+      _Unwind_Personality_Fn p = (_Unwind_Personality_Fn)c->personality;
       _LIBUNWIND_TRACE_UNWINDING("unwind_phase2_forced(ex_ojb=%p): "
                                  "calling personality function %p",
                                  (void *)exception_object, (void *)p);
@@ -343,7 +357,7 @@ _Unwind_SjLj_RaiseException(struct _Unwind_Exception *exception_object) {
 /// may force a jump to a landing pad in that function, the landing
 /// pad code may then call _Unwind_Resume() to continue with the
 /// unwinding.  Note: the call to _Unwind_Resume() is from compiler
-/// geneated user code.  All other _Unwind_* routines are called
+/// generated user code.  All other _Unwind_* routines are called
 /// by the C++ runtime __cxa_* routines.
 ///
 /// Re-throwing an exception is implemented by having the code call
@@ -380,7 +394,7 @@ _Unwind_SjLj_Resume_or_Rethrow(struct _Unwind_Exception *exception_object) {
     // std::terminate()
   }
 
-  // Call through to _Unwind_Resume() which distiguishes between forced and
+  // Call through to _Unwind_Resume() which distinguishes between forced and
   // regular exceptions.
   _Unwind_SjLj_Resume(exception_object);
   _LIBUNWIND_ABORT("__Unwind_SjLj_Resume_or_Rethrow() called "

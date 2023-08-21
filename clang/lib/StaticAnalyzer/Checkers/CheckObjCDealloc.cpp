@@ -28,6 +28,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
+#include "clang/Analysis/PathDiagnostic.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
@@ -36,7 +37,6 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
@@ -45,6 +45,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SymbolManager.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -282,11 +283,11 @@ void ObjCDeallocChecker::checkBeginFunction(
       continue;
 
     SVal LVal = State->getLValue(PropImpl->getPropertyIvarDecl(), SelfVal);
-    Optional<Loc> LValLoc = LVal.getAs<Loc>();
+    std::optional<Loc> LValLoc = LVal.getAs<Loc>();
     if (!LValLoc)
       continue;
 
-    SVal InitialVal = State->getSVal(LValLoc.getValue());
+    SVal InitialVal = State->getSVal(*LValLoc);
     SymbolRef Symbol = InitialVal.getAsSymbol();
     if (!Symbol || !isa<SymbolRegionValue>(Symbol))
       continue;
@@ -406,7 +407,7 @@ ProgramStateRef ObjCDeallocChecker::evalAssume(ProgramStateRef State, SVal Cond,
   if (State->get<UnreleasedIvarMap>().isEmpty())
     return State;
 
-  auto *CondBSE = dyn_cast_or_null<BinarySymExpr>(Cond.getAsSymExpr());
+  auto *CondBSE = dyn_cast_or_null<BinarySymExpr>(Cond.getAsSymbol());
   if (!CondBSE)
     return State;
 
@@ -576,9 +577,8 @@ void ObjCDeallocChecker::diagnoseMissingReleases(CheckerContext &C) const {
     OS << " by a synthesized property but not released"
           " before '[super dealloc]'";
 
-    std::unique_ptr<BugReport> BR(
-        new BugReport(*MissingReleaseBugType, OS.str(), ErrNode));
-
+    auto BR = std::make_unique<PathSensitiveBugReport>(*MissingReleaseBugType,
+                                                       OS.str(), ErrNode);
     C.emitReport(std::move(BR));
   }
 
@@ -699,8 +699,8 @@ bool ObjCDeallocChecker::diagnoseExtraRelease(SymbolRef ReleasedValue,
     OS <<  " property but was released in 'dealloc'";
   }
 
-  std::unique_ptr<BugReport> BR(
-      new BugReport(*ExtraReleaseBugType, OS.str(), ErrNode));
+  auto BR = std::make_unique<PathSensitiveBugReport>(*ExtraReleaseBugType,
+                                                     OS.str(), ErrNode);
   BR->addRange(M.getOriginExpr()->getSourceRange());
 
   C.emitReport(std::move(BR));
@@ -741,8 +741,8 @@ bool ObjCDeallocChecker::diagnoseMistakenDealloc(SymbolRef DeallocedValue,
   OS << "'" << *PropImpl->getPropertyIvarDecl()
      << "' should be released rather than deallocated";
 
-  std::unique_ptr<BugReport> BR(
-      new BugReport(*MistakenDeallocBugType, OS.str(), ErrNode));
+  auto BR = std::make_unique<PathSensitiveBugReport>(*MistakenDeallocBugType,
+                                                     OS.str(), ErrNode);
   BR->addRange(M.getOriginExpr()->getSourceRange());
 
   C.emitReport(std::move(BR));
@@ -954,11 +954,11 @@ ObjCDeallocChecker::getValueReleasedByNillingOut(const ObjCMethodCall &M,
   ProgramStateRef State = C.getState();
 
   SVal LVal = State->getLValue(PropIvarDecl, ReceiverVal);
-  Optional<Loc> LValLoc = LVal.getAs<Loc>();
+  std::optional<Loc> LValLoc = LVal.getAs<Loc>();
   if (!LValLoc)
     return nullptr;
 
-  SVal CurrentValInIvar = State->getSVal(LValLoc.getValue());
+  SVal CurrentValInIvar = State->getSVal(*LValLoc);
   return CurrentValInIvar.getAsSymbol();
 }
 
@@ -1005,7 +1005,7 @@ bool ObjCDeallocChecker::instanceDeallocIsOnStack(const CheckerContext &C,
   return false;
 }
 
-/// Returns true if the ID is a class in which which is known to have
+/// Returns true if the ID is a class in which is known to have
 /// a separate teardown lifecycle. In this case, -dealloc warnings
 /// about missing releases should be suppressed.
 bool ObjCDeallocChecker::classHasSeparateTeardown(
@@ -1086,14 +1086,11 @@ bool ObjCDeallocChecker::isNibLoadedIvarWithoutRetain(
 }
 
 void ento::registerObjCDeallocChecker(CheckerManager &Mgr) {
-  const LangOptions &LangOpts = Mgr.getLangOpts();
-  // These checker only makes sense under MRR.
-  if (LangOpts.getGC() == LangOptions::GCOnly || LangOpts.ObjCAutoRefCount)
-    return;
-
   Mgr.registerChecker<ObjCDeallocChecker>();
 }
 
-bool ento::shouldRegisterObjCDeallocChecker(const LangOptions &LO) {
-  return true;
+bool ento::shouldRegisterObjCDeallocChecker(const CheckerManager &mgr) {
+  // These checker only makes sense under MRR.
+  const LangOptions &LO = mgr.getLangOpts();
+  return LO.getGC() != LangOptions::GCOnly && !LO.ObjCAutoRefCount;
 }

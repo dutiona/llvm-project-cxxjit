@@ -7,10 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "ExprSequence.h"
+#include "clang/AST/ParentMapContext.h"
+#include <optional>
 
-namespace clang {
-namespace tidy {
-namespace utils {
+namespace clang::tidy::utils {
 
 // Returns the Stmt nodes that are parents of 'S', skipping any potential
 // intermediate non-Stmt nodes.
@@ -28,13 +28,13 @@ static SmallVector<const Stmt *, 1> getParentStmts(const Stmt *S,
                                                    ASTContext *Context) {
   SmallVector<const Stmt *, 1> Result;
 
-  ASTContext::DynTypedNodeList Parents = Context->getParents(*S);
+  TraversalKindScope RAII(*Context, TK_AsIs);
+  DynTypedNodeList Parents = Context->getParents(*S);
 
-  SmallVector<ast_type_traits::DynTypedNode, 1> NodesToProcess(Parents.begin(),
-                                                               Parents.end());
+  SmallVector<DynTypedNode, 1> NodesToProcess(Parents.begin(), Parents.end());
 
   while (!NodesToProcess.empty()) {
-    ast_type_traits::DynTypedNode Node = NodesToProcess.back();
+    DynTypedNode Node = NodesToProcess.back();
     NodesToProcess.pop_back();
 
     if (const auto *S = Node.get<Stmt>()) {
@@ -60,7 +60,7 @@ bool isDescendantOrEqual(const Stmt *Descendant, const Stmt *Ancestor,
 
   return false;
 }
-}
+} // namespace
 
 ExprSequence::ExprSequence(const CFG *TheCFG, const Stmt *Root,
                            ASTContext *TheContext)
@@ -145,17 +145,24 @@ const Stmt *ExprSequence::getSequenceSuccessor(const Stmt *S) const {
         return ForRange->getBody();
     } else if (const auto *TheIfStmt = dyn_cast<IfStmt>(Parent)) {
       // If statement:
-      // - Sequence init statement before variable declaration.
+      // - Sequence init statement before variable declaration, if present;
+      //   before condition evaluation, otherwise.
       // - Sequence variable declaration (along with the expression used to
       //   initialize it) before the evaluation of the condition.
-      if (S == TheIfStmt->getInit())
-        return TheIfStmt->getConditionVariableDeclStmt();
+      if (S == TheIfStmt->getInit()) {
+        if (TheIfStmt->getConditionVariableDeclStmt() != nullptr)
+          return TheIfStmt->getConditionVariableDeclStmt();
+        return TheIfStmt->getCond();
+      }
       if (S == TheIfStmt->getConditionVariableDeclStmt())
         return TheIfStmt->getCond();
     } else if (const auto *TheSwitchStmt = dyn_cast<SwitchStmt>(Parent)) {
       // Ditto for switch statements.
-      if (S == TheSwitchStmt->getInit())
-        return TheSwitchStmt->getConditionVariableDeclStmt();
+      if (S == TheSwitchStmt->getInit()) {
+        if (TheSwitchStmt->getConditionVariableDeclStmt() != nullptr)
+          return TheSwitchStmt->getConditionVariableDeclStmt();
+        return TheSwitchStmt->getCond();
+      }
       if (S == TheSwitchStmt->getConditionVariableDeclStmt())
         return TheSwitchStmt->getCond();
     } else if (const auto *TheWhileStmt = dyn_cast<WhileStmt>(Parent)) {
@@ -180,7 +187,7 @@ StmtToBlockMap::StmtToBlockMap(const CFG *TheCFG, ASTContext *TheContext)
     : Context(TheContext) {
   for (const auto *B : *TheCFG) {
     for (const auto &Elem : *B) {
-      if (Optional<CFGStmt> S = Elem.getAs<CFGStmt>())
+      if (std::optional<CFGStmt> S = Elem.getAs<CFGStmt>())
         Map[S->getStmt()] = B;
     }
   }
@@ -197,6 +204,4 @@ const CFGBlock *StmtToBlockMap::blockContainingStmt(const Stmt *S) const {
   return Map.lookup(S);
 }
 
-} // namespace utils
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::utils

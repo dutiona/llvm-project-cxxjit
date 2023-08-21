@@ -74,7 +74,7 @@ public:
   /// canonical type pointers.
   template <typename U>
   CanQual(const CanQual<U> &Other,
-          typename std::enable_if<std::is_base_of<T, U>::value, int>::type = 0);
+          std::enable_if_t<std::is_base_of<T, U>::value, int> = 0);
 
   /// Retrieve the underlying type pointer, which refers to a
   /// canonical type.
@@ -215,8 +215,8 @@ inline CanQualType Type::getCanonicalTypeUnqualified() const {
   return CanQualType::CreateUnsafe(getCanonicalTypeInternal());
 }
 
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           CanQualType T) {
+inline const StreamingDiagnostic &operator<<(const StreamingDiagnostic &DB,
+                                             CanQualType T) {
   DB << static_cast<QualType>(T);
   return DB;
 }
@@ -264,6 +264,8 @@ public:
   // Type predicates
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isObjectType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isIncompleteType)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isSizelessType)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isSizelessBuiltinType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isIncompleteOrObjectType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isVariablyModifiedType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isIntegerType)
@@ -303,7 +305,6 @@ public:
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, hasSignedIntegerRepresentation)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, hasUnsignedIntegerRepresentation)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, hasFloatingRepresentation)
-  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isPromotableIntegerType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isSignedIntegerType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isUnsignedIntegerType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isSignedIntegerOrEnumerationType)
@@ -384,7 +385,7 @@ struct PointerLikeTypeTraits<clang::CanQual<T>> {
   }
 
   // qualifier information is encoded in the low bits.
-  enum { NumLowBitsAvailable = 0 };
+  static constexpr int NumLowBitsAvailable = 0;
 };
 
 } // namespace llvm
@@ -527,7 +528,7 @@ struct CanProxyAdaptor<FunctionProtoType>
 
 template<>
 struct CanProxyAdaptor<TypeOfType> : public CanProxyBase<TypeOfType> {
-  LLVM_CLANG_CANPROXY_TYPE_ACCESSOR(getUnderlyingType)
+  LLVM_CLANG_CANPROXY_TYPE_ACCESSOR(getUnmodifiedType)
 };
 
 template<>

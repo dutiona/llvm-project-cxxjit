@@ -47,9 +47,6 @@ class ObjCContainersChecker : public Checker< check::PreStmt<CallExpr>,
                    CheckerContext &C) const;
 
 public:
-  /// A tag to id this checker.
-  static void *getTag() { static int Tag; return &Tag; }
-
   void checkPostStmt(const CallExpr *CE, CheckerContext &C) const;
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
   ProgramStateRef checkPointerEscape(ProgramStateRef State,
@@ -58,7 +55,7 @@ public:
                                      PointerEscapeKind Kind) const;
 
   void printState(raw_ostream &OS, ProgramStateRef State,
-                  const char *NL, const char *Sep) const;
+                  const char *NL, const char *Sep) const override;
 };
 } // end anonymous namespace
 
@@ -137,17 +134,19 @@ void ObjCContainersChecker::checkPreStmt(const CallExpr *CE,
 
     // Now, check if 'Idx in [0, Size-1]'.
     const QualType T = IdxExpr->getType();
-    ProgramStateRef StInBound = State->assumeInBound(Idx, *Size, true, T);
-    ProgramStateRef StOutBound = State->assumeInBound(Idx, *Size, false, T);
+    ProgramStateRef StInBound, StOutBound;
+    std::tie(StInBound, StOutBound) = State->assumeInBoundDual(Idx, *Size, T);
     if (StOutBound && !StInBound) {
       ExplodedNode *N = C.generateErrorNode(StOutBound);
       if (!N)
         return;
       initBugType();
-      auto R = llvm::make_unique<BugReport>(*BT, "Index is out of bounds", N);
+      auto R = std::make_unique<PathSensitiveBugReport>(
+          *BT, "Index is out of bounds", N);
       R->addRange(IdxExpr->getSourceRange());
       bugreporter::trackExpressionValue(N, IdxExpr, *R,
-                                        /*EnableNullFPSuppression=*/false);
+                                        {bugreporter::TrackingKind::Thorough,
+                                         /*EnableNullFPSuppression=*/false});
       C.emitReport(std::move(R));
       return;
     }
@@ -187,6 +186,6 @@ void ento::registerObjCContainersChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCContainersChecker>();
 }
 
-bool ento::shouldRegisterObjCContainersChecker(const LangOptions &LO) {
+bool ento::shouldRegisterObjCContainersChecker(const CheckerManager &mgr) {
   return true;
 }

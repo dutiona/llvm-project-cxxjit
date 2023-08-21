@@ -9,9 +9,10 @@
 #include "BenchmarkResult.h"
 #include "X86InstrInfo.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
@@ -19,7 +20,9 @@
 #include "gtest/gtest.h"
 
 using ::testing::AllOf;
+using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::Field;
 using ::testing::get;
 using ::testing::Pointwise;
 using ::testing::Property;
@@ -27,14 +30,11 @@ using ::testing::Property;
 namespace llvm {
 namespace exegesis {
 
-bool operator==(const BenchmarkMeasure &A, const BenchmarkMeasure &B) {
-  return std::tie(A.Key, A.PerInstructionValue, A.PerSnippetValue) ==
-         std::tie(B.Key, B.PerInstructionValue, B.PerSnippetValue);
-}
+void InitializeX86ExegesisTarget();
 
-static std::string Dump(const llvm::MCInst &McInst) {
+static std::string Dump(const MCInst &McInst) {
   std::string Buffer;
-  llvm::raw_string_ostream OS(Buffer);
+  raw_string_ostream OS(Buffer);
   McInst.print(OS);
   return Buffer;
 }
@@ -55,23 +55,25 @@ TEST(BenchmarkResultTest, WriteToAndReadFromDisk) {
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetMC();
+  InitializeX86ExegesisTarget();
 
   // Read benchmarks.
-  const LLVMState State("x86_64-unknown-linux", "haswell");
+  const LLVMState State =
+      cantFail(LLVMState::Create("x86_64-unknown-linux", "haswell"));
 
-  llvm::ExitOnError ExitOnErr;
+  ExitOnError ExitOnErr;
 
   InstructionBenchmark ToDisk;
 
-  ToDisk.Key.Instructions.push_back(llvm::MCInstBuilder(llvm::X86::XOR32rr)
-                                        .addReg(llvm::X86::AL)
-                                        .addReg(llvm::X86::AH)
+  ToDisk.Key.Instructions.push_back(MCInstBuilder(X86::XOR32rr)
+                                        .addReg(X86::AL)
+                                        .addReg(X86::AH)
                                         .addImm(123)
-                                        .addFPImm(0.5));
+                                        .addDFPImm(bit_cast<uint64_t>(0.5)));
   ToDisk.Key.Config = "config";
   ToDisk.Key.RegisterInitialValues = {
-      RegisterValue{llvm::X86::AL, llvm::APInt(8, "-1", 10)},
-      RegisterValue{llvm::X86::AH, llvm::APInt(8, "123", 10)}};
+      RegisterValue{X86::AL, APInt(8, "-1", 10)},
+      RegisterValue{X86::AH, APInt(8, "123", 10)}};
   ToDisk.Mode = InstructionBenchmark::Latency;
   ToDisk.CpuName = "cpu_name";
   ToDisk.LLVMTriple = "llvm_triple";
@@ -81,18 +83,42 @@ TEST(BenchmarkResultTest, WriteToAndReadFromDisk) {
   ToDisk.Error = "error";
   ToDisk.Info = "info";
 
-  llvm::SmallString<64> Filename;
+  SmallString<64> Filename;
   std::error_code EC;
-  EC = llvm::sys::fs::createUniqueDirectory("BenchmarkResultTestDir", Filename);
+  EC = sys::fs::createUniqueDirectory("BenchmarkResultTestDir", Filename);
   ASSERT_FALSE(EC);
-  llvm::sys::path::append(Filename, "data.yaml");
-  llvm::errs() << Filename << "-------\n";
-  ExitOnErr(ToDisk.writeYaml(State, Filename));
+  sys::path::append(Filename, "data.yaml");
+  errs() << Filename << "-------\n";
+  {
+    int ResultFD = 0;
+    // Create output file or open existing file and truncate it, once.
+    ExitOnErr(errorCodeToError(openFileForWrite(Filename, ResultFD,
+                                                sys::fs::CD_CreateAlways,
+                                                sys::fs::OF_TextWithCRLF)));
+    raw_fd_ostream FileOstr(ResultFD, true /*shouldClose*/);
 
+    ExitOnErr(ToDisk.writeYamlTo(State, FileOstr));
+  }
+
+  const std::unique_ptr<MemoryBuffer> Buffer =
+      std::move(*MemoryBuffer::getFile(Filename));
+
+  {
+    // Read Triples/Cpu only.
+    const auto TriplesAndCpus =
+        ExitOnErr(InstructionBenchmark::readTriplesAndCpusFromYamls(*Buffer));
+
+    ASSERT_THAT(TriplesAndCpus,
+                testing::ElementsAre(
+                    AllOf(Field(&InstructionBenchmark::TripleAndCpu::LLVMTriple,
+                                Eq("llvm_triple")),
+                          Field(&InstructionBenchmark::TripleAndCpu::CpuName,
+                                Eq("cpu_name")))));
+  }
   {
     // One-element version.
     const auto FromDisk =
-        ExitOnErr(InstructionBenchmark::readYaml(State, Filename));
+        ExitOnErr(InstructionBenchmark::readYaml(State, *Buffer));
 
     EXPECT_THAT(FromDisk.Key.Instructions,
                 Pointwise(EqMCInst(), ToDisk.Key.Instructions));
@@ -108,9 +134,9 @@ TEST(BenchmarkResultTest, WriteToAndReadFromDisk) {
   {
     // Vector version.
     const auto FromDiskVector =
-        ExitOnErr(InstructionBenchmark::readYamls(State, Filename));
+        ExitOnErr(InstructionBenchmark::readYamls(State, *Buffer));
     ASSERT_EQ(FromDiskVector.size(), size_t{1});
-    const auto FromDisk = FromDiskVector[0];
+    const auto &FromDisk = FromDiskVector[0];
     EXPECT_THAT(FromDisk.Key.Instructions,
                 Pointwise(EqMCInst(), ToDisk.Key.Instructions));
     EXPECT_EQ(FromDisk.Key.Config, ToDisk.Key.Config);

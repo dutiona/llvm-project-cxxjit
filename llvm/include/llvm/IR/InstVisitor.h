@@ -10,13 +10,11 @@
 #ifndef LLVM_IR_INSTVISITOR_H
 #define LLVM_IR_INSTVISITOR_H
 
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
 
@@ -199,8 +197,9 @@ public:
   RetTy visitFuncletPadInst(FuncletPadInst &I) { DELEGATE(Instruction); }
   RetTy visitCleanupPadInst(CleanupPadInst &I) { DELEGATE(FuncletPadInst); }
   RetTy visitCatchPadInst(CatchPadInst &I)     { DELEGATE(FuncletPadInst); }
+  RetTy visitFreezeInst(FreezeInst &I)         { DELEGATE(Instruction); }
 
-  // Handle the special instrinsic instruction classes.
+  // Handle the special intrinsic instruction classes.
   RetTy visitDbgDeclareInst(DbgDeclareInst &I)    { DELEGATE(DbgVariableIntrinsic);}
   RetTy visitDbgValueInst(DbgValueInst &I)        { DELEGATE(DbgVariableIntrinsic);}
   RetTy visitDbgVariableIntrinsic(DbgVariableIntrinsic &I)
@@ -208,7 +207,9 @@ public:
   RetTy visitDbgLabelInst(DbgLabelInst &I)        { DELEGATE(DbgInfoIntrinsic);}
   RetTy visitDbgInfoIntrinsic(DbgInfoIntrinsic &I){ DELEGATE(IntrinsicInst); }
   RetTy visitMemSetInst(MemSetInst &I)            { DELEGATE(MemIntrinsic); }
+  RetTy visitMemSetInlineInst(MemSetInlineInst &I){ DELEGATE(MemSetInst); }
   RetTy visitMemCpyInst(MemCpyInst &I)            { DELEGATE(MemTransferInst); }
+  RetTy visitMemCpyInlineInst(MemCpyInlineInst &I){ DELEGATE(MemCpyInst); }
   RetTy visitMemMoveInst(MemMoveInst &I)          { DELEGATE(MemTransferInst); }
   RetTy visitMemTransferInst(MemTransferInst &I)  { DELEGATE(MemIntrinsic); }
   RetTy visitMemIntrinsic(MemIntrinsic &I)        { DELEGATE(IntrinsicInst); }
@@ -216,18 +217,9 @@ public:
   RetTy visitVAEndInst(VAEndInst &I)              { DELEGATE(IntrinsicInst); }
   RetTy visitVACopyInst(VACopyInst &I)            { DELEGATE(IntrinsicInst); }
   RetTy visitIntrinsicInst(IntrinsicInst &I)      { DELEGATE(CallInst); }
-
-  // Call, Invoke and CallBr are slightly different as they delegate first
-  // through a generic CallSite visitor.
-  RetTy visitCallInst(CallInst &I) {
-    return static_cast<SubClass*>(this)->visitCallSite(&I);
-  }
-  RetTy visitInvokeInst(InvokeInst &I) {
-    return static_cast<SubClass*>(this)->visitCallSite(&I);
-  }
-  RetTy visitCallBrInst(CallBrInst &I) {
-    return static_cast<SubClass *>(this)->visitCallSite(&I);
-  }
+  RetTy visitCallInst(CallInst &I)                { DELEGATE(CallBase); }
+  RetTy visitInvokeInst(InvokeInst &I)            { DELEGATE(CallBase); }
+  RetTy visitCallBrInst(CallBrInst &I)            { DELEGATE(CallBase); }
 
   // While terminators don't have a distinct type modeling them, we support
   // intercepting them with dedicated a visitor callback.
@@ -279,16 +271,6 @@ public:
     DELEGATE(Instruction);
   }
 
-  // Provide a legacy visitor for a 'callsite' that visits calls, invokes,
-  // and calbrs.
-  //
-  // Prefer overriding the type system based `CallBase` instead.
-  RetTy visitCallSite(CallSite CS) {
-    assert(CS);
-    Instruction &I = *CS.getInstruction();
-    DELEGATE(CallBase);
-  }
-
   // If the user wants a 'default' case, they can choose to override this
   // function.  If this function is not overloaded in the user's subclass, then
   // this instruction just gets ignored.
@@ -307,8 +289,12 @@ private:
       case Intrinsic::dbg_value:   DELEGATE(DbgValueInst);
       case Intrinsic::dbg_label:   DELEGATE(DbgLabelInst);
       case Intrinsic::memcpy:      DELEGATE(MemCpyInst);
+      case Intrinsic::memcpy_inline:
+        DELEGATE(MemCpyInlineInst);
       case Intrinsic::memmove:     DELEGATE(MemMoveInst);
       case Intrinsic::memset:      DELEGATE(MemSetInst);
+      case Intrinsic::memset_inline:
+        DELEGATE(MemSetInlineInst);
       case Intrinsic::vastart:     DELEGATE(VAStartInst);
       case Intrinsic::vaend:       DELEGATE(VAEndInst);
       case Intrinsic::vacopy:      DELEGATE(VACopyInst);

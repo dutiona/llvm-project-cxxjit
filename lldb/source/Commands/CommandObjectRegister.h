@@ -6,33 +6,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_CommandObjectRegister_h_
-#define liblldb_CommandObjectRegister_h_
+#ifndef LLDB_SOURCE_COMMANDS_COMMANDOBJECTREGISTER_H
+#define LLDB_SOURCE_COMMANDS_COMMANDOBJECTREGISTER_H
 
 #include "lldb/Interpreter/CommandObjectMultiword.h"
 
 namespace lldb_private {
 
-//-------------------------------------------------------------------------
 // CommandObjectRegister
-//-------------------------------------------------------------------------
 
 class CommandObjectRegister : public CommandObjectMultiword {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   CommandObjectRegister(CommandInterpreter &interpreter);
 
   ~CommandObjectRegister() override;
 
 private:
-  //------------------------------------------------------------------
   // For CommandObjectRegister only
-  //------------------------------------------------------------------
-  DISALLOW_COPY_AND_ASSIGN(CommandObjectRegister);
+  CommandObjectRegister(const CommandObjectRegister &) = delete;
+  const CommandObjectRegister &
+  operator=(const CommandObjectRegister &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_CommandObjectRegister_h_
+#endif // LLDB_SOURCE_COMMANDS_COMMANDOBJECTREGISTER_H

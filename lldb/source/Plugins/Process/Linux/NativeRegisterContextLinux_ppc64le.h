@@ -43,13 +43,11 @@ public:
   Status WriteRegister(const RegisterInfo *reg_info,
                        const RegisterValue &reg_value) override;
 
-  Status ReadAllRegisterValues(lldb::DataBufferSP &data_sp) override;
+  Status ReadAllRegisterValues(lldb::WritableDataBufferSP &data_sp) override;
 
   Status WriteAllRegisterValues(const lldb::DataBufferSP &data_sp) override;
 
-  //------------------------------------------------------------------
   // Hardware watchpoint management functions
-  //------------------------------------------------------------------
 
   uint32_t NumSupportedHardwareWatchpoints() override;
 
@@ -70,14 +68,6 @@ public:
   bool WatchpointIsEnabled(uint32_t wp_index);
 
 protected:
-  Status DoReadGPR(void *buf, size_t buf_size) override;
-
-  Status DoWriteGPR(void *buf, size_t buf_size) override;
-
-  Status DoReadFPR(void *buf, size_t buf_size) override;
-
-  Status DoWriteFPR(void *buf, size_t buf_size) override;
-
   bool IsVMX(unsigned reg);
 
   bool IsVSX(unsigned reg);
@@ -132,7 +122,7 @@ private:
     int mode;               // Defines if watchpoint is read/write/access.
   };
 
-  std::array<DREG, 4> m_hwp_regs;
+  std::array<DREG, 16> m_hwp_regs;
 
   // 16 is just a maximum value, query hardware for actual watchpoint count
   uint32_t m_max_hwp_supported = 16;

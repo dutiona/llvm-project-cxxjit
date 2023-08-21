@@ -12,15 +12,9 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace objc {
+namespace clang::tidy::objc {
 
 void AvoidNSErrorInitCheck::registerMatchers(MatchFinder *Finder) {
-  // this check should only be applied to ObjC sources.
-  if (!getLangOpts().ObjC)
-    return;
-
   Finder->addMatcher(objcMessageExpr(hasSelector("init"),
                                      hasReceiverType(asString("NSError *")))
                          .bind("nserrorInit"),
@@ -35,6 +29,4 @@ void AvoidNSErrorInitCheck::check(const MatchFinder::MatchResult &Result) {
        "create a new NSError");
 }
 
-}  // namespace objc
-}  // namespace tidy
-}  // namespace clang
+} // namespace clang::tidy::objc

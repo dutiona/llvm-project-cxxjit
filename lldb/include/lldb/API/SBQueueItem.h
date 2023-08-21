@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBQueueItem_h_
-#define LLDB_SBQueueItem_h_
+#ifndef LLDB_API_SBQUEUEITEM_H
+#define LLDB_API_SBQUEUEITEM_H
 
 #include "lldb/API/SBAddress.h"
 #include "lldb/API/SBDefines.h"
@@ -21,6 +21,8 @@ public:
   SBQueueItem(const lldb::QueueItemSP &queue_item_sp);
 
   ~SBQueueItem();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -44,4 +46,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBQueueItem_h_
+#endif // LLDB_API_SBQUEUEITEM_H

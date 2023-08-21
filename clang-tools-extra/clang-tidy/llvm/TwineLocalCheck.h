@@ -6,14 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINE_LOCAL_CHECK_H
-#define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINE_LOCAL_CHECK_H
+#ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINELOCALCHECK_H
+#define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINELOCALCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace llvm {
+namespace clang::tidy::llvm_check {
 
 /// Looks for local `Twine` variables which are prone to use after frees and
 /// should be generally avoided.
@@ -25,8 +23,6 @@ public:
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace llvm
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::llvm_check
 
-#endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINE_LOCAL_CHECK_H
+#endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_LLVM_TWINELOCALCHECK_H

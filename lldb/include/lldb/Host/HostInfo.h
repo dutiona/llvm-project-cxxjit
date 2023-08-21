@@ -1,4 +1,4 @@
-//===-- HostInfoBase.h ------------------------------------------*- C++ -*-===//
+//===-- HostInfo.h ----------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,11 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_Host_HostInfo_h_
-#define lldb_Host_HostInfo_h_
+#ifndef LLDB_HOST_HOSTINFO_H
+#define LLDB_HOST_HOSTINFO_H
 
-//----------------------------------------------------------------------
-/// @class HostInfo HostInfo.h "lldb/Host/HostInfo.h"
+/// \class HostInfo HostInfo.h "lldb/Host/HostInfo.h"
 /// A class that provides host computer information.
 ///
 /// HostInfo is a class that answers information about the host operating
@@ -32,12 +31,11 @@
 /// method and if used in a context where the method doesn't make sense, will
 /// generate a compiler error.
 ///
-//----------------------------------------------------------------------
 
 #if defined(_WIN32)
 #include "lldb/Host/windows/HostInfoWindows.h"
 #define HOST_INFO_TYPE HostInfoWindows
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__EMSCRIPTEN__)
 #if defined(__ANDROID__)
 #include "lldb/Host/android/HostInfoAndroid.h"
 #define HOST_INFO_TYPE HostInfoAndroid

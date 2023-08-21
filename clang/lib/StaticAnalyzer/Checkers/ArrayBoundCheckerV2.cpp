@@ -11,19 +11,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/AST/CharUnits.h"
+#include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
+#include "clang/StaticAnalyzer/Checkers/Taint.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/APSIntType.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicExtent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace clang;
 using namespace ento;
+using namespace taint;
 
 namespace {
 class ArrayBoundCheckerV2 :
@@ -81,7 +85,7 @@ static SVal computeExtentBegin(SValBuilder &svalBuilder,
 static std::pair<NonLoc, nonloc::ConcreteInt>
 getSimplifiedOffsets(NonLoc offset, nonloc::ConcreteInt extent,
                      SValBuilder &svalBuilder) {
-  Optional<nonloc::SymbolVal> SymVal = offset.getAs<nonloc::SymbolVal>();
+  std::optional<nonloc::SymbolVal> SymVal = offset.getAs<nonloc::SymbolVal>();
   if (SymVal && SymVal->isExpression()) {
     if (const SymIntExpr *SIE = dyn_cast<SymIntExpr>(SymVal->getSymbol())) {
       llvm::APSInt constant =
@@ -140,11 +144,10 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
 
   SVal extentBegin = computeExtentBegin(svalBuilder, rawOffset.getRegion());
 
-  if (Optional<NonLoc> NV = extentBegin.getAs<NonLoc>()) {
-    if (NV->getAs<nonloc::ConcreteInt>()) {
+  if (std::optional<NonLoc> NV = extentBegin.getAs<NonLoc>()) {
+    if (auto ConcreteNV = NV->getAs<nonloc::ConcreteInt>()) {
       std::pair<NonLoc, nonloc::ConcreteInt> simplifiedOffsets =
-          getSimplifiedOffsets(rawOffset.getByteOffset(),
-                               NV->castAs<nonloc::ConcreteInt>(),
+          getSimplifiedOffsets(rawOffset.getByteOffset(), *ConcreteNV,
                                svalBuilder);
       rawOffsetVal = simplifiedOffsets.first;
       *NV = simplifiedOffsets.second;
@@ -153,7 +156,7 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
     SVal lowerBound = svalBuilder.evalBinOpNN(state, BO_LT, rawOffsetVal, *NV,
                                               svalBuilder.getConditionType());
 
-    Optional<NonLoc> lowerBoundToCheck = lowerBound.getAs<NonLoc>();
+    std::optional<NonLoc> lowerBoundToCheck = lowerBound.getAs<NonLoc>();
     if (!lowerBoundToCheck)
       return;
 
@@ -173,27 +176,26 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
   }
 
   do {
-    // CHECK UPPER BOUND: Is byteOffset >= extent(baseRegion)?  If so,
+    // CHECK UPPER BOUND: Is byteOffset >= size(baseRegion)?  If so,
     // we are doing a load/store after the last valid offset.
-    DefinedOrUnknownSVal extentVal =
-      rawOffset.getRegion()->getExtent(svalBuilder);
-    if (!extentVal.getAs<NonLoc>())
+    const MemRegion *MR = rawOffset.getRegion();
+    DefinedOrUnknownSVal Size = getDynamicExtent(state, MR, svalBuilder);
+    if (!isa<NonLoc>(Size))
       break;
 
-    if (extentVal.getAs<nonloc::ConcreteInt>()) {
+    if (auto ConcreteSize = Size.getAs<nonloc::ConcreteInt>()) {
       std::pair<NonLoc, nonloc::ConcreteInt> simplifiedOffsets =
-          getSimplifiedOffsets(rawOffset.getByteOffset(),
-                               extentVal.castAs<nonloc::ConcreteInt>(),
+          getSimplifiedOffsets(rawOffset.getByteOffset(), *ConcreteSize,
                                svalBuilder);
       rawOffsetVal = simplifiedOffsets.first;
-      extentVal = simplifiedOffsets.second;
+      Size = simplifiedOffsets.second;
     }
 
     SVal upperbound = svalBuilder.evalBinOpNN(state, BO_GE, rawOffsetVal,
-                                              extentVal.castAs<NonLoc>(),
+                                              Size.castAs<NonLoc>(),
                                               svalBuilder.getConditionType());
 
-    Optional<NonLoc> upperboundToCheck = upperbound.getAs<NonLoc>();
+    std::optional<NonLoc> upperboundToCheck = upperbound.getAs<NonLoc>();
     if (!upperboundToCheck)
       break;
 
@@ -204,9 +206,9 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
     // If we are under constrained and the index variables are tainted, report.
     if (state_exceedsUpperBound && state_withinUpperBound) {
       SVal ByteOffset = rawOffset.getByteOffset();
-      if (state->isTainted(ByteOffset)) {
+      if (isTainted(state, ByteOffset)) {
         reportOOB(checkerContext, state_exceedsUpperBound, OOB_Tainted,
-                  llvm::make_unique<TaintBugVisitor>(ByteOffset));
+                  std::make_unique<TaintBugVisitor>(ByteOffset));
         return;
       }
     } else if (state_exceedsUpperBound) {
@@ -254,7 +256,7 @@ void ArrayBoundCheckerV2::reportOOB(
     break;
   }
 
-  auto BR = llvm::make_unique<BugReport>(*BT, os.str(), errorNode);
+  auto BR = std::make_unique<PathSensitiveBugReport>(*BT, os.str(), errorNode);
   BR->addVisitor(std::move(Visitor));
   checkerContext.emitReport(std::move(BR));
 }
@@ -273,7 +275,7 @@ void RegionRawOffsetV2::dumpToStream(raw_ostream &os) const {
 // is unknown or undefined, we lazily substitute '0'.  Otherwise,
 // return 'val'.
 static inline SVal getValue(SVal val, SValBuilder &svalBuilder) {
-  return val.getAs<UndefinedVal>() ? svalBuilder.makeArrayIndex(0) : val;
+  return val.isUndef() ? svalBuilder.makeZeroArrayIndex() : val;
 }
 
 // Scale a base value by a scaling factor, and return the scaled
@@ -322,7 +324,7 @@ RegionRawOffsetV2 RegionRawOffsetV2::computeOffset(ProgramStateRef state,
       case MemRegion::ElementRegionKind: {
         const ElementRegion *elemReg = cast<ElementRegion>(region);
         SVal index = elemReg->getIndex();
-        if (!index.getAs<NonLoc>())
+        if (!isa<NonLoc>(index))
           return RegionRawOffsetV2();
         QualType elemType = elemReg->getElementType();
         // If the element is an incomplete type, go no further.
@@ -354,6 +356,6 @@ void ento::registerArrayBoundCheckerV2(CheckerManager &mgr) {
   mgr.registerChecker<ArrayBoundCheckerV2>();
 }
 
-bool ento::shouldRegisterArrayBoundCheckerV2(const LangOptions &LO) {
+bool ento::shouldRegisterArrayBoundCheckerV2(const CheckerManager &mgr) {
   return true;
 }

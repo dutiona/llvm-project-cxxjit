@@ -14,6 +14,7 @@
 
 #include <istream>
 #include <cassert>
+#include "test_macros.h"
 
 template <class CharT>
 struct testbuf
@@ -44,37 +45,79 @@ int main(int, char**)
     {
         testbuf<char> sb("   123");
         std::istream is(&sb);
-        ws(is);
+        std::ws(is);
         assert(is.good());
         assert(is.peek() == '1');
     }
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
         testbuf<wchar_t> sb(L"   123");
         std::wistream is(&sb);
-        ws(is);
+        std::ws(is);
         assert(is.good());
         assert(is.peek() == L'1');
     }
+#endif
     {
         testbuf<char> sb("  ");
         std::istream is(&sb);
-        ws(is);
+        std::ws(is);
         assert(!is.fail());
         assert(is.eof());
-        ws(is);
+        std::ws(is);
         assert(is.eof());
         assert(is.fail());
     }
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
         testbuf<wchar_t> sb(L"  ");
         std::wistream is(&sb);
-        ws(is);
+        std::ws(is);
         assert(!is.fail());
         assert(is.eof());
-        ws(is);
+        std::ws(is);
         assert(is.eof());
         assert(is.fail());
     }
+#endif
+#ifndef TEST_HAS_NO_EXCEPTIONS
+    {
+        testbuf<char> sb("  ");
+        std::basic_istream<char> is(&sb);
+        is.exceptions(std::ios_base::eofbit);
 
-  return 0;
+        bool threw = false;
+        try {
+            std::ws(is);
+        } catch (std::ios_base::failure const&) {
+            threw = true;
+        }
+
+        assert(!is.bad());
+        assert(!is.fail());
+        assert( is.eof());
+        assert(threw);
+    }
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
+    {
+        testbuf<wchar_t> sb(L"  ");
+        std::basic_istream<wchar_t> is(&sb);
+        is.exceptions(std::ios_base::eofbit);
+
+        bool threw = false;
+        try {
+            std::ws(is);
+        } catch (std::ios_base::failure const&) {
+            threw = true;
+        }
+
+        assert(!is.bad());
+        assert(!is.fail());
+        assert( is.eof());
+        assert(threw);
+    }
+#endif // TEST_HAS_NO_WIDE_CHARACTERS
+#endif // TEST_HAS_NO_EXCEPTIONS
+
+    return 0;
 }

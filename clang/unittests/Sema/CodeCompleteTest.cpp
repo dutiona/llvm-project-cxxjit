@@ -13,6 +13,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Tooling/Tooling.h"
+#include "llvm/Testing/Annotations/Annotations.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <cstddef>
@@ -22,6 +23,8 @@ namespace {
 
 using namespace clang;
 using namespace clang::tooling;
+using ::testing::AllOf;
+using ::testing::Contains;
 using ::testing::Each;
 using ::testing::UnorderedElementsAre;
 
@@ -35,12 +38,55 @@ struct CompletionContext {
   std::string PtrDiffType;
 };
 
+struct CompletedFunctionDecl {
+  std::string Name;
+  bool IsStatic;
+  bool CanBeCall;
+};
+MATCHER_P(named, name, "") { return arg.Name == name; }
+MATCHER_P(isStatic, value, "") { return arg.IsStatic == value; }
+MATCHER_P(canBeCall, value, "") { return arg.CanBeCall == value; }
+
+class SaveCompletedFunctions : public CodeCompleteConsumer {
+public:
+  SaveCompletedFunctions(std::vector<CompletedFunctionDecl> &CompletedFuncDecls)
+      : CodeCompleteConsumer(/*CodeCompleteOpts=*/{}),
+        CompletedFuncDecls(CompletedFuncDecls),
+        CCTUInfo(std::make_shared<GlobalCodeCompletionAllocator>()) {}
+
+  void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
+                                  CodeCompletionResult *Results,
+                                  unsigned NumResults) override {
+    for (unsigned I = 0; I < NumResults; ++I) {
+      auto R = Results[I];
+      if (R.Kind == CodeCompletionResult::RK_Declaration) {
+        if (const auto *FD = llvm::dyn_cast<FunctionDecl>(R.getDeclaration())) {
+          CompletedFunctionDecl D;
+          D.Name = FD->getNameAsString();
+          D.CanBeCall = R.FunctionCanBeCall;
+          D.IsStatic = FD->isStatic();
+          CompletedFuncDecls.emplace_back(std::move(D));
+        }
+      }
+    }
+  }
+
+private:
+  CodeCompletionAllocator &getAllocator() override {
+    return CCTUInfo.getAllocator();
+  }
+
+  CodeCompletionTUInfo &getCodeCompletionTUInfo() override { return CCTUInfo; }
+
+  std::vector<CompletedFunctionDecl> &CompletedFuncDecls;
+
+  CodeCompletionTUInfo CCTUInfo;
+};
+
 class VisitedContextFinder : public CodeCompleteConsumer {
 public:
   VisitedContextFinder(CompletionContext &ResultCtx)
-      : CodeCompleteConsumer(/*CodeCompleteOpts=*/{},
-                             /*CodeCompleteConsumer*/ false),
-        ResultCtx(ResultCtx),
+      : CodeCompleteConsumer(/*CodeCompleteOpts=*/{}), ResultCtx(ResultCtx),
         CCTUInfo(std::make_shared<GlobalCodeCompletionAllocator>()) {}
 
   void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
@@ -75,19 +121,19 @@ private:
 
 class CodeCompleteAction : public SyntaxOnlyAction {
 public:
-  CodeCompleteAction(ParsedSourceLocation P, CompletionContext &ResultCtx)
-      : CompletePosition(std::move(P)), ResultCtx(ResultCtx) {}
+  CodeCompleteAction(ParsedSourceLocation P, CodeCompleteConsumer *Consumer)
+      : CompletePosition(std::move(P)), Consumer(Consumer) {}
 
   bool BeginInvocation(CompilerInstance &CI) override {
     CI.getFrontendOpts().CodeCompletionAt = CompletePosition;
-    CI.setCodeCompletionConsumer(new VisitedContextFinder(ResultCtx));
+    CI.setCodeCompletionConsumer(Consumer);
     return true;
   }
 
 private:
   // 1-based code complete position <Line, Col>;
   ParsedSourceLocation CompletePosition;
-  CompletionContext &ResultCtx;
+  CodeCompleteConsumer *Consumer;
 };
 
 ParsedSourceLocation offsetToPosition(llvm::StringRef Code, size_t Offset) {
@@ -102,48 +148,25 @@ ParsedSourceLocation offsetToPosition(llvm::StringRef Code, size_t Offset) {
 
 CompletionContext runCompletion(StringRef Code, size_t Offset) {
   CompletionContext ResultCtx;
-  auto Action = llvm::make_unique<CodeCompleteAction>(
-      offsetToPosition(Code, Offset), ResultCtx);
-  clang::tooling::runToolOnCodeWithArgs(Action.release(), Code, {"-std=c++11"},
-                                        TestCCName);
+  clang::tooling::runToolOnCodeWithArgs(
+      std::make_unique<CodeCompleteAction>(offsetToPosition(Code, Offset),
+                                           new VisitedContextFinder(ResultCtx)),
+      Code, {"-std=c++11"}, TestCCName);
   return ResultCtx;
 }
 
-struct ParsedAnnotations {
-  std::vector<size_t> Points;
-  std::string Code;
-};
-
-ParsedAnnotations parseAnnotations(StringRef AnnotatedCode) {
-  ParsedAnnotations R;
-  while (!AnnotatedCode.empty()) {
-    size_t NextPoint = AnnotatedCode.find('^');
-    if (NextPoint == StringRef::npos) {
-      R.Code += AnnotatedCode;
-      AnnotatedCode = "";
-      break;
-    }
-    R.Code += AnnotatedCode.substr(0, NextPoint);
-    R.Points.push_back(R.Code.size());
-
-    AnnotatedCode = AnnotatedCode.substr(NextPoint + 1);
-  }
-  return R;
-}
-
 CompletionContext runCodeCompleteOnCode(StringRef AnnotatedCode) {
-  ParsedAnnotations P = parseAnnotations(AnnotatedCode);
-  assert(P.Points.size() == 1 && "expected exactly one annotation point");
-  return runCompletion(P.Code, P.Points.front());
+  llvm::Annotations A(AnnotatedCode);
+  return runCompletion(A.code(), A.point());
 }
 
 std::vector<std::string>
 collectPreferredTypes(StringRef AnnotatedCode,
                       std::string *PtrDiffType = nullptr) {
-  ParsedAnnotations P = parseAnnotations(AnnotatedCode);
+  llvm::Annotations A(AnnotatedCode);
   std::vector<std::string> Types;
-  for (size_t Point : P.Points) {
-    auto Results = runCompletion(P.Code, Point);
+  for (size_t Point : A.points()) {
+    auto Results = runCompletion(A.code(), Point);
     if (PtrDiffType) {
       assert(PtrDiffType->empty() || *PtrDiffType == Results.PtrDiffType);
       *PtrDiffType = Results.PtrDiffType;
@@ -151,6 +174,69 @@ collectPreferredTypes(StringRef AnnotatedCode,
     Types.push_back(Results.PreferredType);
   }
   return Types;
+}
+
+std::vector<CompletedFunctionDecl>
+CollectCompletedFunctions(StringRef Code, std::size_t Point) {
+  std::vector<CompletedFunctionDecl> Result;
+  clang::tooling::runToolOnCodeWithArgs(
+      std::make_unique<CodeCompleteAction>(offsetToPosition(Code, Point),
+                                           new SaveCompletedFunctions(Result)),
+      Code, {"-std=c++11"}, TestCCName);
+  return Result;
+}
+
+TEST(SemaCodeCompleteTest, FunctionCanBeCall) {
+  llvm::Annotations Code(R"cpp(
+    struct Foo {
+      static int staticMethod();
+      int method() const;
+      Foo() {
+        this->$canBeCall^
+        $canBeCall^
+        Foo::$canBeCall^
+      }
+    };
+
+    struct Derived : Foo {
+      Derived() {
+        Foo::$canBeCall^
+      }
+    };
+
+    struct OtherClass {
+      OtherClass() {
+        Foo f;
+        f.$canBeCall^
+        &Foo::$cannotBeCall^
+      }
+    };
+
+    int main() {
+      Foo f;
+      f.$canBeCall^
+      &Foo::$cannotBeCall^
+    }
+    )cpp");
+
+  for (const auto &P : Code.points("canBeCall")) {
+    auto Results = CollectCompletedFunctions(Code.code(), P);
+    EXPECT_THAT(Results, Contains(AllOf(named("method"), isStatic(false),
+                                        canBeCall(true))));
+  }
+
+  for (const auto &P : Code.points("cannotBeCall")) {
+    auto Results = CollectCompletedFunctions(Code.code(), P);
+    EXPECT_THAT(Results, Contains(AllOf(named("method"), isStatic(false),
+                                        canBeCall(false))));
+  }
+
+  // static method can always be a call
+  for (const auto &P : Code.points()) {
+    auto Results = CollectCompletedFunctions(Code.code(), P);
+    EXPECT_THAT(Results, Contains(AllOf(named("staticMethod"), isStatic(true),
+                                        canBeCall(true))));
+  }
 }
 
 TEST(SemaCodeCompleteTest, VisitedNSForValidQualifiedId) {
@@ -173,12 +259,16 @@ TEST(SemaCodeCompleteTest, VisitedNSForValidQualifiedId) {
                                               "foo::(anonymous)"));
 }
 
-TEST(SemaCodeCompleteTest, VisitedNSForInvalideQualifiedId) {
+TEST(SemaCodeCompleteTest, VisitedNSForInvalidQualifiedId) {
   auto VisitedNS = runCodeCompleteOnCode(R"cpp(
-     namespace ns { foo::^ }
+     namespace na {}
+     namespace ns1 {
+     using namespace na;
+     foo::^
+     }
   )cpp")
                        .VisitedNamespaces;
-  EXPECT_TRUE(VisitedNS.empty());
+  EXPECT_THAT(VisitedNS, UnorderedElementsAre("ns1", "na"));
 }
 
 TEST(SemaCodeCompleteTest, VisitedNSWithoutQualifier) {
@@ -270,7 +360,7 @@ TEST(PreferredTypeTest, BinaryExpr) {
       a | ^1; a & ^1;
     }
   )cpp";
-  EXPECT_THAT(collectPreferredTypes(Code), Each("enum A"));
+  EXPECT_THAT(collectPreferredTypes(Code), Each("A"));
 
   Code = R"cpp(
     enum class A {};
@@ -280,7 +370,7 @@ TEST(PreferredTypeTest, BinaryExpr) {
       a | ^a; a & ^a;
     }
   )cpp";
-  EXPECT_THAT(collectPreferredTypes(Code), Each("enum A"));
+  EXPECT_THAT(collectPreferredTypes(Code), Each("A"));
 
   // Binary shifts.
   Code = R"cpp(
@@ -316,7 +406,7 @@ TEST(PreferredTypeTest, BinaryExpr) {
       c = ^c; c += ^c; c -= ^c; c *= ^c; c /= ^c; c %= ^c;
     }
   )cpp";
-  EXPECT_THAT(collectPreferredTypes(Code), Each("class Cls"));
+  EXPECT_THAT(collectPreferredTypes(Code), Each("Cls"));
 
   Code = R"cpp(
     class Cls {};
@@ -438,4 +528,79 @@ TEST(PreferredTypeTest, ParenExpr) {
   )cpp";
   EXPECT_THAT(collectPreferredTypes(Code), Each("const int *"));
 }
+
+TEST(PreferredTypeTest, FunctionArguments) {
+  StringRef Code = R"cpp(
+    void foo(const int*);
+
+    void bar(const int*);
+    void bar(const int*, int b);
+
+    struct vector {
+      const int *data();
+    };
+    void test() {
+      foo(^(^(^(^vec^tor^().^da^ta^()))));
+      bar(^(^(^(^vec^tor^().^da^ta^()))));
+    }
+  )cpp";
+  EXPECT_THAT(collectPreferredTypes(Code), Each("const int *"));
+
+  Code = R"cpp(
+    void bar(int, volatile double *);
+    void bar(int, volatile double *, int, int);
+
+    struct vector {
+      double *data();
+    };
+
+    struct class_members {
+      void bar(int, volatile double *);
+      void bar(int, volatile double *, int, int);
+    };
+    void test() {
+      bar(10, ^(^(^(^vec^tor^().^da^ta^()))));
+      class_members().bar(10, ^(^(^(^vec^tor^().^da^ta^()))));
+    }
+  )cpp";
+  EXPECT_THAT(collectPreferredTypes(Code), Each("volatile double *"));
+
+  Code = R"cpp(
+    namespace ns {
+      struct vector {
+      };
+    }
+    void accepts_vector(ns::vector);
+
+    void test() {
+      accepts_vector(^::^ns::^vector());
+    }
+  )cpp";
+  EXPECT_THAT(collectPreferredTypes(Code), Each("ns::vector"));
+
+  Code = R"cpp(
+    template <class T>
+    struct vector { using self = vector; };
+
+    void accepts_vector(vector<int>);
+    int foo(int);
+
+    void test() {
+      accepts_vector(^::^vector<decltype(foo(1))>::^self);
+    }
+  )cpp";
+  EXPECT_THAT(collectPreferredTypes(Code), Each("vector<int>"));
+}
+
+TEST(PreferredTypeTest, NoCrashOnInvalidTypes) {
+  StringRef Code = R"cpp(
+    auto x = decltype(&1)(^);
+    auto y = new decltype(&1)(^);
+    // GNU decimal type extension is not supported in clang.
+    auto z = new _Decimal128(^);
+    void foo() { (void)(foo)(^); }
+  )cpp";
+  EXPECT_THAT(collectPreferredTypes(Code), Each("NULL TYPE"));
+}
+
 } // namespace

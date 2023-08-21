@@ -12,13 +12,12 @@
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/PassInfo.h"
-#include "llvm/PassRegistry.h"
-#include "llvm/PassSupport.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/SimpleLoopUnswitch.h"
 #include "llvm/Transforms/Utils.h"
 
 #define DEBUG_TYPE "polly-cleanup"
@@ -28,7 +27,7 @@ using namespace polly;
 
 namespace {
 
-class CodegenCleanup : public FunctionPass {
+class CodegenCleanup final : public FunctionPass {
 private:
   CodegenCleanup(const CodegenCleanup &) = delete;
   const CodegenCleanup &operator=(const CodegenCleanup &) = delete;
@@ -41,9 +40,9 @@ public:
 
   /// @name FunctionPass interface
   //@{
-  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {}
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override {}
 
-  virtual bool doInitialization(Module &M) override {
+  bool doInitialization(Module &M) override {
     assert(!FPM);
 
     FPM = new llvm::legacy::FunctionPassManager(&M);
@@ -81,7 +80,7 @@ public:
     FPM->add(createLoopRotatePass(-1));
     FPM->add(createGVNPass());
     FPM->add(createLICMPass());
-    FPM->add(createLoopUnswitchPass());
+    FPM->add(createSimpleLoopUnswitchLegacyPass());
     FPM->add(createCFGSimplificationPass());
     FPM->add(createInstructionCombiningPass(true));
     FPM->add(createIndVarSimplifyPass());
@@ -107,7 +106,7 @@ public:
     return FPM->doInitialization();
   }
 
-  virtual bool doFinalization(Module &M) override {
+  bool doFinalization(Module &M) override {
     bool Result = FPM->doFinalization();
 
     delete FPM;
@@ -116,7 +115,7 @@ public:
     return Result;
   }
 
-  virtual bool runOnFunction(llvm::Function &F) override {
+  bool runOnFunction(llvm::Function &F) override {
     if (!F.hasFnAttribute("polly-optimized")) {
       LLVM_DEBUG(
           dbgs() << F.getName()

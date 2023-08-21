@@ -2,11 +2,11 @@
 ; RUN: llc -march=bpfeb -filetype=asm -o - %s | FileCheck -check-prefixes=CHECK %s
 
 ; Source code:
-;   volatile const void *p;
+;   volatile const ptr p;
 ; Compilation flag:
 ;   clang -target bpf -O2 -g -S -emit-llvm t.c
 
-@p = common dso_local local_unnamed_addr global i8* null, align 8, !dbg !0
+@p = common dso_local local_unnamed_addr global ptr null, align 8, !dbg !0
 
 !llvm.dbg.cu = !{!2}
 !llvm.module.flags = !{!9, !10, !11}
@@ -31,17 +31,6 @@
 ; CHECK-NEXT:        .long   150994944               # 0x9000000
 ; CHECK-NEXT:        .long   0
 ; CHECK-NEXT:        .byte   0                       # string offset=0
-; CHECK-NEXT:        .section        .BTF.ext,"",@progbits
-; CHECK-NEXT:        .short  60319                   # 0xeb9f
-; CHECK-NEXT:        .byte   1
-; CHECK-NEXT:        .byte   0
-; CHECK-NEXT:        .long   24
-; CHECK-NEXT:        .long   0
-; CHECK-NEXT:        .long   4
-; CHECK-NEXT:        .long   4
-; CHECK-NEXT:        .long   4
-; CHECK-NEXT:        .long   8                       # FuncInfo
-; CHECK-NEXT:        .long   16                      # LineInfo
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(name: "p", scope: !2, file: !3, line: 1, type: !6, isLocal: false, isDefinition: true)

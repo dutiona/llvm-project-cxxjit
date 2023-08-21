@@ -85,22 +85,20 @@ entry:
 define void @test_vector_creation() nounwind {
 ; SSE-LABEL: test_vector_creation:
 ; SSE:       # %bb.0:
-; SSE-NEXT:    xorpd %xmm0, %xmm0
-; SSE-NEXT:    movhpd {{.*#+}} xmm0 = xmm0[0],mem[0]
-; SSE-NEXT:    movapd %xmm0, (%rax)
+; SSE-NEXT:    xorps %xmm0, %xmm0
+; SSE-NEXT:    movhps {{.*#+}} xmm0 = xmm0[0,1],mem[0,1]
+; SSE-NEXT:    movaps %xmm0, (%rax)
 ; SSE-NEXT:    retq
 ;
 ; AVX-LABEL: test_vector_creation:
 ; AVX:       # %bb.0:
-; AVX-NEXT:    vxorpd %xmm0, %xmm0, %xmm0
-; AVX-NEXT:    vmovhpd {{.*#+}} xmm0 = xmm0[0],mem[0]
-; AVX-NEXT:    vinsertf128 $1, %xmm0, %ymm0, %ymm0
-; AVX-NEXT:    vmovaps %ymm0, (%rax)
-; AVX-NEXT:    vzeroupper
+; AVX-NEXT:    vxorps %xmm0, %xmm0, %xmm0
+; AVX-NEXT:    vmovhps {{.*#+}} xmm0 = xmm0[0,1],mem[0,1]
+; AVX-NEXT:    vmovaps %xmm0, (%rax)
 ; AVX-NEXT:    retq
   %1 = insertelement <4 x double> undef, double 0.000000e+00, i32 2
-  %2 = load double, double addrspace(1)* null
+  %2 = load double, ptr addrspace(1) null
   %3 = insertelement <4 x double> %1, double %2, i32 3
-  store <4 x double> %3, <4 x double>* undef
+  store <4 x double> %3, ptr undef
   ret void
 }

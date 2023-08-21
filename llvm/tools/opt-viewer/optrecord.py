@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+import io
 import yaml
 # Try to use the C parser.
 try:
@@ -10,7 +11,7 @@ except ImportError:
     print("For faster parsing, you may want to install libYAML for PyYAML")
     from yaml import Loader
 
-import cgi
+import html
 from collections import defaultdict
 import fnmatch
 import functools
@@ -158,7 +159,7 @@ class Remark(yaml.YAMLObject):
         (key, value) = list(mapping.items())[0]
 
         if key == 'Caller' or key == 'Callee' or key == 'DirectCallee':
-            value = cgi.escape(self.demangle(value))
+            value = html.escape(self.demangle(value))
 
         if dl and key != 'Caller':
             dl_dict = dict(list(dl))
@@ -264,23 +265,27 @@ class Missed(Remark):
     def color(self):
         return "red"
 
+class Failure(Missed):
+    yaml_tag = '!Failure'
 
-def get_remarks(input_file, filter_):
+def get_remarks(input_file, filter_=None):
     max_hotness = 0
     all_remarks = dict()
     file_remarks = defaultdict(functools.partial(defaultdict, list))
 
-    with open(input_file) as f:
+    with io.open(input_file, encoding = 'utf-8') as f:
         docs = yaml.load_all(f, Loader=Loader)
 
-        filter_e = re.compile(filter_)
+        filter_e = None
+        if filter_:
+            filter_e = re.compile(filter_)
         for remark in docs:
             remark.canonicalize()
             # Avoid remarks withoug debug location or if they are duplicated
             if not hasattr(remark, 'DebugLoc') or remark.key in all_remarks:
                 continue
 
-            if filter_ and not filter_e.search(remark.Pass):
+            if filter_e and not filter_e.search(remark.Pass):
                 continue
 
             all_remarks[remark.key] = remark
@@ -297,7 +302,7 @@ def get_remarks(input_file, filter_):
     return max_hotness, all_remarks, file_remarks
 
 
-def gather_results(filenames, num_jobs, should_print_progress, filter_):
+def gather_results(filenames, num_jobs, should_print_progress, filter_=None):
     if should_print_progress:
         print('Reading YAML files...')
     if not Remark.demangler_proc:

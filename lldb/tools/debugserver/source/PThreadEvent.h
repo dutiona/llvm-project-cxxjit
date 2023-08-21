@@ -10,12 +10,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __PThreadEvent_h__
-#define __PThreadEvent_h__
+#ifndef LLDB_TOOLS_DEBUGSERVER_SOURCE_PTHREADEVENT_H
+#define LLDB_TOOLS_DEBUGSERVER_SOURCE_PTHREADEVENT_H
 #include "PThreadCondition.h"
 #include "PThreadMutex.h"
-#include <stdint.h>
-#include <time.h>
+#include <cstdint>
+#include <ctime>
 
 class PThreadEvent {
 public:
@@ -44,10 +44,8 @@ public:
                            const struct timespec *timeout_abstime = NULL) const;
 
 protected:
-  //----------------------------------------------------------------------
   // pthread condition and mutex variable to control access and allow
   // blocking between the main thread and the spotlight index thread.
-  //----------------------------------------------------------------------
   mutable PThreadMutex m_mutex;
   mutable PThreadCondition m_set_condition;
   mutable PThreadCondition m_reset_condition;
@@ -56,8 +54,8 @@ protected:
   uint32_t m_reset_ack_mask;
 
 private:
-  PThreadEvent(const PThreadEvent &); // Outlaw copy constructor
-  PThreadEvent &operator=(const PThreadEvent &rhs);
+  PThreadEvent(const PThreadEvent &) = delete;
+  PThreadEvent &operator=(const PThreadEvent &rhs) = delete;
 };
 
-#endif // #ifndef __PThreadEvent_h__
+#endif // LLDB_TOOLS_DEBUGSERVER_SOURCE_PTHREADEVENT_H

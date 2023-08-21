@@ -7,14 +7,17 @@
 //===----------------------------------------------------------------------===//
 // Misc utils for Linux.
 //===----------------------------------------------------------------------===//
-#include "FuzzerDefs.h"
+#include "FuzzerPlatform.h"
 #if LIBFUZZER_LINUX || LIBFUZZER_NETBSD || LIBFUZZER_FREEBSD ||                \
-    LIBFUZZER_OPENBSD
+    LIBFUZZER_EMSCRIPTEN
 #include "FuzzerCommand.h"
+#include "FuzzerInternal.h"
 
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 
 namespace fuzzer {
@@ -24,7 +27,17 @@ int ExecuteCommand(const Command &Cmd) {
   int exit_code = system(CmdLine.c_str());
   if (WIFEXITED(exit_code))
     return WEXITSTATUS(exit_code);
+  if (WIFSIGNALED(exit_code) && WTERMSIG(exit_code) == SIGINT)
+    return Fuzzer::InterruptExitCode();
   return exit_code;
+}
+
+void DiscardOutput(int Fd) {
+  FILE* Temp = fopen("/dev/null", "w");
+  if (!Temp)
+    return;
+  dup2(fileno(Temp), Fd);
+  fclose(Temp);
 }
 
 } // namespace fuzzer

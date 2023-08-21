@@ -1,4 +1,4 @@
-; RUN: llc < %s -stop-before=expand-isel-pseudos -o - | FileCheck %s
+; RUN: llc < %s -stop-before=finalize-isel -o - | FileCheck %s
 
 source_filename = "foo.c"
 target datalayout = "E-m:e-p:32:32-i64:64-n32"
@@ -34,7 +34,7 @@ define void @bar() local_unnamed_addr #0 !dbg !6 {
   %1 = alloca i64, align 8
   %2 = tail call i64 @foo()
   tail call void @llvm.dbg.value(metadata i64 %2, metadata !10, metadata !DIExpression()), !dbg !13
-  store volatile i64 %2, i64* %1, align 8
+  store volatile i64 %2, ptr %1, align 8
   ret void
 }
 

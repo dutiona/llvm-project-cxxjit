@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBBlock_h_
-#define LLDB_SBBlock_h_
+#ifndef LLDB_API_SBBLOCK_H
+#define LLDB_API_SBBLOCK_H
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBFrame.h"
@@ -27,6 +27,8 @@ public:
   const lldb::SBBlock &operator=(const lldb::SBBlock &rhs);
 
   bool IsInlined() const;
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -58,16 +60,14 @@ public:
 
   lldb::SBValueList GetVariables(lldb::SBTarget &target, bool arguments,
                                  bool locals, bool statics);
-  //------------------------------------------------------------------
   /// Get the inlined block that contains this block.
   ///
-  /// @return
+  /// \return
   ///     If this block is inlined, it will return this block, else
   ///     parent blocks will be searched to see if any contain this
   ///     block and are themselves inlined. An invalid SBBlock will
   ///     be returned if this block nor any parent blocks are inlined
   ///     function blocks.
-  //------------------------------------------------------------------
   lldb::SBBlock GetContainingInlinedBlock();
 
   bool GetDescription(lldb::SBStream &description);
@@ -87,9 +87,9 @@ private:
   void AppendVariables(bool can_create, bool get_parent_variables,
                        lldb_private::VariableList *var_list);
 
-  lldb_private::Block *m_opaque_ptr;
+  lldb_private::Block *m_opaque_ptr = nullptr;
 };
 
 } // namespace lldb
 
-#endif // LLDB_SBBlock_h_
+#endif // LLDB_API_SBBLOCK_H

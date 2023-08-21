@@ -6,9 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_LoadedModuleInfoList_h_
-#define liblldb_LoadedModuleInfoList_h_
-
+#ifndef LLDB_CORE_LOADEDMODULEINFOLIST_H
+#define LLDB_CORE_LOADEDMODULEINFOLIST_H
 
 #include <cassert>
 #include <string>
@@ -84,9 +83,6 @@ public:
     }
 
     bool operator==(LoadedModuleInfo const &rhs) const {
-      if (e_num != rhs.e_num)
-        return false;
-
       for (size_t i = 0; i < e_num; ++i) {
         if (m_has[i] != rhs.m_has[i])
           return false;
@@ -99,21 +95,21 @@ public:
   protected:
     bool m_has[e_num];
     std::string m_name;
-    lldb::addr_t m_link_map;
-    lldb::addr_t m_base;
-    bool m_base_is_offset;
-    lldb::addr_t m_dynamic;
+    lldb::addr_t m_link_map = LLDB_INVALID_ADDRESS;
+    lldb::addr_t m_base = LLDB_INVALID_ADDRESS;
+    bool m_base_is_offset = false;
+    lldb::addr_t m_dynamic = LLDB_INVALID_ADDRESS;
   };
 
-  LoadedModuleInfoList() : m_list(), m_link_map(LLDB_INVALID_ADDRESS) {}
+  LoadedModuleInfoList() = default;
 
   void add(const LoadedModuleInfo &mod) { m_list.push_back(mod); }
 
   void clear() { m_list.clear(); }
 
   std::vector<LoadedModuleInfo> m_list;
-  lldb::addr_t m_link_map;
+  lldb::addr_t m_link_map = LLDB_INVALID_ADDRESS;
 };
 } // namespace lldb_private
 
-#endif // liblldb_LoadedModuleInfoList_h_
+#endif // LLDB_CORE_LOADEDMODULEINFOLIST_H

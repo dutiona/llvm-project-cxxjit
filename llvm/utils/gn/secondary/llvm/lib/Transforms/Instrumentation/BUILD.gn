@@ -6,6 +6,7 @@ static_library("Instrumentation") {
     "//llvm/lib/MC",
     "//llvm/lib/ProfileData",
     "//llvm/lib/Support",
+    "//llvm/lib/TargetParser",
     "//llvm/lib/Transforms/Utils",
   ]
   sources = [
@@ -14,16 +15,21 @@ static_library("Instrumentation") {
     "CGProfile.cpp",
     "ControlHeightReduction.cpp",
     "DataFlowSanitizer.cpp",
-    "EfficiencySanitizer.cpp",
     "GCOVProfiling.cpp",
     "HWAddressSanitizer.cpp",
     "IndirectCallPromotion.cpp",
+    "InstrOrderFile.cpp",
     "InstrProfiling.cpp",
     "Instrumentation.cpp",
+    "KCFI.cpp",
+    "MemProfiler.cpp",
     "MemorySanitizer.cpp",
     "PGOInstrumentation.cpp",
     "PGOMemOPSizeOpt.cpp",
+    "PoisonChecking.cpp",
+    "SanitizerBinaryMetadata.cpp",
     "SanitizerCoverage.cpp",
     "ThreadSanitizer.cpp",
+    "ValueProfileCollector.cpp",
   ]
 }

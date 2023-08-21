@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
@@ -19,10 +21,14 @@
 //   const T*
 //   target() const;
 
+// UNSUPPORTED: no-rtti
+
 #include <functional>
 #include <new>
 #include <cstdlib>
 #include <cassert>
+
+#include "test_macros.h"
 
 class A
 {

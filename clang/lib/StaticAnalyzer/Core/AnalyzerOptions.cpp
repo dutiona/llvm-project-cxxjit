@@ -19,9 +19,11 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstddef>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,56 +31,78 @@ using namespace clang;
 using namespace ento;
 using namespace llvm;
 
-std::vector<StringRef>
-AnalyzerOptions::getRegisteredCheckers(bool IncludeExperimental /* = false */) {
-  static const StringRef StaticAnalyzerChecks[] = {
-#define GET_CHECKERS
-#define CHECKER(FULLNAME, CLASS, HELPTEXT, DOC_URI)                            \
-  FULLNAME,
-#include "clang/StaticAnalyzer/Checkers/Checkers.inc"
-#undef CHECKER
-#undef GET_CHECKERS
-  };
-  std::vector<StringRef> Result;
-  for (StringRef CheckName : StaticAnalyzerChecks) {
-    if (!CheckName.startswith("debug.") &&
-        (IncludeExperimental || !CheckName.startswith("alpha.")))
-      Result.push_back(CheckName);
+void AnalyzerOptions::printFormattedEntry(
+    llvm::raw_ostream &Out,
+    std::pair<StringRef, StringRef> EntryDescPair,
+    size_t InitialPad, size_t EntryWidth, size_t MinLineWidth) {
+
+  llvm::formatted_raw_ostream FOut(Out);
+
+  const size_t PadForDesc = InitialPad + EntryWidth;
+
+  FOut.PadToColumn(InitialPad) << EntryDescPair.first;
+  // If the buffer's length is greater than PadForDesc, print a newline.
+  if (FOut.getColumn() > PadForDesc)
+    FOut << '\n';
+
+  FOut.PadToColumn(PadForDesc);
+
+  if (MinLineWidth == 0) {
+    FOut << EntryDescPair.second;
+    return;
   }
-  return Result;
+
+  for (char C : EntryDescPair.second) {
+    if (FOut.getColumn() > MinLineWidth && C == ' ') {
+      FOut << '\n';
+      FOut.PadToColumn(PadForDesc);
+      continue;
+    }
+    FOut << C;
+  }
 }
 
 ExplorationStrategyKind
 AnalyzerOptions::getExplorationStrategy() const {
   auto K =
-    llvm::StringSwitch<llvm::Optional<ExplorationStrategyKind>>(
-                                                            ExplorationStrategy)
+      llvm::StringSwitch<std::optional<ExplorationStrategyKind>>(
+          ExplorationStrategy)
           .Case("dfs", ExplorationStrategyKind::DFS)
           .Case("bfs", ExplorationStrategyKind::BFS)
-          .Case("unexplored_first",
-                ExplorationStrategyKind::UnexploredFirst)
+          .Case("unexplored_first", ExplorationStrategyKind::UnexploredFirst)
           .Case("unexplored_first_queue",
                 ExplorationStrategyKind::UnexploredFirstQueue)
           .Case("unexplored_first_location_queue",
                 ExplorationStrategyKind::UnexploredFirstLocationQueue)
           .Case("bfs_block_dfs_contents",
                 ExplorationStrategyKind::BFSBlockDFSContents)
-          .Default(None);
-  assert(K.hasValue() && "User mode is invalid.");
-  return K.getValue();
+          .Default(std::nullopt);
+  assert(K && "User mode is invalid.");
+  return *K;
+}
+
+CTUPhase1InliningKind AnalyzerOptions::getCTUPhase1Inlining() const {
+  auto K = llvm::StringSwitch<std::optional<CTUPhase1InliningKind>>(
+               CTUPhase1InliningMode)
+               .Case("none", CTUPhase1InliningKind::None)
+               .Case("small", CTUPhase1InliningKind::Small)
+               .Case("all", CTUPhase1InliningKind::All)
+               .Default(std::nullopt);
+  assert(K && "CTU inlining mode is invalid.");
+  return *K;
 }
 
 IPAKind AnalyzerOptions::getIPAMode() const {
-  auto K = llvm::StringSwitch<llvm::Optional<IPAKind>>(IPAMode)
-          .Case("none", IPAK_None)
-          .Case("basic-inlining", IPAK_BasicInlining)
-          .Case("inlining", IPAK_Inlining)
-          .Case("dynamic", IPAK_DynamicDispatch)
-          .Case("dynamic-bifurcate", IPAK_DynamicDispatchBifurcate)
-          .Default(None);
-  assert(K.hasValue() && "IPA Mode is invalid.");
+  auto K = llvm::StringSwitch<std::optional<IPAKind>>(IPAMode)
+               .Case("none", IPAK_None)
+               .Case("basic-inlining", IPAK_BasicInlining)
+               .Case("inlining", IPAK_Inlining)
+               .Case("dynamic", IPAK_DynamicDispatch)
+               .Case("dynamic-bifurcate", IPAK_DynamicDispatchBifurcate)
+               .Default(std::nullopt);
+  assert(K && "IPA Mode is invalid.");
 
-  return K.getValue();
+  return *K;
 }
 
 bool
@@ -87,32 +111,26 @@ AnalyzerOptions::mayInlineCXXMemberFunction(
   if (getIPAMode() < IPAK_Inlining)
     return false;
 
-  auto K =
-    llvm::StringSwitch<llvm::Optional<CXXInlineableMemberKind>>(
-                                                          CXXMemberInliningMode)
-    .Case("constructors", CIMK_Constructors)
-    .Case("destructors", CIMK_Destructors)
-    .Case("methods", CIMK_MemberFunctions)
-    .Case("none", CIMK_None)
-    .Default(None);
+  auto K = llvm::StringSwitch<std::optional<CXXInlineableMemberKind>>(
+               CXXMemberInliningMode)
+               .Case("constructors", CIMK_Constructors)
+               .Case("destructors", CIMK_Destructors)
+               .Case("methods", CIMK_MemberFunctions)
+               .Case("none", CIMK_None)
+               .Default(std::nullopt);
 
-  assert(K.hasValue() && "Invalid c++ member function inlining mode.");
+  assert(K && "Invalid c++ member function inlining mode.");
 
   return *K >= Param;
 }
 
-StringRef AnalyzerOptions::getCheckerStringOption(StringRef OptionName,
-                                                  StringRef DefaultVal,
-                                                  const CheckerBase *C,
+StringRef AnalyzerOptions::getCheckerStringOption(StringRef CheckerName,
+                                                  StringRef OptionName,
                                                   bool SearchInParents) const {
-  assert(C);
-  // Search for a package option if the option for the checker is not specified
-  // and search in parents is enabled.
-  StringRef CheckerName = C->getTagDescription();
-
   assert(!CheckerName.empty() &&
          "Empty checker name! Make sure the checker object (including it's "
          "bases!) if fully initialized before calling this function!");
+
   ConfigTable::const_iterator E = Config.end();
   do {
     ConfigTable::const_iterator I =
@@ -121,35 +139,66 @@ StringRef AnalyzerOptions::getCheckerStringOption(StringRef OptionName,
       return StringRef(I->getValue());
     size_t Pos = CheckerName.rfind('.');
     if (Pos == StringRef::npos)
-      return DefaultVal;
+      break;
+
     CheckerName = CheckerName.substr(0, Pos);
   } while (!CheckerName.empty() && SearchInParents);
-  return DefaultVal;
+
+  llvm_unreachable("Unknown checker option! Did you call getChecker*Option "
+                   "with incorrect parameters? User input must've been "
+                   "verified by CheckerRegistry.");
+
+  return "";
 }
 
-bool AnalyzerOptions::getCheckerBooleanOption(StringRef Name, bool DefaultVal,
-                                              const CheckerBase *C,
+StringRef AnalyzerOptions::getCheckerStringOption(const ento::CheckerBase *C,
+                                                  StringRef OptionName,
+                                                  bool SearchInParents) const {
+  return getCheckerStringOption(
+                           C->getTagDescription(), OptionName, SearchInParents);
+}
+
+bool AnalyzerOptions::getCheckerBooleanOption(StringRef CheckerName,
+                                              StringRef OptionName,
                                               bool SearchInParents) const {
-  // FIXME: We should emit a warning here if the value is something other than
-  // "true", "false", or the empty string (meaning the default value),
-  // but the AnalyzerOptions doesn't have access to a diagnostic engine.
-  assert(C);
-  return llvm::StringSwitch<bool>(
-      getCheckerStringOption(Name, DefaultVal ? "true" : "false", C,
-                             SearchInParents))
-      .Case("true", true)
-      .Case("false", false)
-      .Default(DefaultVal);
+  auto Ret =
+      llvm::StringSwitch<std::optional<bool>>(
+          getCheckerStringOption(CheckerName, OptionName, SearchInParents))
+          .Case("true", true)
+          .Case("false", false)
+          .Default(std::nullopt);
+
+  assert(Ret &&
+         "This option should be either 'true' or 'false', and should've been "
+         "validated by CheckerRegistry!");
+
+  return *Ret;
 }
 
-int AnalyzerOptions::getCheckerIntegerOption(StringRef Name, int DefaultVal,
-                                        const CheckerBase *C,
-                                        bool SearchInParents) const {
-  int Ret = DefaultVal;
-  bool HasFailed = getCheckerStringOption(Name, std::to_string(DefaultVal), C,
+bool AnalyzerOptions::getCheckerBooleanOption(const ento::CheckerBase *C,
+                                              StringRef OptionName,
+                                              bool SearchInParents) const {
+  return getCheckerBooleanOption(
+             C->getTagDescription(), OptionName, SearchInParents);
+}
+
+int AnalyzerOptions::getCheckerIntegerOption(StringRef CheckerName,
+                                             StringRef OptionName,
+                                             bool SearchInParents) const {
+  int Ret = 0;
+  bool HasFailed = getCheckerStringOption(CheckerName, OptionName,
                                           SearchInParents)
-                     .getAsInteger(10, Ret);
-  assert(!HasFailed && "analyzer-config option should be numeric");
+                     .getAsInteger(0, Ret);
+  assert(!HasFailed &&
+         "This option should be numeric, and should've been validated by "
+         "CheckerRegistry!");
   (void)HasFailed;
   return Ret;
+}
+
+int AnalyzerOptions::getCheckerIntegerOption(const ento::CheckerBase *C,
+                                             StringRef OptionName,
+                                             bool SearchInParents) const {
+  return getCheckerIntegerOption(
+                           C->getTagDescription(), OptionName, SearchInParents);
 }

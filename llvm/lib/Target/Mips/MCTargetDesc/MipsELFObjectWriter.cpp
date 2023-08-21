@@ -219,10 +219,12 @@ unsigned MipsELFObjectWriter::getRelocType(MCContext &Ctx,
                                            const MCFixup &Fixup,
                                            bool IsPCRel) const {
   // Determine the type of the relocation.
-  unsigned Kind = (unsigned)Fixup.getKind();
+  unsigned Kind = Fixup.getTargetKind();
+  if (Kind >= FirstLiteralRelocationKind)
+    return Kind - FirstLiteralRelocationKind;
 
   switch (Kind) {
-  case Mips::fixup_Mips_NONE:
+  case FK_NONE:
     return ELF::R_MIPS_NONE;
   case FK_Data_1:
     Ctx.reportError(Fixup.getLoc(),
@@ -234,14 +236,15 @@ unsigned MipsELFObjectWriter::getRelocType(MCContext &Ctx,
   case Mips::fixup_Mips_32:
   case FK_Data_4:
     return IsPCRel ? ELF::R_MIPS_PC32 : ELF::R_MIPS_32;
+  case Mips::fixup_Mips_64:
+  case FK_Data_8:
+    return IsPCRel
+               ? setRTypes(ELF::R_MIPS_PC32, ELF::R_MIPS_64, ELF::R_MIPS_NONE)
+               : (unsigned)ELF::R_MIPS_64;
   }
 
   if (IsPCRel) {
     switch (Kind) {
-    case FK_Data_8:
-      Ctx.reportError(Fixup.getLoc(),
-                      "MIPS does not support 64-bit PC-relative relocations");
-      return ELF::R_MIPS_NONE;
     case Mips::fixup_Mips_Branch_PCRel:
     case Mips::fixup_Mips_PC16:
       return ELF::R_MIPS_PC16;
@@ -277,9 +280,6 @@ unsigned MipsELFObjectWriter::getRelocType(MCContext &Ctx,
   }
 
   switch (Kind) {
-  case Mips::fixup_Mips_64:
-  case FK_Data_8:
-    return ELF::R_MIPS_64;
   case FK_DTPRel_4:
     return ELF::R_MIPS_TLS_DTPREL32;
   case FK_DTPRel_8:
@@ -289,14 +289,9 @@ unsigned MipsELFObjectWriter::getRelocType(MCContext &Ctx,
   case FK_TPRel_8:
     return ELF::R_MIPS_TLS_TPREL64;
   case FK_GPRel_4:
-    if (is64Bit()) {
-      unsigned Type = (unsigned)ELF::R_MIPS_NONE;
-      Type = setRType((unsigned)ELF::R_MIPS_GPREL32, Type);
-      Type = setRType2((unsigned)ELF::R_MIPS_64, Type);
-      Type = setRType3((unsigned)ELF::R_MIPS_NONE, Type);
-      return Type;
-    }
-    return ELF::R_MIPS_GPREL32;
+    return setRTypes(ELF::R_MIPS_GPREL32,
+                     is64Bit() ? ELF::R_MIPS_64 : ELF::R_MIPS_NONE,
+                     ELF::R_MIPS_NONE);
   case Mips::fixup_Mips_GPREL16:
     return ELF::R_MIPS_GPREL16;
   case Mips::fixup_Mips_26:
@@ -329,34 +324,16 @@ unsigned MipsELFObjectWriter::getRelocType(MCContext &Ctx,
     return ELF::R_MIPS_GOT_OFST;
   case Mips::fixup_Mips_GOT_DISP:
     return ELF::R_MIPS_GOT_DISP;
-  case Mips::fixup_Mips_GPOFF_HI: {
-    unsigned Type = (unsigned)ELF::R_MIPS_NONE;
-    Type = setRType((unsigned)ELF::R_MIPS_GPREL16, Type);
-    Type = setRType2((unsigned)ELF::R_MIPS_SUB, Type);
-    Type = setRType3((unsigned)ELF::R_MIPS_HI16, Type);
-    return Type;
-  }
-  case Mips::fixup_MICROMIPS_GPOFF_HI: {
-    unsigned Type = (unsigned)ELF::R_MIPS_NONE;
-    Type = setRType((unsigned)ELF::R_MICROMIPS_GPREL16, Type);
-    Type = setRType2((unsigned)ELF::R_MICROMIPS_SUB, Type);
-    Type = setRType3((unsigned)ELF::R_MICROMIPS_HI16, Type);
-    return Type;
-  }
-  case Mips::fixup_Mips_GPOFF_LO: {
-    unsigned Type = (unsigned)ELF::R_MIPS_NONE;
-    Type = setRType((unsigned)ELF::R_MIPS_GPREL16, Type);
-    Type = setRType2((unsigned)ELF::R_MIPS_SUB, Type);
-    Type = setRType3((unsigned)ELF::R_MIPS_LO16, Type);
-    return Type;
-  }
-  case Mips::fixup_MICROMIPS_GPOFF_LO: {
-    unsigned Type = (unsigned)ELF::R_MIPS_NONE;
-    Type = setRType((unsigned)ELF::R_MICROMIPS_GPREL16, Type);
-    Type = setRType2((unsigned)ELF::R_MICROMIPS_SUB, Type);
-    Type = setRType3((unsigned)ELF::R_MICROMIPS_LO16, Type);
-    return Type;
-  }
+  case Mips::fixup_Mips_GPOFF_HI:
+    return setRTypes(ELF::R_MIPS_GPREL16, ELF::R_MIPS_SUB, ELF::R_MIPS_HI16);
+  case Mips::fixup_MICROMIPS_GPOFF_HI:
+    return setRTypes(ELF::R_MICROMIPS_GPREL16, ELF::R_MICROMIPS_SUB,
+                     ELF::R_MICROMIPS_HI16);
+  case Mips::fixup_Mips_GPOFF_LO:
+    return setRTypes(ELF::R_MIPS_GPREL16, ELF::R_MIPS_SUB, ELF::R_MIPS_LO16);
+  case Mips::fixup_MICROMIPS_GPOFF_LO:
+    return setRTypes(ELF::R_MICROMIPS_GPREL16, ELF::R_MICROMIPS_SUB,
+                     ELF::R_MICROMIPS_LO16);
   case Mips::fixup_Mips_HIGHER:
     return ELF::R_MIPS_HIGHER;
   case Mips::fixup_Mips_HIGHEST:
@@ -581,7 +558,7 @@ bool MipsELFObjectWriter::needsRelocateWithSymbol(const MCSymbol &Sym,
   case ELF::R_MIPS_GPREL32:
     if (cast<MCSymbolELF>(Sym).getOther() & ELF::STO_MIPS_MICROMIPS)
       return true;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case ELF::R_MIPS_26:
   case ELF::R_MIPS_64:
   case ELF::R_MIPS_GPREL16:
@@ -690,6 +667,6 @@ llvm::createMipsELFObjectWriter(const Triple &TT, bool IsN32) {
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TT.getOS());
   bool IsN64 = TT.isArch64Bit() && !IsN32;
   bool HasRelocationAddend = TT.isArch64Bit();
-  return llvm::make_unique<MipsELFObjectWriter>(OSABI, HasRelocationAddend,
+  return std::make_unique<MipsELFObjectWriter>(OSABI, HasRelocationAddend,
                                                 IsN64);
 }

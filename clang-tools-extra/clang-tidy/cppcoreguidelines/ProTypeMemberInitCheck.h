@@ -9,13 +9,12 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_PRO_TYPE_MEMBER_INIT_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_PRO_TYPE_MEMBER_INIT_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
+#include "llvm/ADT/DenseSet.h"
 
-namespace clang {
-namespace tidy {
-namespace cppcoreguidelines {
+namespace clang::tidy::cppcoreguidelines {
 
-/// \brief Implements C++ Core Guidelines Type.6.
+/// Implements C++ Core Guidelines Type.6.
 ///
 /// Checks that every user-provided constructor value-initializes all class
 /// members and base classes that would have undefined behavior otherwise. Also
@@ -26,13 +25,16 @@ namespace cppcoreguidelines {
 /// will result in false positives.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines-pro-type-member-init.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines/pro-type-member-init.html
 /// TODO: See if 'fixes' for false positives are optimized away by the compiler.
 /// TODO: For classes with multiple constructors, make sure that we don't offer
 ///     multiple in-class initializer fixits for the same  member.
 class ProTypeMemberInitCheck : public ClangTidyCheck {
 public:
   ProTypeMemberInitCheck(StringRef Name, ClangTidyContext *Context);
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
@@ -64,10 +66,17 @@ private:
 
   // Whether arrays need to be initialized or not. Default is false.
   bool IgnoreArrays;
+
+  // Whether fix-its for initialization of fundamental type use assignment
+  // instead of brace initialization. Only effective in C++11 mode. Default is
+  // false.
+  bool UseAssignment;
+
+  // Record the member variables that have been initialized to prevent repeated
+  // initialization.
+  llvm::DenseSet<const FieldDecl *> HasRecordClassMemberSet;
 };
 
-} // namespace cppcoreguidelines
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cppcoreguidelines
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_PRO_TYPE_MEMBER_INIT_H

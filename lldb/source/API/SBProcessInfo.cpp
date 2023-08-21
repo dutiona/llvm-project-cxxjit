@@ -1,4 +1,4 @@
-//===-- SBProcessInfo.cpp ---------------------------------------*- C++ -*-===//
+//===-- SBProcessInfo.cpp -------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,36 +7,35 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/API/SBProcessInfo.h"
-
+#include "Utils.h"
 #include "lldb/API/SBFileSpec.h"
-#include "lldb/Target/Process.h"
+#include "lldb/Utility/Instrumentation.h"
+#include "lldb/Utility/ProcessInfo.h"
 
 using namespace lldb;
 using namespace lldb_private;
 
-SBProcessInfo::SBProcessInfo() : m_opaque_up() {}
+SBProcessInfo::SBProcessInfo() { LLDB_INSTRUMENT_VA(this); }
 
-SBProcessInfo::SBProcessInfo(const SBProcessInfo &rhs) : m_opaque_up() {
-  if (rhs.IsValid()) {
-    ref() = *rhs.m_opaque_up;
-  }
+SBProcessInfo::SBProcessInfo(const SBProcessInfo &rhs) {
+  LLDB_INSTRUMENT_VA(this, rhs);
+
+  m_opaque_up = clone(rhs.m_opaque_up);
 }
 
-SBProcessInfo::~SBProcessInfo() {}
+SBProcessInfo::~SBProcessInfo() = default;
 
 SBProcessInfo &SBProcessInfo::operator=(const SBProcessInfo &rhs) {
-  if (this != &rhs) {
-    if (rhs.IsValid())
-      ref() = *rhs.m_opaque_up;
-    else
-      m_opaque_up.reset();
-  }
+  LLDB_INSTRUMENT_VA(this, rhs);
+
+  if (this != &rhs)
+    m_opaque_up = clone(rhs.m_opaque_up);
   return *this;
 }
 
 ProcessInstanceInfo &SBProcessInfo::ref() {
   if (m_opaque_up == nullptr) {
-    m_opaque_up.reset(new ProcessInstanceInfo());
+    m_opaque_up = std::make_unique<ProcessInstanceInfo>();
   }
   return *m_opaque_up;
 }
@@ -45,9 +44,19 @@ void SBProcessInfo::SetProcessInfo(const ProcessInstanceInfo &proc_info_ref) {
   ref() = proc_info_ref;
 }
 
-bool SBProcessInfo::IsValid() const { return m_opaque_up != nullptr; }
+bool SBProcessInfo::IsValid() const {
+  LLDB_INSTRUMENT_VA(this);
+  return this->operator bool();
+}
+SBProcessInfo::operator bool() const {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up != nullptr;
+}
 
 const char *SBProcessInfo::GetName() {
+  LLDB_INSTRUMENT_VA(this);
+
   const char *name = nullptr;
   if (m_opaque_up) {
     name = m_opaque_up->GetName();
@@ -56,6 +65,8 @@ const char *SBProcessInfo::GetName() {
 }
 
 SBFileSpec SBProcessInfo::GetExecutableFile() {
+  LLDB_INSTRUMENT_VA(this);
+
   SBFileSpec file_spec;
   if (m_opaque_up) {
     file_spec.SetFileSpec(m_opaque_up->GetExecutableFile());
@@ -64,6 +75,8 @@ SBFileSpec SBProcessInfo::GetExecutableFile() {
 }
 
 lldb::pid_t SBProcessInfo::GetProcessID() {
+  LLDB_INSTRUMENT_VA(this);
+
   lldb::pid_t proc_id = LLDB_INVALID_PROCESS_ID;
   if (m_opaque_up) {
     proc_id = m_opaque_up->GetProcessID();
@@ -72,6 +85,8 @@ lldb::pid_t SBProcessInfo::GetProcessID() {
 }
 
 uint32_t SBProcessInfo::GetUserID() {
+  LLDB_INSTRUMENT_VA(this);
+
   uint32_t user_id = UINT32_MAX;
   if (m_opaque_up) {
     user_id = m_opaque_up->GetUserID();
@@ -80,6 +95,8 @@ uint32_t SBProcessInfo::GetUserID() {
 }
 
 uint32_t SBProcessInfo::GetGroupID() {
+  LLDB_INSTRUMENT_VA(this);
+
   uint32_t group_id = UINT32_MAX;
   if (m_opaque_up) {
     group_id = m_opaque_up->GetGroupID();
@@ -88,6 +105,8 @@ uint32_t SBProcessInfo::GetGroupID() {
 }
 
 bool SBProcessInfo::UserIDIsValid() {
+  LLDB_INSTRUMENT_VA(this);
+
   bool is_valid = false;
   if (m_opaque_up) {
     is_valid = m_opaque_up->UserIDIsValid();
@@ -96,6 +115,8 @@ bool SBProcessInfo::UserIDIsValid() {
 }
 
 bool SBProcessInfo::GroupIDIsValid() {
+  LLDB_INSTRUMENT_VA(this);
+
   bool is_valid = false;
   if (m_opaque_up) {
     is_valid = m_opaque_up->GroupIDIsValid();
@@ -104,6 +125,8 @@ bool SBProcessInfo::GroupIDIsValid() {
 }
 
 uint32_t SBProcessInfo::GetEffectiveUserID() {
+  LLDB_INSTRUMENT_VA(this);
+
   uint32_t user_id = UINT32_MAX;
   if (m_opaque_up) {
     user_id = m_opaque_up->GetEffectiveUserID();
@@ -112,6 +135,8 @@ uint32_t SBProcessInfo::GetEffectiveUserID() {
 }
 
 uint32_t SBProcessInfo::GetEffectiveGroupID() {
+  LLDB_INSTRUMENT_VA(this);
+
   uint32_t group_id = UINT32_MAX;
   if (m_opaque_up) {
     group_id = m_opaque_up->GetEffectiveGroupID();
@@ -120,6 +145,8 @@ uint32_t SBProcessInfo::GetEffectiveGroupID() {
 }
 
 bool SBProcessInfo::EffectiveUserIDIsValid() {
+  LLDB_INSTRUMENT_VA(this);
+
   bool is_valid = false;
   if (m_opaque_up) {
     is_valid = m_opaque_up->EffectiveUserIDIsValid();
@@ -128,6 +155,8 @@ bool SBProcessInfo::EffectiveUserIDIsValid() {
 }
 
 bool SBProcessInfo::EffectiveGroupIDIsValid() {
+  LLDB_INSTRUMENT_VA(this);
+
   bool is_valid = false;
   if (m_opaque_up) {
     is_valid = m_opaque_up->EffectiveGroupIDIsValid();
@@ -136,9 +165,26 @@ bool SBProcessInfo::EffectiveGroupIDIsValid() {
 }
 
 lldb::pid_t SBProcessInfo::GetParentProcessID() {
+  LLDB_INSTRUMENT_VA(this);
+
   lldb::pid_t proc_id = LLDB_INVALID_PROCESS_ID;
   if (m_opaque_up) {
     proc_id = m_opaque_up->GetParentProcessID();
   }
   return proc_id;
+}
+
+const char *SBProcessInfo::GetTriple() {
+  LLDB_INSTRUMENT_VA(this);
+
+  const char *triple = nullptr;
+  if (m_opaque_up) {
+    const auto &arch = m_opaque_up->GetArchitecture();
+    if (arch.IsValid()) {
+      // Const-ify the string so we don't need to worry about the lifetime of
+      // the string
+      triple = ConstString(arch.GetTriple().getTriple().c_str()).GetCString();
+    }
+  }
+  return triple;
 }

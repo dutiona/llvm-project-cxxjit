@@ -10,21 +10,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __CFUtils_h__
-#define __CFUtils_h__
+#ifndef LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFUTILS_H
+#define LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFUTILS_H
 
 #include <CoreFoundation/CoreFoundation.h>
 
 #ifdef __cplusplus
 
-//----------------------------------------------------------------------
 // Templatized CF helper class that can own any CF pointer and will
 // call CFRelease() on any valid pointer it owns unless that pointer is
 // explicitly released using the release() member function.
-//----------------------------------------------------------------------
 template <class T> class CFReleaser {
 public:
-  // Type names for the avlue
+  // Type names for the value
   typedef T element_type;
 
   // Constructors and destructors
@@ -74,4 +72,4 @@ private:
 };
 
 #endif // #ifdef __cplusplus
-#endif // #ifndef __CFUtils_h__
+#endif // LLDB_TOOLS_DEBUGSERVER_SOURCE_MACOSX_CFUTILS_H

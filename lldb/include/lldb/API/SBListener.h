@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBListener_h_
-#define LLDB_SBListener_h_
+#ifndef LLDB_API_SBLISTENER_H
+#define LLDB_API_SBLISTENER_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -28,6 +28,8 @@ public:
   void AddEvent(const lldb::SBEvent &event);
 
   void Clear();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -98,9 +100,9 @@ private:
   void reset(lldb::ListenerSP listener_sp);
 
   lldb::ListenerSP m_opaque_sp;
-  lldb_private::Listener *m_unused_ptr;
+  lldb_private::Listener *m_unused_ptr = nullptr;
 };
 
 } // namespace lldb
 
-#endif // LLDB_SBListener_h_
+#endif // LLDB_API_SBLISTENER_H

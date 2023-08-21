@@ -9,26 +9,25 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ABSEIL_DURATIONDIVISIONCHECK_H_
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ABSEIL_DURATIONDIVISIONCHECK_H_
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace abseil {
+namespace clang::tidy::abseil {
 
 // Find potential incorrect uses of integer division of absl::Duration objects.
 //
 // For the user-facing documentation see: 
-// http://clang.llvm.org/extra/clang-tidy/checks/abseil-duration-division.html
+// http://clang.llvm.org/extra/clang-tidy/checks/abseil/duration-division.html
 
 class DurationDivisionCheck : public ClangTidyCheck {
 public:
   using ClangTidyCheck::ClangTidyCheck;
-  void registerMatchers(ast_matchers::MatchFinder *finder) override;
-  void check(const ast_matchers::MatchFinder::MatchResult &result) override;
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
+  void registerMatchers(ast_matchers::MatchFinder *Finder) override;
+  void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace abseil
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::abseil
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ABSEIL_DURATIONDIVISIONCHECK_H_

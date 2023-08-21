@@ -31,14 +31,9 @@ namespace clang {
 class ASTContext;
 template <typename> class CanQual;
 class CXXConstructorDecl;
-class CXXDestructorDecl;
 class CXXMethodDecl;
 class CodeGenOptions;
-class FieldDecl;
 class FunctionProtoType;
-class ObjCInterfaceDecl;
-class ObjCIvarDecl;
-class PointerType;
 class QualType;
 class RecordDecl;
 class TagDecl;
@@ -53,65 +48,6 @@ class CGCXXABI;
 class CGRecordLayout;
 class CodeGenModule;
 class RequiredArgs;
-
-enum class StructorType {
-  Complete, // constructor or destructor
-  Base,     // constructor or destructor
-  Deleting  // destructor only
-};
-
-inline CXXCtorType toCXXCtorType(StructorType T) {
-  switch (T) {
-  case StructorType::Complete:
-    return Ctor_Complete;
-  case StructorType::Base:
-    return Ctor_Base;
-  case StructorType::Deleting:
-    llvm_unreachable("cannot have a deleting ctor");
-  }
-  llvm_unreachable("not a StructorType");
-}
-
-inline StructorType getFromCtorType(CXXCtorType T) {
-  switch (T) {
-  case Ctor_Complete:
-    return StructorType::Complete;
-  case Ctor_Base:
-    return StructorType::Base;
-  case Ctor_Comdat:
-    llvm_unreachable("not expecting a COMDAT");
-  case Ctor_CopyingClosure:
-  case Ctor_DefaultClosure:
-    llvm_unreachable("not expecting a closure");
-  }
-  llvm_unreachable("not a CXXCtorType");
-}
-
-inline CXXDtorType toCXXDtorType(StructorType T) {
-  switch (T) {
-  case StructorType::Complete:
-    return Dtor_Complete;
-  case StructorType::Base:
-    return Dtor_Base;
-  case StructorType::Deleting:
-    return Dtor_Deleting;
-  }
-  llvm_unreachable("not a StructorType");
-}
-
-inline StructorType getFromDtorType(CXXDtorType T) {
-  switch (T) {
-  case Dtor_Deleting:
-    return StructorType::Deleting;
-  case Dtor_Complete:
-    return StructorType::Complete;
-  case Dtor_Base:
-    return StructorType::Base;
-  case Dtor_Comdat:
-    llvm_unreachable("not expecting a COMDAT");
-  }
-  llvm_unreachable("not a CXXDtorType");
-}
 
 /// This class organizes the cross-module state that is used while lowering
 /// AST types to LLVM types.
@@ -134,13 +70,13 @@ class CodeGenTypes {
   llvm::DenseMap<const ObjCInterfaceType*, llvm::Type *> InterfaceTypes;
 
   /// Maps clang struct type with corresponding record layout info.
-  llvm::DenseMap<const Type*, CGRecordLayout *> CGRecordLayouts;
+  llvm::DenseMap<const Type*, std::unique_ptr<CGRecordLayout>> CGRecordLayouts;
 
   /// Contains the LLVM IR type for any converted RecordDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> RecordDeclTypes;
 
   /// Hold memoized CGFunctionInfo results.
-  llvm::FoldingSet<CGFunctionInfo> FunctionInfos;
+  llvm::FoldingSet<CGFunctionInfo> FunctionInfos{FunctionInfosLog2InitSize};
 
   /// This set keeps track of records that we're currently converting
   /// to an IR type.  For example, when converting:
@@ -160,8 +96,9 @@ class CodeGenTypes {
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
-  llvm::SmallSet<const Type *, 8> RecordsWithOpaqueMemberPointers;
+  llvm::DenseMap<const Type *, llvm::Type *> RecordsWithOpaqueMemberPointers;
 
+  static constexpr unsigned FunctionInfosLog2InitSize = 9;
   /// Helper for ConvertType.
   llvm::Type *ConvertFunctionTypeInternal(QualType FT);
 
@@ -172,6 +109,7 @@ public:
   const llvm::DataLayout &getDataLayout() const {
     return TheModule.getDataLayout();
   }
+  CodeGenModule &getCGM() const { return CGM; }
   ASTContext &getContext() const { return Context; }
   const ABIInfo &getABIInfo() const { return TheABIInfo; }
   const TargetInfo &getTarget() const { return Target; }
@@ -193,7 +131,7 @@ public:
   /// ConvertType in that it is used to convert to the memory representation for
   /// a type.  For example, the scalar representation for _Bool is i1, but the
   /// memory representation is usually i8 or i32, depending on the target.
-  llvm::Type *ConvertTypeForMem(QualType T);
+  llvm::Type *ConvertTypeForMem(QualType T, bool ForBitField = false);
 
   /// GetFunctionType - Get the LLVM function type for \arg Info.
   llvm::FunctionType *GetFunctionType(const CGFunctionInfo &Info);
@@ -296,8 +234,7 @@ public:
 
   /// C++ methods have some special rules and also have implicit parameters.
   const CGFunctionInfo &arrangeCXXMethodDeclaration(const CXXMethodDecl *MD);
-  const CGFunctionInfo &arrangeCXXStructorDeclaration(const CXXMethodDecl *MD,
-                                                      StructorType Type);
+  const CGFunctionInfo &arrangeCXXStructorDeclaration(GlobalDecl GD);
   const CGFunctionInfo &arrangeCXXConstructorCall(const CallArgList &Args,
                                                   const CXXConstructorDecl *D,
                                                   CXXCtorType CtorKind,
@@ -332,8 +269,8 @@ public:
                                                 RequiredArgs args);
 
   /// Compute a new LLVM record layout object for the given record.
-  CGRecordLayout *ComputeRecordLayout(const RecordDecl *D,
-                                      llvm::StructType *Ty);
+  std::unique_ptr<CGRecordLayout> ComputeRecordLayout(const RecordDecl *D,
+                                                      llvm::StructType *Ty);
 
   /// addRecordTypeName - Compute a name from the given record decl with an
   /// optional suffix and name the given LLVM type using it.
@@ -369,7 +306,7 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   bool isRecordBeingLaidOut(const Type *Ty) const {
     return RecordsBeingLaidOut.count(Ty);
   }
-
+  unsigned getTargetAddressSpace(QualType T) const;
 };
 
 }  // end namespace CodeGen

@@ -35,7 +35,7 @@ enum CodePage {
 
 struct WriterParams {
   std::vector<std::string> Include;   // Additional folders to search for files.
-  std::vector<std::string> NoInclude; // Folders to exclude from file search.
+  bool NoInclude;                     // Ignore the INCLUDE variable.
   StringRef InputFilePath;            // The full path of the input file.
   int CodePage = CpAcp;               // The codepage for interpreting characters.
 };
@@ -72,15 +72,15 @@ public:
   // function to do it.
   Error dumpAllStringTables();
 
-  bool AppendNull; // Append '\0' to each existing STRINGTABLE element?
+  bool AppendNull = false; // Append '\0' to each existing STRINGTABLE element?
 
   struct ObjectInfo {
     uint16_t LanguageInfo;
     uint32_t Characteristics;
     uint32_t VersionInfo;
 
-    Optional<uint32_t> Style;
-    Optional<uint32_t> ExStyle;
+    std::optional<uint32_t> Style;
+    std::optional<uint32_t> ExStyle;
     StringRef Caption;
     struct FontInfo {
       uint32_t Size;
@@ -89,7 +89,7 @@ public:
       bool IsItalic;
       uint32_t Charset;
     };
-    Optional<FontInfo> Font;
+    std::optional<FontInfo> Font;
     IntOrString Class;
 
     ObjectInfo()
@@ -103,7 +103,7 @@ public:
     using BundleKey = std::pair<uint16_t, uint16_t>;
     // Each bundle is in fact an array of 16 strings.
     struct Bundle {
-      std::array<Optional<StringRef>, 16> Data;
+      std::array<std::optional<std::vector<StringRef>>, 16> Data;
       ObjectInfo DeclTimeInfo;
       uint16_t MemoryFlags;
       Bundle(const ObjectInfo &Info, uint16_t Flags)
@@ -157,7 +157,8 @@ private:
   Error visitStringTableBundle(const RCResource *);
   Error writeStringTableBundleBody(const RCResource *);
   Error insertStringIntoBundle(StringTableInfo::Bundle &Bundle,
-                               uint16_t StringID, StringRef String);
+                               uint16_t StringID,
+                               const std::vector<StringRef> &String);
 
   // User defined resource
   Error writeUserDefinedBody(const RCResource *);

@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 // <scoped_allocator>
 
@@ -22,8 +22,10 @@
 #include <tuple>
 #include <cassert>
 #include <cstdlib>
-#include "uses_alloc_types.hpp"
-#include "controlled_allocators.hpp"
+#include "uses_alloc_types.h"
+#include "controlled_allocators.h"
+
+#include "test_macros.h"
 
 // - If uses_allocator_v<T, inner_allocator_type> is false and
 //   is_constructible_v<T, Args...> is true, calls
@@ -82,8 +84,13 @@ void test_bullet_two() {
         int const& cx = x;
         A.construct(ptr, x, cx, std::move(x));
         assert((checkConstruct<int&, int const&, int&&>(*ptr, UA_AllocArg, I)));
+#if TEST_STD_VER >= 20
+        assert((POuter.checkConstruct<std::allocator_arg_t&&,
+                   const SA::inner_allocator_type&, int&, int const&, int&&>(O, ptr)));
+#else
         assert((POuter.checkConstruct<std::allocator_arg_t const&,
                    SA::inner_allocator_type&, int&, int const&, int&&>(O, ptr)));
+#endif
         A.destroy(ptr);
         ::operator delete((void*)ptr);
     }
@@ -115,9 +122,15 @@ void test_bullet_three() {
         int const& cx = x;
         A.construct(ptr, x, cx, std::move(x));
         assert((checkConstruct<int&, int const&, int&&>(*ptr, UA_AllocLast, I)));
+#if TEST_STD_VER >= 20
+        assert((POuter.checkConstruct<
+                   int&, int const&, int&&,
+                   const SA::inner_allocator_type&>(O, ptr)));
+#else
         assert((POuter.checkConstruct<
                    int&, int const&, int&&,
                    SA::inner_allocator_type&>(O, ptr)));
+#endif
         A.destroy(ptr);
         ::operator delete((void*)ptr);
     }

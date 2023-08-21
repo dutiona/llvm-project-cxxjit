@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
@@ -24,6 +26,8 @@
 
 #include <functional>
 #include <cassert>
+
+#include "test_macros.h"
 
 int g(int) {return 0;}
 

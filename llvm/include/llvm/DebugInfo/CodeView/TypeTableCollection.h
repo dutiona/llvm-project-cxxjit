@@ -21,14 +21,15 @@ class TypeTableCollection : public TypeCollection {
 public:
   explicit TypeTableCollection(ArrayRef<ArrayRef<uint8_t>> Records);
 
-  Optional<TypeIndex> getFirst() override;
-  Optional<TypeIndex> getNext(TypeIndex Prev) override;
+  std::optional<TypeIndex> getFirst() override;
+  std::optional<TypeIndex> getNext(TypeIndex Prev) override;
 
   CVType getType(TypeIndex Index) override;
   StringRef getTypeName(TypeIndex Index) override;
   bool contains(TypeIndex Index) override;
   uint32_t size() override;
   uint32_t capacity() override;
+  bool replaceType(TypeIndex &Index, CVType Data, bool Stabilize) override;
 
 private:
   BumpPtrAllocator Allocator;

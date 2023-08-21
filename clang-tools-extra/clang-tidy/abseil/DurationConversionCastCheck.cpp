@@ -11,12 +11,11 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Tooling/FixIt.h"
+#include <optional>
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace abseil {
+namespace clang::tidy::abseil {
 
 void DurationConversionCastCheck::registerMatchers(MatchFinder *Finder) {
   auto CallMatcher = ignoringImpCasts(callExpr(
@@ -37,14 +36,14 @@ void DurationConversionCastCheck::check(
   const auto *MatchedCast =
       Result.Nodes.getNodeAs<ExplicitCastExpr>("cast_expr");
 
-  if (!isNotInMacro(Result, MatchedCast))
+  if (isInMacro(Result, MatchedCast))
     return;
 
   const auto *FuncDecl = Result.Nodes.getNodeAs<FunctionDecl>("func_decl");
   const auto *Arg = Result.Nodes.getNodeAs<Expr>("arg");
   StringRef ConversionFuncName = FuncDecl->getName();
 
-  llvm::Optional<DurationScale> Scale =
+  std::optional<DurationScale> Scale =
       getScaleForDurationInverse(ConversionFuncName);
   if (!Scale)
     return;
@@ -70,7 +69,7 @@ void DurationConversionCastCheck::check(
     llvm::StringRef NewFuncName = getDurationInverseForScale(*Scale).first;
 
     diag(MatchedCast->getBeginLoc(), "duration should be converted directly to "
-                                     "a floating-piont number rather than "
+                                     "a floating-point number rather than "
                                      "through a type cast")
         << FixItHint::CreateReplacement(
                MatchedCast->getSourceRange(),
@@ -80,6 +79,4 @@ void DurationConversionCastCheck::check(
   }
 }
 
-} // namespace abseil
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::abseil

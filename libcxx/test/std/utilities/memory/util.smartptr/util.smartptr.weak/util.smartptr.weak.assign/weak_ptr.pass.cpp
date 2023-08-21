@@ -15,6 +15,9 @@
 #include <memory>
 #include <type_traits>
 #include <cassert>
+#include <utility>
+
+#include "test_macros.h"
 
 struct B
 {
@@ -33,7 +36,7 @@ struct A
     static int count;
 
     A() {++count;}
-    A(const A&) {++count;}
+    A(const A& other) : B(other) {++count;}
     ~A() {--count;}
 };
 

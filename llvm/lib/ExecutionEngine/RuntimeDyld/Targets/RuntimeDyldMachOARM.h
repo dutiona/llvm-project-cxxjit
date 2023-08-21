@@ -10,7 +10,6 @@
 #define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_TARGETS_RUNTIMEDYLDMACHOARM_H
 
 #include "../RuntimeDyldMachO.h"
-#include <string>
 
 #define DEBUG_TYPE "dyld"
 
@@ -29,9 +28,9 @@ public:
                       JITSymbolResolver &Resolver)
     : RuntimeDyldMachOCRTPBase(MM, Resolver) {}
 
-  unsigned getMaxStubSize() override { return 8; }
+  unsigned getMaxStubSize() const override { return 8; }
 
-  unsigned getStubAlignment() override { return 4; }
+  Align getStubAlignment() override { return Align(4); }
 
   Expected<JITSymbolFlags> getJITSymbolFlags(const SymbolRef &SR) override {
     auto Flags = RuntimeDyldImpl::getJITSymbolFlags(SR);
@@ -141,7 +140,7 @@ public:
         return ++RelI;
     }
 
-    // Sanity check relocation type.
+    // Validate the relocation type.
     switch (RelType) {
     UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_PAIR);
     UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_SECTDIFF);
@@ -224,7 +223,7 @@ public:
       HighInsn = (HighInsn & 0xf800) | ((Value >> 12) & 0x7ff);
 
       uint16_t LowInsn = readBytesUnaligned(LocalAddress + 2, 2);
-      assert((LowInsn & 0xf800) != 0xf8000 &&
+      assert((LowInsn & 0xf800) == 0xf800 &&
              "Unrecognized thumb branch encoding (BR22 low bits)");
       LowInsn = (LowInsn & 0xf800) | ((Value >> 1) & 0x7ff);
 
@@ -289,7 +288,10 @@ public:
   Error finalizeSection(const ObjectFile &Obj, unsigned SectionID,
                        const SectionRef &Section) {
     StringRef Name;
-    Section.getName(Name);
+    if (Expected<StringRef> NameOrErr = Section.getName())
+      Name = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
 
     if (Name == "__nl_symbol_ptr")
       return populateIndirectSymbolPointersSection(cast<MachOObjectFile>(Obj),

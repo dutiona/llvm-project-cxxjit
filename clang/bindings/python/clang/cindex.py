@@ -1152,7 +1152,7 @@ CursorKind.OBJC_AT_THROW_STMT = CursorKind(219)
 # Objective-C's @synchronized statement.
 CursorKind.OBJC_AT_SYNCHRONIZED_STMT = CursorKind(220)
 
-# Objective-C's autorealease pool statement.
+# Objective-C's autorelease pool statement.
 CursorKind.OBJC_AUTORELEASE_POOL_STMT = CursorKind(221)
 
 # Objective-C's for collection statement.
@@ -1312,7 +1312,7 @@ CursorKind.OMP_TEAMS_DISTRIBUTE_DIRECTIVE = CursorKind(271)
 #
 # The translation unit cursor exists primarily to act as the root cursor for
 # traversing the contents of a translation unit.
-CursorKind.TRANSLATION_UNIT = CursorKind(300)
+CursorKind.TRANSLATION_UNIT = CursorKind(350)
 
 ###
 # Attributes
@@ -1342,7 +1342,10 @@ CursorKind.VISIBILITY_ATTR = CursorKind(417)
 
 CursorKind.DLLEXPORT_ATTR = CursorKind(418)
 CursorKind.DLLIMPORT_ATTR = CursorKind(419)
-CursorKind.CONVERGENT_ATTR = CursorKind(420)
+CursorKind.CONVERGENT_ATTR = CursorKind(438)
+CursorKind.WARN_UNUSED_ATTR = CursorKind(439)
+CursorKind.WARN_UNUSED_RESULT_ATTR = CursorKind(440)
+CursorKind.ALIGNED_ATTR = CursorKind(441)
 
 ###
 # Preprocessing
@@ -1469,6 +1472,62 @@ class Cursor(Structure):
         function template that is declared '= default'.
         """
         return conf.lib.clang_CXXMethod_isDefaulted(self)
+
+    def is_deleted_method(self):
+        """Returns True if the cursor refers to a C++ member function or member
+        function template that is declared '= delete'.
+        """
+        return conf.lib.clang_CXXMethod_isDeleted(self)
+
+    def is_copy_assignment_operator_method(self):
+        """Returnrs True if the cursor refers to a copy-assignment operator.
+
+        A copy-assignment operator `X::operator=` is a non-static,
+        non-template member function of _class_ `X` with exactly one
+        parameter of type `X`, `X&`, `const X&`, `volatile X&` or `const
+        volatile X&`.
+
+
+        That is, for example, the `operator=` in:
+
+           class Foo {
+               bool operator=(const volatile Foo&);
+           };
+
+        Is a copy-assignment operator, while the `operator=` in:
+
+           class Bar {
+               bool operator=(const int&);
+           };
+
+        Is not.
+        """
+        return conf.lib.clang_CXXMethod_isCopyAssignmentOperator(self)
+
+    def is_move_assignment_operator_method(self):
+        """Returnrs True if the cursor refers to a move-assignment operator.
+
+        A move-assignment operator `X::operator=` is a non-static,
+        non-template member function of _class_ `X` with exactly one
+        parameter of type `X&&`, `const X&&`, `volatile X&&` or `const
+        volatile X&&`.
+
+
+        That is, for example, the `operator=` in:
+
+           class Foo {
+               bool operator=(const volatile Foo&&);
+           };
+
+        Is a move-assignment operator, while the `operator=` in:
+
+           class Bar {
+               bool operator=(const int&&);
+           };
+
+        Is not.
+        """
+        return conf.lib.clang_CXXMethod_isMoveAssignmentOperator(self)
 
     def is_mutable_field(self):
         """Returns True if the cursor refers to a C++ field that is declared
@@ -2056,6 +2115,7 @@ TypeKind.OBJCCLASS = TypeKind(28)
 TypeKind.OBJCSEL = TypeKind(29)
 TypeKind.FLOAT128 = TypeKind(30)
 TypeKind.HALF = TypeKind(31)
+TypeKind.IBM128 = TypeKind(40)
 TypeKind.COMPLEX = TypeKind(100)
 TypeKind.POINTER = TypeKind(101)
 TypeKind.BLOCKPOINTER = TypeKind(102)
@@ -2117,6 +2177,9 @@ TypeKind.OCLSAMPLER = TypeKind(157)
 TypeKind.OCLEVENT = TypeKind(158)
 TypeKind.OCLQUEUE = TypeKind(159)
 TypeKind.OCLRESERVEID = TypeKind(160)
+
+TypeKind.EXTVECTOR = TypeKind(176)
+TypeKind.ATOMIC = TypeKind(177)
 
 class RefQualifierKind(BaseEnumeration):
     """Describes a specific ref-qualifier of a type."""
@@ -3416,6 +3479,18 @@ functionList = [
    bool),
 
   ("clang_CXXMethod_isDefaulted",
+   [Cursor],
+   bool),
+
+  ("clang_CXXMethod_isDeleted",
+   [Cursor],
+   bool),
+
+  ("clang_CXXMethod_isCopyAssignmentOperator",
+   [Cursor],
+   bool),
+
+  ("clang_CXXMethod_isMoveAssignmentOperator",
    [Cursor],
    bool),
 

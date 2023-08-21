@@ -8,7 +8,7 @@ define i64 @test1(i64 %X, i8 %C) nounwind {
 ; X86-LABEL: test1:
 ; X86:       # %bb.0:
 ; X86-NEXT:    pushl %esi
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl %esi, %eax
@@ -39,7 +39,7 @@ define i64 @test2(i64 %X, i8 %C) nounwind {
 ; X86-LABEL: test2:
 ; X86:       # %bb.0:
 ; X86-NEXT:    pushl %esi
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
 ; X86-NEXT:    movl %esi, %edx
@@ -71,7 +71,7 @@ define i64 @test3(i64 %X, i8 %C) nounwind {
 ; X86-LABEL: test3:
 ; X86:       # %bb.0:
 ; X86-NEXT:    pushl %esi
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
 ; X86-NEXT:    movl %esi, %edx
@@ -103,7 +103,7 @@ define i64 @test3(i64 %X, i8 %C) nounwind {
 define i32 @test4(i32 %A, i32 %B, i8 %C) nounwind {
 ; X86-LABEL: test4:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shldl %cl, %edx, %eax
@@ -130,7 +130,7 @@ define i16 @test5(i16 %A, i16 %B, i8 %C) nounwind {
 ; X86:       # %bb.0:
 ; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    andb $15, %cl
 ; X86-NEXT:    shldw %cl, %dx, %ax
 ; X86-NEXT:    retl
@@ -158,7 +158,7 @@ define i16 @test5(i16 %A, i16 %B, i8 %C) nounwind {
 define i32 @test6(i32 %A, i32 %B, i8 %C) nounwind {
 ; X86-LABEL: test6:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -185,7 +185,7 @@ define i16 @test7(i16 %A, i16 %B, i8 %C) nounwind {
 ; X86:       # %bb.0:
 ; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    andb $15, %cl
 ; X86-NEXT:    shrdw %cl, %dx, %ax
 ; X86-NEXT:    retl
@@ -214,7 +214,7 @@ define i64 @test8(i64 %val, i32 %bits) nounwind {
 ; X86-LABEL: test8:
 ; X86:       # %bb.0:
 ; X86-NEXT:    pushl %esi
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl %esi, %eax
@@ -240,7 +240,7 @@ define i64 @test8(i64 %val, i32 %bits) nounwind {
 define i64 @test9(i64 %val, i32 %bits) nounwind {
 ; X86-LABEL: test9:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -264,7 +264,7 @@ define i64 @test9(i64 %val, i32 %bits) nounwind {
 define i64 @test10(i64 %val, i32 %bits) nounwind {
 ; X86-LABEL: test10:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -290,11 +290,9 @@ define i64 @test10(i64 %val, i32 %bits) nounwind {
 define i32 @test11(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test11:
 ; X86:       # %bb.0:
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    andl $31, %ecx
-; X86-NEXT:    # kill: def $cl killed $cl killed $ecx
 ; X86-NEXT:    shldl %cl, %edx, %eax
 ; X86-NEXT:    retl
 ;
@@ -302,7 +300,6 @@ define i32 @test11(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X64:       # %bb.0:
 ; X64-NEXT:    movl %edx, %ecx
 ; X64-NEXT:    movl %edi, %eax
-; X64-NEXT:    andl $31, %ecx
 ; X64-NEXT:    # kill: def $cl killed $cl killed $ecx
 ; X64-NEXT:    shldl %cl, %esi, %eax
 ; X64-NEXT:    retq
@@ -317,11 +314,9 @@ define i32 @test11(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test12(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test12:
 ; X86:       # %bb.0:
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    andl $31, %ecx
-; X86-NEXT:    # kill: def $cl killed $cl killed $ecx
 ; X86-NEXT:    shrdl %cl, %edx, %eax
 ; X86-NEXT:    retl
 ;
@@ -329,7 +324,6 @@ define i32 @test12(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X64:       # %bb.0:
 ; X64-NEXT:    movl %edx, %ecx
 ; X64-NEXT:    movl %esi, %eax
-; X64-NEXT:    andl $31, %ecx
 ; X64-NEXT:    # kill: def $cl killed $cl killed $ecx
 ; X64-NEXT:    shrdl %cl, %edi, %eax
 ; X64-NEXT:    retq
@@ -344,7 +338,7 @@ define i32 @test12(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test13(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test13:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shldl %cl, %edx, %eax
@@ -367,7 +361,7 @@ define i32 @test13(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test14(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test14:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -390,7 +384,7 @@ define i32 @test14(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test15(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test15:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shldl %cl, %edx, %eax
@@ -414,7 +408,7 @@ define i32 @test15(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test16(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test16:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -438,7 +432,7 @@ define i32 @test16(i32 %hi, i32 %lo, i32 %bits) nounwind {
 define i32 @test17(i32 %hi, i32 %lo, i32 %bits) nounwind {
 ; X86-LABEL: test17:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shrdl %cl, %edx, %eax
@@ -459,23 +453,58 @@ define i32 @test17(i32 %hi, i32 %lo, i32 %bits) nounwind {
   ret i32 %sh
 }
 
-; PR34641 - Masked Shift Counts
-
-define i32 @shld_safe_i32(i32, i32, i32) {
-; X86-LABEL: shld_safe_i32:
+define i32 @test18(i32 %hi, i32 %lo, i32 %bits) nounwind {
+; X86-LABEL: test18:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    shldl %cl, %edx, %eax
 ; X86-NEXT:    retl
 ;
-; X64-LABEL: shld_safe_i32:
+; X64-LABEL: test18:
 ; X64:       # %bb.0:
 ; X64-NEXT:    movl %edx, %ecx
 ; X64-NEXT:    movl %edi, %eax
 ; X64-NEXT:    # kill: def $cl killed $cl killed $ecx
 ; X64-NEXT:    shldl %cl, %esi, %eax
+; X64-NEXT:    retq
+  %tbits = trunc i32 %bits to i8
+  %tand = and i8 %tbits, 31
+  %tand64 = sub i8 32, %tand
+  %and = zext i8 %tand to i32
+  %and64 = zext i8 %tand64 to i32
+  %sh_lo = lshr i32 %lo, %and64
+  %sh_hi = shl i32 %hi, %and
+  %sh = or i32 %sh_lo, %sh_hi
+  ret i32 %sh
+}
+
+; These are not valid shld/shrd patterns. When the shift amount modulo
+; the bitwidth is zero, the result should be an OR of both operands not a
+; shift.
+
+define i32 @not_shld_i32(i32, i32, i32) {
+; X86-LABEL: not_shld_i32:
+; X86:       # %bb.0:
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
+; X86-NEXT:    shll %cl, %edx
+; X86-NEXT:    negb %cl
+; X86-NEXT:    shrl %cl, %eax
+; X86-NEXT:    orl %edx, %eax
+; X86-NEXT:    retl
+;
+; X64-LABEL: not_shld_i32:
+; X64:       # %bb.0:
+; X64-NEXT:    movl %edx, %ecx
+; X64-NEXT:    movl %esi, %eax
+; X64-NEXT:    shll %cl, %edi
+; X64-NEXT:    negb %cl
+; X64-NEXT:    # kill: def $cl killed $cl killed $ecx
+; X64-NEXT:    shrl %cl, %eax
+; X64-NEXT:    orl %edi, %eax
 ; X64-NEXT:    retq
   %4 = and i32 %2, 31
   %5 = shl i32 %0, %4
@@ -486,21 +515,27 @@ define i32 @shld_safe_i32(i32, i32, i32) {
   ret i32 %9
 }
 
-define i32 @shrd_safe_i32(i32, i32, i32) {
-; X86-LABEL: shrd_safe_i32:
+define i32 @not_shrd_i32(i32, i32, i32) {
+; X86-LABEL: not_shrd_i32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movb {{[0-9]+}}(%esp), %cl
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    shrdl %cl, %edx, %eax
+; X86-NEXT:    movzbl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %edx
+; X86-NEXT:    shrl %cl, %edx
+; X86-NEXT:    negb %cl
+; X86-NEXT:    shll %cl, %eax
+; X86-NEXT:    orl %edx, %eax
 ; X86-NEXT:    retl
 ;
-; X64-LABEL: shrd_safe_i32:
+; X64-LABEL: not_shrd_i32:
 ; X64:       # %bb.0:
 ; X64-NEXT:    movl %edx, %ecx
-; X64-NEXT:    movl %edi, %eax
+; X64-NEXT:    movl %esi, %eax
+; X64-NEXT:    shrl %cl, %edi
+; X64-NEXT:    negb %cl
 ; X64-NEXT:    # kill: def $cl killed $cl killed $ecx
-; X64-NEXT:    shrdl %cl, %esi, %eax
+; X64-NEXT:    shll %cl, %eax
+; X64-NEXT:    orl %edi, %eax
 ; X64-NEXT:    retq
   %4 = and i32 %2, 31
   %5 = lshr i32 %0, %4

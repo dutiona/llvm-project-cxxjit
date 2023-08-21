@@ -9,7 +9,7 @@
 // compiled with MSVC. Uses weak aliases when compiled with clang. Unfortunately
 // the method each compiler supports is not supported by the other.
 //===----------------------------------------------------------------------===//
-#include "FuzzerDefs.h"
+#include "FuzzerPlatform.h"
 #if LIBFUZZER_WINDOWS
 
 #include "FuzzerExtFunctions.h"
@@ -49,7 +49,7 @@ extern "C" {
     Printf("ERROR: Function \"%s\" not defined.\n", #NAME); \
     exit(1);                                                \
   }                                                         \
-  EXTERNAL_FUNC(NAME, NAME##Def) RETURN_TYPE NAME FUNC_SIG;
+  EXTERNAL_FUNC(NAME, NAME##Def) RETURN_TYPE NAME FUNC_SIG
 
 #include "FuzzerExtFunctions.def"
 

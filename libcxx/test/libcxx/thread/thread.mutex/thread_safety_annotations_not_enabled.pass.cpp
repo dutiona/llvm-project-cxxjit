@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <mutex>
 
@@ -15,6 +15,8 @@
 // understood by the thread safety annotations.
 
 #include <mutex>
+
+#include "test_macros.h"
 
 int main(int, char**) {
   std::mutex m;

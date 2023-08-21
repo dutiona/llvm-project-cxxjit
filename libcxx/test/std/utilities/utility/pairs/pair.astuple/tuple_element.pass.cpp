@@ -12,6 +12,7 @@
 
 // tuple_element<I, pair<T1, T2> >::type
 
+#include <type_traits>
 #include <utility>
 
 template <class T1, class T2>

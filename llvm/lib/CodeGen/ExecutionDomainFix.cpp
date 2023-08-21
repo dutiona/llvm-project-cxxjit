@@ -9,6 +9,7 @@
 #include "llvm/CodeGen/ExecutionDomainFix.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
 
@@ -336,11 +337,10 @@ void ExecutionDomainFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
     }
     // Sorted insertion.
     // Enables giving priority to the latest domains during merging.
-    auto I = std::upper_bound(
-        Regs.begin(), Regs.end(), rx, [&](int LHS, const int RHS) {
-          return RDA->getReachingDef(mi, RC->getRegister(LHS)) <
-                 RDA->getReachingDef(mi, RC->getRegister(RHS));
-        });
+    const int Def = RDA->getReachingDef(mi, RC->getRegister(rx));
+    auto I = partition_point(Regs, [&](int I) {
+      return RDA->getReachingDef(mi, RC->getRegister(I)) <= Def;
+    });
     Regs.insert(I, rx);
   }
 
@@ -380,7 +380,7 @@ void ExecutionDomainFix::visitSoftInstr(MachineInstr *mi, unsigned mask) {
 
   // Finally set all defs and non-collapsed uses to dv. We must iterate through
   // all the operators, including imp-def ones.
-  for (MachineOperand &mo : mi->operands()) {
+  for (const MachineOperand &mo : mi->operands()) {
     if (!mo.isReg())
       continue;
     for (int rx : regIndices(mo.getReg())) {
@@ -454,16 +454,14 @@ bool ExecutionDomainFix::runOnMachineFunction(MachineFunction &mf) {
   // Traverse the basic blocks.
   LoopTraversal Traversal;
   LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(mf);
-  for (LoopTraversal::TraversedMBBInfo TraversedMBB : TraversedMBBOrder) {
+  for (const LoopTraversal::TraversedMBBInfo &TraversedMBB : TraversedMBBOrder)
     processBasicBlock(TraversedMBB);
-  }
 
-  for (LiveRegsDVInfo OutLiveRegs : MBBOutRegsInfos) {
-    for (DomainValue *OutLiveReg : OutLiveRegs) {
+  for (const LiveRegsDVInfo &OutLiveRegs : MBBOutRegsInfos)
+    for (DomainValue *OutLiveReg : OutLiveRegs)
       if (OutLiveReg)
         release(OutLiveReg);
-    }
-  }
+
   MBBOutRegsInfos.clear();
   Avail.clear();
   Allocator.DestroyAll();

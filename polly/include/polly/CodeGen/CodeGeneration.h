@@ -9,19 +9,11 @@
 #ifndef POLLY_CODEGENERATION_H
 #define POLLY_CODEGENERATION_H
 
-#include "IRBuilder.h"
-#include "polly/Config/config.h"
+#include "polly/CodeGen/IRBuilder.h"
 #include "polly/ScopPass.h"
 #include "llvm/IR/PassManager.h"
 
-namespace llvm {
-
-class BasicBlock;
-} // namespace llvm
-
 namespace polly {
-
-class Scop;
 
 enum VectorizerChoice {
   VECTORIZER_NONE,
@@ -36,7 +28,7 @@ extern VectorizerChoice PollyVectorizerChoice;
 /// UnreachableInst.
 void markBlockUnreachable(BasicBlock &Block, PollyIRBuilder &Builder);
 
-struct CodeGenerationPass : public PassInfoMixin<CodeGenerationPass> {
+struct CodeGenerationPass final : PassInfoMixin<CodeGenerationPass> {
   PreservedAnalyses run(Scop &S, ScopAnalysisManager &SAM,
                         ScopStandardAnalysisResults &AR, SPMUpdater &U);
 };

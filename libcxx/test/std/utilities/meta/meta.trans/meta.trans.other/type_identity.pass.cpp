@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// UNSUPPORTED: c++98, c++03, c++11, c++14, c++17
+// UNSUPPORTED: c++03, c++11, c++14, c++17
 
 // type_traits
 
@@ -18,8 +18,8 @@
 template <class T>
 void test_type_identity()
 {
-    static_assert((std::is_same<typename std::type_identity<T>::type, T>::value), "");
-    static_assert((std::is_same<         std::type_identity_t<T>,     T>::value), "");
+    ASSERT_SAME_TYPE(T, typename std::type_identity<T>::type);
+    ASSERT_SAME_TYPE(T,          std::type_identity_t<T>);
 }
 
 int main(int, char**)

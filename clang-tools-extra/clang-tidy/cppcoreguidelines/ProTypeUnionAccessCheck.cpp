@@ -12,14 +12,9 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace cppcoreguidelines {
+namespace clang::tidy::cppcoreguidelines {
 
 void ProTypeUnionAccessCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   Finder->addMatcher(
       memberExpr(hasObjectExpression(hasType(recordDecl(isUnion()))))
           .bind("expr"),
@@ -32,6 +27,4 @@ void ProTypeUnionAccessCheck::check(const MatchFinder::MatchResult &Result) {
        "do not access members of unions; use (boost::)variant instead");
 }
 
-} // namespace cppcoreguidelines
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cppcoreguidelines

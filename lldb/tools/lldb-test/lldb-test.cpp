@@ -10,6 +10,7 @@
 #include "SystemInitializerTest.h"
 
 #include "Plugins/SymbolFile/DWARF/SymbolFileDWARF.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -18,21 +19,23 @@
 #include "lldb/Initialization/SystemLifetimeManager.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Symbol/ClangASTContext.h"
-#include "lldb/Symbol/ClangASTImporter.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/LineTable.h"
-#include "lldb/Symbol/SymbolVendor.h"
+#include "lldb/Symbol/SymbolFile.h"
+#include "lldb/Symbol/Symtab.h"
 #include "lldb/Symbol/TypeList.h"
+#include "lldb/Symbol/TypeMap.h"
 #include "lldb/Symbol/VariableList.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/CleanUp.h"
 #include "lldb/Utility/DataExtractor.h"
+#include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/State.h"
 #include "lldb/Utility/StreamString.h"
 
 #include "llvm/ADT/IntervalMap.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -41,7 +44,9 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
+
 #include <cstdio>
+#include <optional>
 #include <thread>
 
 using namespace lldb;
@@ -54,12 +59,16 @@ static cl::SubCommand BreakpointSubcommand("breakpoints",
 cl::SubCommand ObjectFileSubcommand("object-file",
                                     "Display LLDB object file information");
 cl::SubCommand SymbolsSubcommand("symbols", "Dump symbols for an object file");
+cl::SubCommand SymTabSubcommand("symtab",
+                                "Test symbol table functionality");
 cl::SubCommand IRMemoryMapSubcommand("ir-memory-map", "Test IRMemoryMap");
+cl::SubCommand AssertSubcommand("assert", "Test assert handling");
 
 cl::opt<std::string> Log("log", cl::desc("Path to a log file"), cl::init(""),
                          cl::sub(BreakpointSubcommand),
                          cl::sub(ObjectFileSubcommand),
                          cl::sub(SymbolsSubcommand),
+                         cl::sub(SymTabSubcommand),
                          cl::sub(IRMemoryMapSubcommand));
 
 /// Create a target using the file pointed to by \p Filename, or abort.
@@ -98,6 +107,48 @@ cl::list<std::string> InputFilenames(cl::Positional, cl::desc("<input files>"),
                                      cl::sub(ObjectFileSubcommand));
 } // namespace object
 
+namespace symtab {
+
+/// The same enum as Mangled::NamePreference but with a default
+/// 'None' case. This is needed to disambiguate wheter "ManglingPreference" was
+/// explicitly set or not.
+enum class ManglingPreference {
+  None,
+  Mangled,
+  Demangled,
+  MangledWithoutArguments,
+};
+
+static cl::opt<std::string> FindSymbolsByRegex(
+    "find-symbols-by-regex",
+    cl::desc(
+        "Dump symbols found in the symbol table matching the specified regex."),
+    cl::sub(SymTabSubcommand));
+
+static cl::opt<ManglingPreference> ManglingPreference(
+    "mangling-preference",
+    cl::desc("Preference on mangling scheme the regex should match against and "
+             "dumped."),
+    cl::values(
+        clEnumValN(ManglingPreference::Mangled, "mangled", "Prefer mangled"),
+        clEnumValN(ManglingPreference::Demangled, "demangled",
+                   "Prefer demangled"),
+        clEnumValN(ManglingPreference::MangledWithoutArguments,
+                   "demangled-without-args", "Prefer mangled without args")),
+    cl::sub(SymTabSubcommand));
+
+static cl::opt<std::string> InputFile(cl::Positional, cl::desc("<input file>"),
+                                      cl::Required, cl::sub(SymTabSubcommand));
+
+/// Validate that the options passed make sense.
+static std::optional<llvm::Error> validate();
+
+/// Transforms the selected mangling preference into a Mangled::NamePreference
+static Mangled::NamePreference getNamePreference();
+
+static int handleSymtabCommand(Debugger &Dbg);
+} // namespace symtab
+
 namespace symbols {
 static cl::opt<std::string> InputFile(cl::Positional, cl::desc("<input file>"),
                                       cl::Required, cl::sub(SymbolsSubcommand));
@@ -130,13 +181,22 @@ static cl::opt<std::string> Name("name", cl::desc("Name to find."),
                                  cl::sub(SymbolsSubcommand));
 static cl::opt<bool>
     Regex("regex",
-          cl::desc("Search using regular expressions (avaliable for variables "
+          cl::desc("Search using regular expressions (available for variables "
                    "and functions only)."),
           cl::sub(SymbolsSubcommand));
 static cl::opt<std::string>
     Context("context",
             cl::desc("Restrict search to the context of the given variable."),
             cl::value_desc("variable"), cl::sub(SymbolsSubcommand));
+
+static cl::opt<std::string> CompilerContext(
+    "compiler-context",
+    cl::desc("Specify a compiler context as \"kind:name,...\"."),
+    cl::value_desc("context"), cl::sub(SymbolsSubcommand));
+
+static cl::opt<std::string>
+    Language("language", cl::desc("Specify a language type, like C99."),
+             cl::value_desc("language"), cl::sub(SymbolsSubcommand));
 
 static cl::list<FunctionNameType> FunctionNameFlags(
     "function-flags", cl::desc("Function search flags:"),
@@ -158,6 +218,13 @@ static FunctionNameType getFunctionNameFlags() {
 static cl::opt<bool> DumpAST("dump-ast",
                              cl::desc("Dump AST restored from symbols."),
                              cl::sub(SymbolsSubcommand));
+static cl::opt<bool> DumpClangAST(
+    "dump-clang-ast",
+    cl::desc("Dump clang AST restored from symbols. When used on its own this "
+             "will dump the entire AST of all loaded symbols. When combined "
+             "with -find, it changes the presentation of the search results "
+             "from pretty-printing the types to an AST dump."),
+    cl::sub(SymbolsSubcommand));
 
 static cl::opt<bool> Verify("verify", cl::desc("Verify symbol information."),
                             cl::sub(SymbolsSubcommand));
@@ -168,7 +235,7 @@ static cl::opt<std::string> File("file",
 static cl::opt<int> Line("line", cl::desc("Line to search."),
                          cl::sub(SymbolsSubcommand));
 
-static Expected<CompilerDeclContext> getDeclContext(SymbolVendor &Vendor);
+static Expected<CompilerDeclContext> getDeclContext(SymbolFile &Symfile);
 
 static Error findFunctions(lldb_private::Module &Module);
 static Error findBlocks(lldb_private::Module &Module);
@@ -177,6 +244,7 @@ static Error findTypes(lldb_private::Module &Module);
 static Error findVariables(lldb_private::Module &Module);
 static Error dumpModule(lldb_private::Module &Module);
 static Error dumpAST(lldb_private::Module &Module);
+static Error dumpEntireClangAST(lldb_private::Module &Module);
 static Error verify(lldb_private::Module &Module);
 
 static Expected<Error (*)(lldb_private::Module &)> getAction();
@@ -217,7 +285,50 @@ bool evalFree(StringRef Line, IRMemoryMapTestState &State);
 int evaluateMemoryMapCommands(Debugger &Dbg);
 } // namespace irmemorymap
 
+namespace assert {
+int lldb_assert(Debugger &Dbg);
+} // namespace assert
 } // namespace opts
+
+std::vector<CompilerContext> parseCompilerContext() {
+  std::vector<CompilerContext> result;
+  if (opts::symbols::CompilerContext.empty())
+    return result;
+
+  StringRef str{opts::symbols::CompilerContext};
+  SmallVector<StringRef, 8> entries_str;
+  str.split(entries_str, ',', /*maxSplit*/-1, /*keepEmpty=*/false);
+  for (auto entry_str : entries_str) {
+    StringRef key, value;
+    std::tie(key, value) = entry_str.split(':');
+    auto kind =
+        StringSwitch<CompilerContextKind>(key)
+            .Case("TranslationUnit", CompilerContextKind::TranslationUnit)
+            .Case("Module", CompilerContextKind::Module)
+            .Case("Namespace", CompilerContextKind::Namespace)
+            .Case("Class", CompilerContextKind::Class)
+            .Case("Struct", CompilerContextKind::Struct)
+            .Case("Union", CompilerContextKind::Union)
+            .Case("Function", CompilerContextKind::Function)
+            .Case("Variable", CompilerContextKind::Variable)
+            .Case("Enum", CompilerContextKind::Enum)
+            .Case("Typedef", CompilerContextKind::Typedef)
+            .Case("AnyModule", CompilerContextKind::AnyModule)
+            .Case("AnyType", CompilerContextKind::AnyType)
+            .Default(CompilerContextKind::Invalid);
+    if (value.empty()) {
+      WithColor::error() << "compiler context entry has no \"name\"\n";
+      exit(1);
+    }
+    result.push_back({kind, ConstString{value}});
+  }
+  outs() << "Search context: {\n";
+  for (auto entry: result)
+    entry.Dump();
+  outs() << "}\n";
+
+  return result;
+}
 
 template <typename... Args>
 static Error make_string_error(const char *Format, Args &&... args) {
@@ -291,7 +402,7 @@ std::string opts::breakpoint::substitute(StringRef Cmd) {
         OS << sys::path::parent_path(breakpoint::CommandFile);
         break;
       }
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     default:
       size_t pos = Cmd.find('%');
       OS << Cmd.substr(0, pos);
@@ -312,7 +423,7 @@ int opts::breakpoint::evaluateBreakpoints(Debugger &Dbg) {
   while (!Rest.empty()) {
     StringRef Line;
     std::tie(Line, Rest) = Rest.split('\n');
-    Line = Line.ltrim();
+    Line = Line.ltrim().rtrim();
     if (Line.empty() || Line[0] == '#')
       continue;
 
@@ -321,7 +432,7 @@ int opts::breakpoint::evaluateBreakpoints(Debugger &Dbg) {
 
     std::string Command = substitute(Line);
     P.formatLine("Command: {0}", Command);
-    CommandReturnObject Result;
+    CommandReturnObject Result(/*colors*/ false);
     if (!Dbg.GetCommandInterpreter().HandleCommand(
             Command.c_str(), /*add_to_history*/ eLazyBoolNo, Result)) {
       P.formatLine("Failed: {0}", Result.GetErrorData());
@@ -335,11 +446,12 @@ int opts::breakpoint::evaluateBreakpoints(Debugger &Dbg) {
 }
 
 Expected<CompilerDeclContext>
-opts::symbols::getDeclContext(SymbolVendor &Vendor) {
+opts::symbols::getDeclContext(SymbolFile &Symfile) {
   if (Context.empty())
     return CompilerDeclContext();
   VariableList List;
-  Vendor.FindGlobalVariables(ConstString(Context), nullptr, UINT32_MAX, List);
+  Symfile.FindGlobalVariables(ConstString(Context), CompilerDeclContext(),
+                              UINT32_MAX, List);
   if (List.Empty())
     return make_string_error("Context search didn't find a match.");
   if (List.GetSize() > 1)
@@ -347,8 +459,12 @@ opts::symbols::getDeclContext(SymbolVendor &Vendor) {
   return List.GetVariableAtIndex(0)->GetDeclContext();
 }
 
+static lldb::DescriptionLevel GetDescriptionLevel() {
+  return opts::symbols::DumpClangAST ? eDescriptionLevelVerbose : eDescriptionLevelFull;
+}
+
 Error opts::symbols::findFunctions(lldb_private::Module &Module) {
-  SymbolVendor &Vendor = *Module.GetSymbolVendor();
+  SymbolFile &Symfile = *Module.GetSymbolFile();
   SymbolContextList List;
   if (!File.empty()) {
     assert(Line != 0);
@@ -364,8 +480,10 @@ Error opts::symbols::findFunctions(lldb_private::Module &Module) {
       cu_sp->FindLineEntry(0, Line, &src_file, false, &le);
       if (!le.IsValid())
         continue;
-
-      auto addr = le.GetSameLineContiguousAddressRange().GetBaseAddress();
+      const bool include_inlined_functions = false;
+      auto addr =
+          le.GetSameLineContiguousAddressRange(include_inlined_functions)
+              .GetBaseAddress();
       if (!addr.IsValid())
         continue;
 
@@ -378,16 +496,19 @@ Error opts::symbols::findFunctions(lldb_private::Module &Module) {
   } else if (Regex) {
     RegularExpression RE(Name);
     assert(RE.IsValid());
-    Vendor.FindFunctions(RE, true, false, List);
+    List.Clear();
+    Symfile.FindFunctions(RE, true, List);
   } else {
-    Expected<CompilerDeclContext> ContextOr = getDeclContext(Vendor);
+    Expected<CompilerDeclContext> ContextOr = getDeclContext(Symfile);
     if (!ContextOr)
       return ContextOr.takeError();
-    CompilerDeclContext *ContextPtr =
-        ContextOr->IsValid() ? &*ContextOr : nullptr;
+    const CompilerDeclContext &ContextPtr =
+        ContextOr->IsValid() ? *ContextOr : CompilerDeclContext();
 
-    Vendor.FindFunctions(ConstString(Name), ContextPtr, getFunctionNameFlags(),
-                         true, false, List);
+    List.Clear();
+    Module::LookupInfo lookup_info(ConstString(Name), getFunctionNameFlags(),
+                                   eLanguageTypeUnknown);
+    Symfile.FindFunctions(lookup_info, ContextPtr, true, List);
   }
   outs() << formatv("Found {0} functions:\n", List.GetSize());
   StreamString Stream;
@@ -414,8 +535,9 @@ Error opts::symbols::findBlocks(lldb_private::Module &Module) {
     cu_sp->FindLineEntry(0, Line, &src_file, false, &le);
     if (!le.IsValid())
       continue;
-
-    auto addr = le.GetSameLineContiguousAddressRange().GetBaseAddress();
+    const bool include_inlined_functions = false;
+    auto addr = le.GetSameLineContiguousAddressRange(include_inlined_functions)
+                    .GetBaseAddress();
     if (!addr.IsValid())
       continue;
 
@@ -433,15 +555,15 @@ Error opts::symbols::findBlocks(lldb_private::Module &Module) {
 }
 
 Error opts::symbols::findNamespaces(lldb_private::Module &Module) {
-  SymbolVendor &Vendor = *Module.GetSymbolVendor();
-  Expected<CompilerDeclContext> ContextOr = getDeclContext(Vendor);
+  SymbolFile &Symfile = *Module.GetSymbolFile();
+  Expected<CompilerDeclContext> ContextOr = getDeclContext(Symfile);
   if (!ContextOr)
     return ContextOr.takeError();
-  CompilerDeclContext *ContextPtr =
-      ContextOr->IsValid() ? &*ContextOr : nullptr;
+  const CompilerDeclContext &ContextPtr =
+      ContextOr->IsValid() ? *ContextOr : CompilerDeclContext();
 
   CompilerDeclContext Result =
-      Vendor.FindNamespace(ConstString(Name), ContextPtr);
+      Symfile.FindNamespace(ConstString(Name), ContextPtr);
   if (Result)
     outs() << "Found namespace: "
            << Result.GetScopeQualifiedName().GetStringRef() << "\n";
@@ -451,37 +573,50 @@ Error opts::symbols::findNamespaces(lldb_private::Module &Module) {
 }
 
 Error opts::symbols::findTypes(lldb_private::Module &Module) {
-  SymbolVendor &Vendor = *Module.GetSymbolVendor();
-  Expected<CompilerDeclContext> ContextOr = getDeclContext(Vendor);
+  SymbolFile &Symfile = *Module.GetSymbolFile();
+  Expected<CompilerDeclContext> ContextOr = getDeclContext(Symfile);
   if (!ContextOr)
     return ContextOr.takeError();
-  CompilerDeclContext *ContextPtr =
-      ContextOr->IsValid() ? &*ContextOr : nullptr;
+  const CompilerDeclContext &ContextPtr =
+      ContextOr->IsValid() ? *ContextOr : CompilerDeclContext();
+
+  LanguageSet languages;
+  if (!Language.empty())
+    languages.Insert(Language::GetLanguageTypeFromString(Language));
 
   DenseSet<SymbolFile *> SearchedFiles;
   TypeMap Map;
-  Vendor.FindTypes(ConstString(Name), ContextPtr, true, UINT32_MAX,
-                   SearchedFiles, Map);
+  if (!Name.empty())
+    Symfile.FindTypes(ConstString(Name), ContextPtr, UINT32_MAX, SearchedFiles,
+                      Map);
+  else
+    Module.FindTypes(parseCompilerContext(), languages, SearchedFiles, Map);
 
   outs() << formatv("Found {0} types:\n", Map.GetSize());
   StreamString Stream;
-  Map.Dump(&Stream, false);
+  // Resolve types to force-materialize typedef types.
+  Map.ForEach([&](TypeSP &type) {
+    type->GetFullCompilerType();
+    return false;
+  });
+  Map.Dump(&Stream, false, GetDescriptionLevel());
   outs() << Stream.GetData() << "\n";
   return Error::success();
 }
 
 Error opts::symbols::findVariables(lldb_private::Module &Module) {
-  SymbolVendor &Vendor = *Module.GetSymbolVendor();
+  SymbolFile &Symfile = *Module.GetSymbolFile();
   VariableList List;
   if (Regex) {
     RegularExpression RE(Name);
     assert(RE.IsValid());
-    Vendor.FindGlobalVariables(RE, UINT32_MAX, List);
+    Symfile.FindGlobalVariables(RE, UINT32_MAX, List);
   } else if (!File.empty()) {
     CompUnitSP CU;
     for (size_t Ind = 0; !CU && Ind < Module.GetNumCompileUnits(); ++Ind) {
       CompUnitSP Candidate = Module.GetCompileUnitAtIndex(Ind);
-      if (!Candidate || Candidate->GetFilename().GetStringRef() != File)
+      if (!Candidate ||
+          Candidate->GetPrimaryFile().GetFilename().GetStringRef() != File)
         continue;
       if (CU)
         return make_string_error("Multiple compile units for file `{0}` found.",
@@ -494,13 +629,13 @@ Error opts::symbols::findVariables(lldb_private::Module &Module) {
 
     List.AddVariables(CU->GetVariableList(true).get());
   } else {
-    Expected<CompilerDeclContext> ContextOr = getDeclContext(Vendor);
+    Expected<CompilerDeclContext> ContextOr = getDeclContext(Symfile);
     if (!ContextOr)
       return ContextOr.takeError();
-    CompilerDeclContext *ContextPtr =
-        ContextOr->IsValid() ? &*ContextOr : nullptr;
+    const CompilerDeclContext &ContextPtr =
+        ContextOr->IsValid() ? *ContextOr : CompilerDeclContext();
 
-    Vendor.FindGlobalVariables(ConstString(Name), ContextPtr, UINT32_MAX, List);
+    Symfile.FindGlobalVariables(ConstString(Name), ContextPtr, UINT32_MAX, List);
   }
   outs() << formatv("Found {0} variables:\n", List.GetSize());
   StreamString Stream;
@@ -518,23 +653,25 @@ Error opts::symbols::dumpModule(lldb_private::Module &Module) {
 }
 
 Error opts::symbols::dumpAST(lldb_private::Module &Module) {
-  SymbolVendor &plugin = *Module.GetSymbolVendor();
-   Module.ParseAllDebugSymbols();
+  Module.ParseAllDebugSymbols();
 
-  auto symfile = plugin.GetSymbolFile();
+  SymbolFile *symfile = Module.GetSymbolFile();
   if (!symfile)
     return make_string_error("Module has no symbol file.");
 
-  auto clang_ast_ctx = llvm::dyn_cast_or_null<ClangASTContext>(
-      symfile->GetTypeSystemForLanguage(eLanguageTypeC_plus_plus));
+  auto type_system_or_err =
+      symfile->GetTypeSystemForLanguage(eLanguageTypeC_plus_plus);
+  if (!type_system_or_err)
+    return make_string_error("Can't retrieve TypeSystemClang");
+
+  auto ts = *type_system_or_err;
+  auto *clang_ast_ctx = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
   if (!clang_ast_ctx)
-    return make_string_error("Can't retrieve Clang AST context.");
+    return make_string_error("Retrieved TypeSystem was not a TypeSystemClang");
 
-  auto ast_ctx = clang_ast_ctx->getASTContext();
-  if (!ast_ctx)
-    return make_string_error("Can't retrieve AST context.");
+  clang::ASTContext &ast_ctx = clang_ast_ctx->getASTContext();
 
-  auto tu = ast_ctx->getTranslationUnitDecl();
+  clang::TranslationUnitDecl *tu = ast_ctx.getTranslationUnitDecl();
   if (!tu)
     return make_string_error("Can't retrieve translation unit declaration.");
 
@@ -543,10 +680,31 @@ Error opts::symbols::dumpAST(lldb_private::Module &Module) {
   return Error::success();
 }
 
-Error opts::symbols::verify(lldb_private::Module &Module) {
-  SymbolVendor &plugin = *Module.GetSymbolVendor();
+Error opts::symbols::dumpEntireClangAST(lldb_private::Module &Module) {
+  Module.ParseAllDebugSymbols();
 
-  SymbolFile *symfile = plugin.GetSymbolFile();
+  SymbolFile *symfile = Module.GetSymbolFile();
+  if (!symfile)
+    return make_string_error("Module has no symbol file.");
+
+  auto type_system_or_err =
+      symfile->GetTypeSystemForLanguage(eLanguageTypeObjC_plus_plus);
+  if (!type_system_or_err)
+    return make_string_error("Can't retrieve TypeSystemClang");
+  auto ts = *type_system_or_err;
+  auto *clang_ast_ctx = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
+  if (!clang_ast_ctx)
+    return make_string_error("Retrieved TypeSystem was not a TypeSystemClang");
+
+  StreamString Stream;
+  clang_ast_ctx->DumpFromSymbolFile(Stream, Name);
+  outs() << Stream.GetData() << "\n";
+
+  return Error::success();
+}
+
+Error opts::symbols::verify(lldb_private::Module &Module) {
+  SymbolFile *symfile = Module.GetSymbolFile();
   if (!symfile)
     return make_string_error("Module has no symbol file.");
 
@@ -555,11 +713,12 @@ Error opts::symbols::verify(lldb_private::Module &Module) {
   outs() << "Found " << comp_units_count << " compile units.\n";
 
   for (uint32_t i = 0; i < comp_units_count; i++) {
-    lldb::CompUnitSP comp_unit = symfile->ParseCompileUnitAtIndex(i);
+    lldb::CompUnitSP comp_unit = symfile->GetCompileUnitAtIndex(i);
     if (!comp_unit)
-      return make_string_error("Connot parse compile unit {0}.", i);
+      return make_string_error("Cannot parse compile unit {0}.", i);
 
-    outs() << "Processing '" << comp_unit->GetFilename().AsCString()
+    outs() << "Processing '"
+           << comp_unit->GetPrimaryFile().GetFilename().AsCString()
            << "' compile unit.\n";
 
     LineTable *lt = comp_unit->GetLineTable();
@@ -623,6 +782,20 @@ Expected<Error (*)(lldb_private::Module &)> opts::symbols::getAction() {
     return dumpAST;
   }
 
+  if (DumpClangAST) {
+    if (Find == FindType::None) {
+      if (Regex || !Context.empty() || !File.empty() || Line != 0)
+        return make_string_error(
+            "-regex, -context, -name, -file and -line options are not "
+            "applicable for dumping the entire clang AST. Either combine with "
+            "-find, or use -dump-clang-ast as a standalone option.");
+      return dumpEntireClangAST;
+    }
+    if (Find != FindType::Type)
+      return make_string_error("This combination of -dump-clang-ast and -find "
+                               "<kind> is not yet implemented.");
+  }
+
   if (Regex && !Context.empty())
     return make_string_error(
         "Cannot search using both regular expressions and context.");
@@ -673,6 +846,9 @@ Expected<Error (*)(lldb_private::Module &)> opts::symbols::getAction() {
     if (Regex || !File.empty() || Line != 0)
       return make_string_error("Cannot search for types using regular "
                                "expressions, file names or line numbers.");
+    if (!Name.empty() && !CompilerContext.empty())
+      return make_string_error("Name is ignored if compiler context present.");
+
     return findTypes;
 
   case FindType::Variable:
@@ -683,6 +859,57 @@ Expected<Error (*)(lldb_private::Module &)> opts::symbols::getAction() {
   }
 
   llvm_unreachable("Unsupported symbol action.");
+}
+
+std::optional<llvm::Error> opts::symtab::validate() {
+  if (ManglingPreference != ManglingPreference::None &&
+      FindSymbolsByRegex.empty())
+    return make_string_error("Mangling preference set but no regex specified.");
+
+  return {};
+}
+
+static Mangled::NamePreference opts::symtab::getNamePreference() {
+  switch (ManglingPreference) {
+  case ManglingPreference::None:
+  case ManglingPreference::Mangled:
+    return Mangled::ePreferMangled;
+  case ManglingPreference::Demangled:
+    return Mangled::ePreferDemangled;
+  case ManglingPreference::MangledWithoutArguments:
+    return Mangled::ePreferDemangledWithoutArguments;
+  }
+  llvm_unreachable("Fully covered switch above!");
+}
+
+int opts::symtab::handleSymtabCommand(Debugger &Dbg) {
+  if (auto error = validate()) {
+    logAllUnhandledErrors(std::move(*error), WithColor::error(), "");
+    return 1;
+  }
+
+  if (!FindSymbolsByRegex.empty()) {
+    ModuleSpec Spec{FileSpec(InputFile)};
+
+    auto ModulePtr = std::make_shared<lldb_private::Module>(Spec);
+    auto *Symtab = ModulePtr->GetSymtab();
+    auto NamePreference = getNamePreference();
+    std::vector<uint32_t> Indexes;
+
+    Symtab->FindAllSymbolsMatchingRexExAndType(
+        RegularExpression(FindSymbolsByRegex), lldb::eSymbolTypeAny,
+        Symtab::eDebugAny, Symtab::eVisibilityAny, Indexes, NamePreference);
+    for (auto i : Indexes) {
+      auto *symbol = Symtab->SymbolAtIndex(i);
+      if (symbol) {
+        StreamString stream;
+        symbol->Dump(&stream, nullptr, i, NamePreference);
+        outs() << stream.GetString();
+      }
+    }
+  }
+
+  return 0;
 }
 
 int opts::symbols::dumpSymbols(Debugger &Dbg) {
@@ -699,8 +926,8 @@ int opts::symbols::dumpSymbols(Debugger &Dbg) {
   Spec.GetSymbolFileSpec().SetFile(Symbols, FileSpec::Style::native);
 
   auto ModulePtr = std::make_shared<lldb_private::Module>(Spec);
-  SymbolVendor *Vendor = ModulePtr->GetSymbolVendor();
-  if (!Vendor) {
+  SymbolFile *Symfile = ModulePtr->GetSymbolFile();
+  if (!Symfile) {
     WithColor::error() << "Module has no symbol vendor.\n";
     return 1;
   }
@@ -736,9 +963,9 @@ static void dumpSectionList(LinePrinter &Printer, const SectionList &List, bool 
     Printer.formatLine("File size: {0}", S->GetFileSize());
 
     if (opts::object::SectionContents) {
-      DataExtractor Data;
+      lldb_private::DataExtractor Data;
       S->GetSectionData(Data);
-      ArrayRef<uint8_t> Bytes = {Data.GetDataStart(), Data.GetDataEnd()};
+      ArrayRef<uint8_t> Bytes(Data.GetDataStart(), Data.GetDataEnd());
       Printer.formatBinary("Data: ", Bytes, 0);
     }
 
@@ -766,7 +993,7 @@ static int dumpObjectFiles(Debugger &Dbg) {
 
     // Fetch symbol vendor before we get the section list to give the symbol
     // vendor a chance to populate it.
-    ModulePtr->GetSymbolVendor();
+    ModulePtr->GetSymbolFile();
     SectionList *Sections = ModulePtr->GetSectionList();
     if (!Sections) {
       llvm::errs() << "Could not load sections for module " << File << "\n";
@@ -796,7 +1023,7 @@ static int dumpObjectFiles(Debugger &Dbg) {
       for (size_t I = 0; I < Files.GetSize(); ++I) {
         AutoIndent Indent(Printer, 2);
         Printer.formatLine("Name: {0}",
-                           Files.GetFileSpecAtIndex(I).GetCString());
+                           Files.GetFileSpecAtIndex(I).GetPath());
       }
       Printer.NewLine();
     }
@@ -910,7 +1137,7 @@ int opts::irmemorymap::evaluateMemoryMapCommands(Debugger &Dbg) {
 
   // Set up a Process. In order to allocate memory within a target, this
   // process must be alive and must support JIT'ing.
-  CommandReturnObject Result;
+  CommandReturnObject Result(/*colors*/ false);
   Dbg.SetAsyncExecution(false);
   CommandInterpreter &CI = Dbg.GetCommandInterpreter();
   auto IssueCmd = [&](const char *Cmd) -> bool {
@@ -936,7 +1163,7 @@ int opts::irmemorymap::evaluateMemoryMapCommands(Debugger &Dbg) {
   while (!Rest.empty()) {
     StringRef Line;
     std::tie(Line, Rest) = Rest.split('\n');
-    Line = Line.ltrim();
+    Line = Line.ltrim().rtrim();
 
     if (Line.empty() || Line[0] == '#')
       continue;
@@ -953,6 +1180,11 @@ int opts::irmemorymap::evaluateMemoryMapCommands(Debugger &Dbg) {
   return 0;
 }
 
+int opts::assert::lldb_assert(Debugger &Dbg) {
+  lldbassert(false && "lldb-test assert");
+  return 1;
+}
+
 int main(int argc, const char *argv[]) {
   StringRef ToolName = argv[0];
   sys::PrintStackTraceOnErrorSignal(ToolName);
@@ -963,18 +1195,30 @@ int main(int argc, const char *argv[]) {
 
   SystemLifetimeManager DebuggerLifetime;
   if (auto e = DebuggerLifetime.Initialize(
-          llvm::make_unique<SystemInitializerTest>(), {}, nullptr)) {
+          std::make_unique<SystemInitializerTest>(), nullptr)) {
     WithColor::error() << "initialization failed: " << toString(std::move(e))
                        << '\n';
     return 1;
   }
 
-  CleanUp TerminateDebugger([&] { DebuggerLifetime.Terminate(); });
+  auto TerminateDebugger =
+      llvm::make_scope_exit([&] { DebuggerLifetime.Terminate(); });
 
   auto Dbg = lldb_private::Debugger::CreateInstance();
+  ModuleList::GetGlobalModuleListProperties().SetEnableExternalLookup(false);
+  CommandReturnObject Result(/*colors*/ false);
+  Dbg->GetCommandInterpreter().HandleCommand(
+      "settings set plugin.process.gdb-remote.packet-timeout 60",
+      /*add_to_history*/ eLazyBoolNo, Result);
+  Dbg->GetCommandInterpreter().HandleCommand(
+      "settings set target.inherit-tcc true",
+      /*add_to_history*/ eLazyBoolNo, Result);
+  Dbg->GetCommandInterpreter().HandleCommand(
+      "settings set target.detach-on-error false",
+      /*add_to_history*/ eLazyBoolNo, Result);
 
   if (!opts::Log.empty())
-    Dbg->EnableLog("lldb", {"all"}, opts::Log, 0, errs());
+    Dbg->EnableLog("lldb", {"all"}, opts::Log, 0, 0, eLogHandlerStream, errs());
 
   if (opts::BreakpointSubcommand)
     return opts::breakpoint::evaluateBreakpoints(*Dbg);
@@ -982,8 +1226,12 @@ int main(int argc, const char *argv[]) {
     return dumpObjectFiles(*Dbg);
   if (opts::SymbolsSubcommand)
     return opts::symbols::dumpSymbols(*Dbg);
+  if (opts::SymTabSubcommand)
+    return opts::symtab::handleSymtabCommand(*Dbg);
   if (opts::IRMemoryMapSubcommand)
     return opts::irmemorymap::evaluateMemoryMapCommands(*Dbg);
+  if (opts::AssertSubcommand)
+    return opts::assert::lldb_assert(*Dbg);
 
   WithColor::error() << "No command specified.\n";
   return 1;

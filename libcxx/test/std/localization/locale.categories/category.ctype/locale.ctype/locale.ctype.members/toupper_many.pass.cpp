@@ -12,9 +12,13 @@
 
 // const charT* toupper(charT* low, const charT* high) const;
 
+// XFAIL: no-wide-characters
+
 #include <locale>
 #include <string>
 #include <cassert>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

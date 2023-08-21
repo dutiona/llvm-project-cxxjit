@@ -7,10 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "PostingList.h"
-#include "Iterator.h"
-#include "Token.h"
-#include "llvm/Support/Error.h"
+#include "index/dex/Iterator.h"
+#include "index/dex/Token.h"
 #include "llvm/Support/MathExtras.h"
+#include <optional>
 
 namespace clang {
 namespace clangd {
@@ -49,7 +49,8 @@ public:
       return;
     advanceToChunk(ID);
     // Try to find ID within current chunk.
-    CurrentID = std::lower_bound(CurrentID, std::end(DecompressedChunk), ID);
+    CurrentID = std::partition_point(CurrentID, DecompressedChunk.end(),
+                                     [&](const DocID D) { return D < ID; });
     normalizeCursor();
   }
 
@@ -100,10 +101,9 @@ private:
   void advanceToChunk(DocID ID) {
     if ((CurrentChunk != Chunks.end() - 1) &&
         ((CurrentChunk + 1)->Head <= ID)) {
-      // Find the next chunk with Head >= ID.
-      CurrentChunk = std::lower_bound(
-          CurrentChunk + 1, Chunks.end(), ID,
-          [](const Chunk &C, const DocID ID) { return C.Head <= ID; });
+      CurrentChunk =
+          std::partition_point(CurrentChunk + 1, Chunks.end(),
+                               [&](const Chunk &C) { return C.Head < ID; });
       --CurrentChunk;
       DecompressedChunk = CurrentChunk->decompress();
       CurrentID = DecompressedChunk.begin();
@@ -182,10 +182,10 @@ std::vector<Chunk> encodeStream(llvm::ArrayRef<DocID> Documents) {
 }
 
 /// Reads variable length DocID from the buffer and updates the buffer size. If
-/// the stream is terminated, return None.
-llvm::Optional<DocID> readVByte(llvm::ArrayRef<uint8_t> &Bytes) {
+/// the stream is terminated, return std::nullopt.
+std::optional<DocID> readVByte(llvm::ArrayRef<uint8_t> &Bytes) {
   if (Bytes.front() == 0 || Bytes.empty())
-    return None;
+    return std::nullopt;
   DocID Result = 0;
   bool HasNextByte = true;
   for (size_t Length = 0; HasNextByte && !Bytes.empty(); ++Length) {
@@ -219,7 +219,7 @@ PostingList::PostingList(llvm::ArrayRef<DocID> Documents)
     : Chunks(encodeStream(Documents)) {}
 
 std::unique_ptr<Iterator> PostingList::iterator(const Token *Tok) const {
-  return llvm::make_unique<ChunkIterator>(Tok, Chunks);
+  return std::make_unique<ChunkIterator>(Tok, Chunks);
 }
 
 } // namespace dex

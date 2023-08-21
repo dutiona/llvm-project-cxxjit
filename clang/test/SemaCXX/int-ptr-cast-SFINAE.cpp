@@ -2,7 +2,7 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++17
 
 void foo(int* a, int *b) {
-  a -= b; // expected-warning {{incompatible integer to pointer conversion assigning to 'int *' from}}
+  a -= b; // expected-error {{incompatible integer to pointer conversion assigning to 'int *' from}}
 }
 
 template<typename T> T declval();
@@ -19,4 +19,4 @@ template<typename T> false_type test(...);
 template<typename T>
 static const auto has_minus_assign = decltype(test<T>())::value;
 
-static_assert(has_minus_assign<int*>, "failed"); // expected-error {{static_assert failed due to requirement 'has_minus_assign<int *>' "failed"}}
+static_assert(has_minus_assign<int*>, "failed"); // expected-error {{static assertion failed due to requirement 'has_minus_assign<int *>': failed}}

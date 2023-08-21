@@ -7,17 +7,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "ForbiddenSubclassingCheck.h"
+#include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
-#include "../utils/OptionsUtils.h"
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace objc {
+namespace clang::tidy::objc {
 
 namespace {
 
@@ -37,33 +35,6 @@ constexpr char DefaultForbiddenSuperClassNames[] =
     "UITextInputMode;"
     "UIWebView";
 
-/// \brief Matches Objective-C classes that directly or indirectly
-/// have a superclass matching \c Base.
-///
-/// Note that a class is not considered to be a subclass of itself.
-///
-/// Example matches Y, Z
-/// (matcher = objcInterfaceDecl(hasName("X")))
-/// \code
-///   @interface X
-///   @end
-///   @interface Y : X  // directly derived
-///   @end
-///   @interface Z : Y  // indirectly derived
-///   @end
-/// \endcode
-AST_MATCHER_P(ObjCInterfaceDecl, isSubclassOf,
-              ast_matchers::internal::Matcher<ObjCInterfaceDecl>, Base) {
-  for (const auto *SuperClass = Node.getSuperClass();
-       SuperClass != nullptr;
-       SuperClass = SuperClass->getSuperClass()) {
-    if (Base.matches(*SuperClass, Finder, Builder)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 } // namespace
 
 ForbiddenSubclassingCheck::ForbiddenSubclassingCheck(
@@ -76,20 +47,11 @@ ForbiddenSubclassingCheck::ForbiddenSubclassingCheck(
 }
 
 void ForbiddenSubclassingCheck::registerMatchers(MatchFinder *Finder) {
-  // this check should only be applied to ObjC sources.
-  if (!getLangOpts().ObjC)
-    return;
-
   Finder->addMatcher(
       objcInterfaceDecl(
-          isSubclassOf(
-              objcInterfaceDecl(
-                  hasAnyName(
-                      std::vector<StringRef>(
-                          ForbiddenSuperClassNames.begin(),
-                          ForbiddenSuperClassNames.end())))
-              .bind("superclass")))
-      .bind("subclass"),
+          isDerivedFrom(objcInterfaceDecl(hasAnyName(ForbiddenSuperClassNames))
+                            .bind("superclass")))
+          .bind("subclass"),
       this);
 }
 
@@ -116,6 +78,4 @@ void ForbiddenSubclassingCheck::storeOptions(
       utils::options::serializeStringList(ForbiddenSuperClassNames));
 }
 
-} // namespace objc
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::objc

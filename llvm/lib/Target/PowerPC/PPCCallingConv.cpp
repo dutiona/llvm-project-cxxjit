@@ -37,7 +37,7 @@ static bool CC_PPC32_SVR4_Custom_AlignArgRegs(unsigned &ValNo, MVT &ValVT,
     PPC::R3, PPC::R4, PPC::R5, PPC::R6,
     PPC::R7, PPC::R8, PPC::R9, PPC::R10,
   };
-  const unsigned NumArgRegs = array_lengthof(ArgRegs);
+  const unsigned NumArgRegs = std::size(ArgRegs);
 
   unsigned RegNum = State.getFirstUnallocated(ArgRegs);
 
@@ -62,7 +62,7 @@ static bool CC_PPC32_SVR4_Custom_SkipLastArgRegsPPCF128(
     PPC::R3, PPC::R4, PPC::R5, PPC::R6,
     PPC::R7, PPC::R8, PPC::R9, PPC::R10,
   };
-  const unsigned NumArgRegs = array_lengthof(ArgRegs);
+  const unsigned NumArgRegs = std::size(ArgRegs);
 
   unsigned RegNum = State.getFirstUnallocated(ArgRegs);
   int RegsLeft = NumArgRegs - RegNum;
@@ -88,7 +88,7 @@ static bool CC_PPC32_SVR4_Custom_AlignFPArgRegs(unsigned &ValNo, MVT &ValVT,
     PPC::F8
   };
 
-  const unsigned NumArgRegs = array_lengthof(ArgRegs);
+  const unsigned NumArgRegs = std::size(ArgRegs);
 
   unsigned RegNum = State.getFirstUnallocated(ArgRegs);
 
@@ -103,6 +103,60 @@ static bool CC_PPC32_SVR4_Custom_AlignFPArgRegs(unsigned &ValNo, MVT &ValVT,
   // passed on the stack and does not actually allocate a register for the
   // current argument.
   return false;
+}
+
+// Split F64 arguments into two 32-bit consecutive registers.
+static bool CC_PPC32_SPE_CustomSplitFP64(unsigned &ValNo, MVT &ValVT,
+                                        MVT &LocVT,
+                                        CCValAssign::LocInfo &LocInfo,
+                                        ISD::ArgFlagsTy &ArgFlags,
+                                        CCState &State) {
+  static const MCPhysReg HiRegList[] = { PPC::R3, PPC::R5, PPC::R7, PPC::R9 };
+  static const MCPhysReg LoRegList[] = { PPC::R4, PPC::R6, PPC::R8, PPC::R10 };
+
+  // Try to get the first register.
+  unsigned Reg = State.AllocateReg(HiRegList);
+  if (!Reg)
+    return false;
+
+  unsigned i;
+  for (i = 0; i < std::size(HiRegList); ++i)
+    if (HiRegList[i] == Reg)
+      break;
+
+  unsigned T = State.AllocateReg(LoRegList[i]);
+  (void)T;
+  assert(T == LoRegList[i] && "Could not allocate register");
+
+  State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+  State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, LoRegList[i],
+                                         LocVT, LocInfo));
+  return true;
+}
+
+// Same as above, but for return values, so only allocate for R3 and R4
+static bool CC_PPC32_SPE_RetF64(unsigned &ValNo, MVT &ValVT,
+                               MVT &LocVT,
+                               CCValAssign::LocInfo &LocInfo,
+                               ISD::ArgFlagsTy &ArgFlags,
+                               CCState &State) {
+  static const MCPhysReg HiRegList[] = { PPC::R3 };
+  static const MCPhysReg LoRegList[] = { PPC::R4 };
+
+  // Try to get the first register.
+  unsigned Reg = State.AllocateReg(HiRegList, LoRegList);
+  if (!Reg)
+    return false;
+
+  unsigned i;
+  for (i = 0; i < std::size(HiRegList); ++i)
+    if (HiRegList[i] == Reg)
+      break;
+
+  State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+  State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, LoRegList[i],
+                                         LocVT, LocInfo));
+  return true;
 }
 
 #include "PPCGenCallingConv.inc"

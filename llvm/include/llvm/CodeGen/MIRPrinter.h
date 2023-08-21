@@ -1,4 +1,4 @@
-//===- MIRPrinter.h - MIR serialization format printer --------------------===//
+//===- MIRPrinter.h - MIR serialization format printer ----------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_CODEGEN_MIRPRINTER_H
-#define LLVM_LIB_CODEGEN_MIRPRINTER_H
+#ifndef LLVM_CODEGEN_MIRPRINTER_H
+#define LLVM_CODEGEN_MIRPRINTER_H
 
 namespace llvm {
 

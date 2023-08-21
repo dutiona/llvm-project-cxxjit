@@ -12,9 +12,9 @@
 
 #include "X86RegisterBankInfo.h"
 #include "X86InstrInfo.h"
-#include "llvm/CodeGen/GlobalISel/RegisterBank.h"
-#include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/RegisterBank.h"
+#include "llvm/CodeGen/RegisterBankInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 
 #define GET_TARGET_REGBANK_IMPL
@@ -25,8 +25,7 @@ using namespace llvm;
 #define GET_TARGET_REGBANK_INFO_IMPL
 #include "X86GenRegisterBankInfo.def"
 
-X86RegisterBankInfo::X86RegisterBankInfo(const TargetRegisterInfo &TRI)
-    : X86GenRegisterBankInfo() {
+X86RegisterBankInfo::X86RegisterBankInfo(const TargetRegisterInfo &TRI) {
 
   // validate RegBank initialization.
   const RegisterBank &RBGPR = getRegBank(X86::GPRRegBankID);
@@ -40,13 +39,16 @@ X86RegisterBankInfo::X86RegisterBankInfo(const TargetRegisterInfo &TRI)
   assert(RBGPR.getSize() == 64 && "GPRs should hold up to 64-bit");
 }
 
-const RegisterBank &X86RegisterBankInfo::getRegBankFromRegClass(
-    const TargetRegisterClass &RC) const {
+const RegisterBank &
+X86RegisterBankInfo::getRegBankFromRegClass(const TargetRegisterClass &RC,
+                                            LLT) const {
 
   if (X86::GR8RegClass.hasSubClassEq(&RC) ||
       X86::GR16RegClass.hasSubClassEq(&RC) ||
       X86::GR32RegClass.hasSubClassEq(&RC) ||
-      X86::GR64RegClass.hasSubClassEq(&RC))
+      X86::GR64RegClass.hasSubClassEq(&RC) ||
+      X86::LOW32_ADDR_ACCESSRegClass.hasSubClassEq(&RC) ||
+      X86::LOW32_ADDR_ACCESS_RBPRegClass.hasSubClassEq(&RC))
     return getRegBank(X86::GPRRegBankID);
 
   if (X86::FR32XRegClass.hasSubClassEq(&RC) ||
@@ -112,7 +114,7 @@ void X86RegisterBankInfo::getInstrPartialMappingIdxs(
   unsigned NumOperands = MI.getNumOperands();
   for (unsigned Idx = 0; Idx < NumOperands; ++Idx) {
     auto &MO = MI.getOperand(Idx);
-    if (!MO.isReg())
+    if (!MO.isReg() || !MO.getReg())
       OpRegBankIdx[Idx] = PMI_None;
     else
       OpRegBankIdx[Idx] = getPartialMappingIdx(MRI.getType(MO.getReg()), isFP);
@@ -127,6 +129,8 @@ bool X86RegisterBankInfo::getInstrValueMapping(
   unsigned NumOperands = MI.getNumOperands();
   for (unsigned Idx = 0; Idx < NumOperands; ++Idx) {
     if (!MI.getOperand(Idx).isReg())
+      continue;
+    if (!MI.getOperand(Idx).getReg())
       continue;
 
     auto Mapping = getValueMapping(OpRegBankIdx[Idx], 1);
@@ -159,7 +163,7 @@ const RegisterBankInfo::InstructionMapping &
 X86RegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
   const MachineFunction &MF = *MI.getParent()->getParent();
   const MachineRegisterInfo &MRI = MF.getRegInfo();
-  auto Opc = MI.getOpcode();
+  unsigned Opc = MI.getOpcode();
 
   // Try the default logic for non-generic instructions that are either copies
   // or already have some operands assigned to banks.
@@ -182,9 +186,6 @@ X86RegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
   case TargetOpcode::G_SHL:
   case TargetOpcode::G_LSHR:
   case TargetOpcode::G_ASHR: {
-    const MachineFunction &MF = *MI.getParent()->getParent();
-    const MachineRegisterInfo &MRI = MF.getRegInfo();
-
     unsigned NumOperands = MI.getNumOperands();
     LLT Ty = MRI.getType(MI.getOperand(0).getReg());
 

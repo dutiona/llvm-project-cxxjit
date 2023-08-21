@@ -6,10 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11
+// UNSUPPORTED: c++03, c++11
 
 #include <tuple>
 #include <string>
+#include <memory>
+
 #include "test_macros.h"
 
 struct UserType {};

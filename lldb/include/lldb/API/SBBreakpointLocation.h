@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBBreakpointLocation_h_
-#define LLDB_SBBreakpointLocation_h_
+#ifndef LLDB_API_SBBREAKPOINTLOCATION_H
+#define LLDB_API_SBBREAKPOINTLOCATION_H
 
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDefines.h"
@@ -26,6 +26,8 @@ public:
   operator=(const lldb::SBBreakpointLocation &rhs);
 
   break_id_t GetID();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -46,18 +48,23 @@ public:
   void SetCondition(const char *condition);
 
   const char *GetCondition();
-   
+
   void SetAutoContinue(bool auto_continue);
 
   bool GetAutoContinue();
 
+  void SetCallback(SBBreakpointHitCallback callback, void *baton);
+
   void SetScriptCallbackFunction(const char *callback_function_name);
+
+  SBError SetScriptCallbackFunction(const char *callback_function_name,
+                                    lldb::SBStructuredData &extra_args);
 
   SBError SetScriptCallbackBody(const char *script_body_text);
   
-  void SetCommandLineCommands(SBStringList &commands);
+  void SetCommandLineCommands(lldb::SBStringList &commands);
 
-  bool GetCommandLineCommands(SBStringList &commands);
+  bool GetCommandLineCommands(lldb::SBStringList &commands);
  
   void SetThreadID(lldb::tid_t sb_thread_id);
 
@@ -95,4 +102,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBBreakpointLocation_h_
+#endif // LLDB_API_SBBREAKPOINTLOCATION_H

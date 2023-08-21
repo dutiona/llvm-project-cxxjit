@@ -1,5 +1,4 @@
-//===-- FormattersHelpers.cpp -------------------------------------*- C++
-//-*-===//
+//===-- FormattersHelpers.cpp ---------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,7 +10,7 @@
 
 
 #include "lldb/DataFormatters/FormattersHelpers.h"
-
+#include "lldb/Core/Module.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
@@ -27,23 +26,17 @@ void lldb_private::formatters::AddFormat(
     ConstString type_name, TypeFormatImpl::Flags flags, bool regex) {
   lldb::TypeFormatImplSP format_sp(new TypeFormatImpl_Format(format, flags));
 
-  if (regex)
-    category_sp->GetRegexTypeFormatsContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        format_sp);
-  else
-    category_sp->GetTypeFormatsContainer()->Add(type_name, format_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeFormat(type_name.GetStringRef(), match_type, format_sp);
 }
 
 void lldb_private::formatters::AddSummary(
     TypeCategoryImpl::SharedPointer category_sp, TypeSummaryImplSP summary_sp,
     ConstString type_name, bool regex) {
-  if (regex)
-    category_sp->GetRegexTypeSummariesContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        summary_sp);
-  else
-    category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeSummary(type_name.GetStringRef(), match_type, summary_sp);
 }
 
 void lldb_private::formatters::AddStringSummary(
@@ -51,12 +44,9 @@ void lldb_private::formatters::AddStringSummary(
     ConstString type_name, TypeSummaryImpl::Flags flags, bool regex) {
   lldb::TypeSummaryImplSP summary_sp(new StringSummaryFormat(flags, string));
 
-  if (regex)
-    category_sp->GetRegexTypeSummariesContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        summary_sp);
-  else
-    category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeSummary(type_name.GetStringRef(), match_type, summary_sp);
 }
 
 void lldb_private::formatters::AddOneLineSummary(
@@ -65,27 +55,21 @@ void lldb_private::formatters::AddOneLineSummary(
   flags.SetShowMembersOneLiner(true);
   lldb::TypeSummaryImplSP summary_sp(new StringSummaryFormat(flags, ""));
 
-  if (regex)
-    category_sp->GetRegexTypeSummariesContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        summary_sp);
-  else
-    category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeSummary(type_name.GetStringRef(), match_type, summary_sp);
 }
 
-#ifndef LLDB_DISABLE_PYTHON
 void lldb_private::formatters::AddCXXSummary(
     TypeCategoryImpl::SharedPointer category_sp,
     CXXFunctionSummaryFormat::Callback funct, const char *description,
     ConstString type_name, TypeSummaryImpl::Flags flags, bool regex) {
   lldb::TypeSummaryImplSP summary_sp(
       new CXXFunctionSummaryFormat(flags, funct, description));
-  if (regex)
-    category_sp->GetRegexTypeSummariesContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        summary_sp);
-  else
-    category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
+
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeSummary(type_name.GetStringRef(), match_type, summary_sp);
 }
 
 void lldb_private::formatters::AddCXXSynthetic(
@@ -95,12 +79,9 @@ void lldb_private::formatters::AddCXXSynthetic(
     ScriptedSyntheticChildren::Flags flags, bool regex) {
   lldb::SyntheticChildrenSP synth_sp(
       new CXXSyntheticChildren(flags, description, generator));
-  if (regex)
-    category_sp->GetRegexTypeSyntheticsContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        synth_sp);
-  else
-    category_sp->GetTypeSyntheticsContainer()->Add(type_name, synth_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeSynthetic(type_name.GetStringRef(), match_type, synth_sp);
 }
 
 void lldb_private::formatters::AddFilter(
@@ -110,14 +91,10 @@ void lldb_private::formatters::AddFilter(
   TypeFilterImplSP filter_sp(new TypeFilterImpl(flags));
   for (auto child : children)
     filter_sp->AddExpressionPath(child);
-  if (regex)
-    category_sp->GetRegexTypeFiltersContainer()->Add(
-        RegularExpressionSP(new RegularExpression(type_name.GetStringRef())),
-        filter_sp);
-  else
-    category_sp->GetTypeFiltersContainer()->Add(type_name, filter_sp);
+  FormatterMatchType match_type =
+      regex ? eFormatterMatchRegex : eFormatterMatchExact;
+  category_sp->AddTypeFilter(type_name.GetStringRef(), match_type, filter_sp);
 }
-#endif
 
 size_t lldb_private::formatters::ExtractIndexFromString(const char *item_name) {
   if (!item_name || !*item_name)
@@ -125,7 +102,7 @@ size_t lldb_private::formatters::ExtractIndexFromString(const char *item_name) {
   if (*item_name != '[')
     return UINT32_MAX;
   item_name++;
-  char *endptr = NULL;
+  char *endptr = nullptr;
   unsigned long int idx = ::strtoul(item_name, &endptr, 0);
   if (idx == 0 && endptr == item_name)
     return UINT32_MAX;
@@ -134,14 +111,28 @@ size_t lldb_private::formatters::ExtractIndexFromString(const char *item_name) {
   return idx;
 }
 
-lldb::addr_t
+Address
 lldb_private::formatters::GetArrayAddressOrPointerValue(ValueObject &valobj) {
   lldb::addr_t data_addr = LLDB_INVALID_ADDRESS;
+  AddressType type;
 
   if (valobj.IsPointerType())
-    data_addr = valobj.GetValueAsUnsigned(0);
+    data_addr = valobj.GetPointerValue(&type);
   else if (valobj.IsArrayType())
-    data_addr = valobj.GetAddressOf();
+    data_addr = valobj.GetAddressOf(/*scalar_is_load_address=*/true, &type);
+  if (data_addr != LLDB_INVALID_ADDRESS && type == eAddressTypeFile)
+    return Address(data_addr, valobj.GetModule()->GetSectionList());
 
   return data_addr;
+}
+
+lldb::ValueObjectSP
+lldb_private::formatters::GetValueOfLibCXXCompressedPair(ValueObject &pair) {
+  ValueObjectSP value =
+      pair.GetChildMemberWithName(ConstString("__value_"), true);
+  if (!value) {
+    // pre-r300140 member name
+    value = pair.GetChildMemberWithName(ConstString("__first_"), true);
+  }
+  return value;
 }

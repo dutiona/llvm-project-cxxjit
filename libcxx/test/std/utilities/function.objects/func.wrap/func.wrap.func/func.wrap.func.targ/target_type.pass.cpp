@@ -6,15 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
 
 // const std::type_info& target_type() const;
 
+// UNSUPPORTED: no-rtti
+
 #include <functional>
 #include <typeinfo>
 #include <cassert>
+
+#include "test_macros.h"
 
 class A
 {

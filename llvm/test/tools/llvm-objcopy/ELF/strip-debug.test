@@ -1,4 +1,4 @@
-# RUN: yaml2obj %s > %t
+# RUN: yaml2obj %s -o %t
 # RUN: cp %t %t3
 # RUN: llvm-objcopy --strip-debug %t %t2
 # RUN: llvm-readobj --file-headers --sections --symbols %t2 | FileCheck %s
@@ -98,6 +98,7 @@ Sections:
   - Name:            .debugfoo
     Type:            SHT_PROGBITS
     Content:         "00000000"
+  ## .zdebug is no longer recognized as a debug section.
   - Name:            .zdebugfoo
     Type:            SHT_PROGBITS
     Content:         "00000000"
@@ -110,20 +111,24 @@ Sections:
     AddressAlign:    0x0000000000000010
     Content:         "00000000"
 Symbols:
-  Global:
-    - Name: foo
-      Section: .text
-    - Name: debugfoo
-      Section: .debugfoo
+  - Name:    foo
+    Section: .text
+    Binding:  STB_GLOBAL
+  - Name:    debugfoo
+    Section: .debugfoo
+    Binding:  STB_GLOBAL
+  - Name:    filesymbol
+    Type:    STT_FILE
 
-# CHECK: SectionHeaderCount: 5
+# CHECK: SectionHeaderCount: 6
 
+# CHECK: Name: .zdebugfoo
 # CHECK: Name: .text
 # CHECK: Name: .symtab
 # CHECK: Name: .strtab
 # CHECK: Name: .shstrtab
 
-# Check that *only* foo is copied and not debugfoo
+# Check that *only* foo is copied and not debugfoo or filesymbol.
 # CHECK:      Symbols [
 # CHECK-NEXT:   Symbol {
 # CHECK-NEXT:     Name:

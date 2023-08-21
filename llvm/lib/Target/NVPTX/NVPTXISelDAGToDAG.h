@@ -17,6 +17,7 @@
 #include "NVPTXISelLowering.h"
 #include "NVPTXRegisterInfo.h"
 #include "NVPTXTargetMachine.h"
+#include "MCTargetDesc/NVPTXBaseInfo.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Compiler.h"
@@ -37,15 +38,15 @@ class LLVM_LIBRARY_VISIBILITY NVPTXDAGToDAGISel : public SelectionDAGISel {
   bool useShortPointers() const;
 
 public:
+  static char ID;
+
+  NVPTXDAGToDAGISel() = delete;
+
   explicit NVPTXDAGToDAGISel(NVPTXTargetMachine &tm,
                              CodeGenOpt::Level   OptLevel);
 
-  // Pass Name
-  StringRef getPassName() const override {
-    return "NVPTX DAG->DAG Pattern Instruction Selection";
-  }
   bool runOnMachineFunction(MachineFunction &MF) override;
-  const NVPTXSubtarget *Subtarget;
+  const NVPTXSubtarget *Subtarget = nullptr;
 
   bool SelectInlineAsmMemoryOperand(const SDValue &Op,
                                     unsigned ConstraintID,

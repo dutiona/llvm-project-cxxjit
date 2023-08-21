@@ -6,12 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBInstructionList_h_
-#define LLDB_SBInstructionList_h_
+#ifndef LLDB_API_SBINSTRUCTIONLIST_H
+#define LLDB_API_SBINSTRUCTIONLIST_H
 
 #include "lldb/API/SBDefines.h"
 
-#include <stdio.h>
+#include <cstdio>
 
 namespace lldb {
 
@@ -25,17 +25,17 @@ public:
 
   ~SBInstructionList();
 
+  explicit operator bool() const;
+
   bool IsValid() const;
 
   size_t GetSize();
 
   lldb::SBInstruction GetInstructionAtIndex(uint32_t idx);
 
-  // ----------------------------------------------------------------------
   // Returns the number of instructions between the start and end address. If
   // canSetBreakpoint is true then the count will be the number of
   // instructions on which a breakpoint can be set.
-  // ----------------------------------------------------------------------
   size_t GetInstructionsCount(const SBAddress &start,
                               const SBAddress &end,
                               bool canSetBreakpoint = false);                                   
@@ -45,6 +45,10 @@ public:
   void AppendInstruction(lldb::SBInstruction inst);
 
   void Print(FILE *out);
+
+  void Print(SBFile out);
+
+  void Print(FileSP out);
 
   bool GetDescription(lldb::SBStream &description);
 
@@ -56,6 +60,8 @@ protected:
   friend class SBTarget;
 
   void SetDisassembler(const lldb::DisassemblerSP &opaque_sp);
+  bool GetDescription(lldb_private::Stream &description);
+
 
 private:
   lldb::DisassemblerSP m_opaque_sp;
@@ -63,4 +69,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBInstructionList_h_
+#endif // LLDB_API_SBINSTRUCTIONLIST_H

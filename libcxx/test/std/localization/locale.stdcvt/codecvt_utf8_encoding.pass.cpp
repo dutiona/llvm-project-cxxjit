@@ -8,6 +8,8 @@
 
 // <codecvt>
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 // template <class Elem, unsigned long Maxcode = 0x10ffff,
 //           codecvt_mode Mode = (codecvt_mode)0>
 // class codecvt_utf8
@@ -21,14 +23,18 @@
 #include <codecvt>
 #include <cassert>
 
+#include "test_macros.h"
+
 int main(int, char**)
 {
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
         typedef std::codecvt_utf8<wchar_t> C;
         C c;
         int r = c.encoding();
         assert(r == 0);
     }
+#endif
     {
         typedef std::codecvt_utf8<char16_t> C;
         C c;

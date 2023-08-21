@@ -10,11 +10,9 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include <optional>
 
-namespace clang {
-namespace tidy {
-namespace utils {
-namespace type_traits {
+namespace clang::tidy::utils::type_traits {
 
 namespace {
 
@@ -38,10 +36,10 @@ bool hasDeletedCopyConstructor(QualType Type) {
 
 } // namespace
 
-llvm::Optional<bool> isExpensiveToCopy(QualType Type,
-                                       const ASTContext &Context) {
+std::optional<bool> isExpensiveToCopy(QualType Type,
+                                      const ASTContext &Context) {
   if (Type->isDependentType() || Type->isIncompleteType())
-    return llvm::None;
+    return std::nullopt;
   return !Type.isTriviallyCopyableType(Context) &&
          !classHasTrivialCopyAndDestroy(Type) &&
          !hasDeletedCopyConstructor(Type) &&
@@ -54,6 +52,10 @@ bool recordIsTriviallyDefaultConstructible(const RecordDecl &RecordDecl,
   // Non-C++ records are always trivially constructible.
   if (!ClassDecl)
     return true;
+  // It is impossible to determine whether an ill-formed decl is trivially
+  // constructible.
+  if (RecordDecl.isInvalidDecl())
+    return false;
   // A class with a user-provided default constructor is not trivially
   // constructible.
   if (ClassDecl->hasUserProvidedDefaultConstructor())
@@ -131,6 +133,20 @@ bool isTriviallyDefaultConstructible(QualType Type, const ASTContext &Context) {
   return false;
 }
 
+// Based on QualType::isDestructedType.
+bool isTriviallyDestructible(QualType Type) {
+  if (Type.isNull())
+    return false;
+
+  if (Type->isIncompleteType())
+    return false;
+
+  if (Type.getCanonicalType()->isDependentType())
+    return false;
+
+  return Type.isDestructedType() == QualType::DK_none;
+}
+
 bool hasNonTrivialMoveConstructor(QualType Type) {
   auto *Record = Type->getAsCXXRecordDecl();
   return Record && Record->hasDefinition() &&
@@ -143,7 +159,4 @@ bool hasNonTrivialMoveAssignment(QualType Type) {
          Record->hasNonTrivialMoveAssignment();
 }
 
-} // namespace type_traits
-} // namespace utils
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::utils::type_traits

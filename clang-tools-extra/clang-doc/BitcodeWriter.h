@@ -20,7 +20,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
 #include <initializer_list>
 #include <vector>
 
@@ -30,7 +30,7 @@ namespace doc {
 // Current version number of clang-doc bitcode.
 // Should be bumped when removing or changing BlockIds, RecordIds, or
 // BitCodeConstants, though they can be added without breaking it.
-static const unsigned VersionNumber = 2;
+static const unsigned VersionNumber = 3;
 
 struct BitCodeConstants {
   static constexpr unsigned RecordSize = 32U;
@@ -40,11 +40,11 @@ struct BitCodeConstants {
   static constexpr unsigned IntSize = 16U;
   static constexpr unsigned StringLengthSize = 16U;
   static constexpr unsigned FilenameLengthSize = 16U;
-  static constexpr unsigned LineNumberSize = 16U;
+  static constexpr unsigned LineNumberSize = 32U;
   static constexpr unsigned ReferenceTypeSize = 8U;
   static constexpr unsigned USRLengthSize = 6U;
   static constexpr unsigned USRBitLengthSize = 8U;
-  static constexpr char Signature[4] = {'D', 'O', 'C', 'S'};
+  static constexpr unsigned char Signature[4] = {'D', 'O', 'C', 'S'};
   static constexpr int USRHashSize = 20;
 };
 
@@ -54,13 +54,19 @@ enum BlockId {
   BI_VERSION_BLOCK_ID = llvm::bitc::FIRST_APPLICATION_BLOCKID,
   BI_NAMESPACE_BLOCK_ID,
   BI_ENUM_BLOCK_ID,
+  BI_ENUM_VALUE_BLOCK_ID,
   BI_TYPE_BLOCK_ID,
   BI_FIELD_TYPE_BLOCK_ID,
   BI_MEMBER_TYPE_BLOCK_ID,
   BI_RECORD_BLOCK_ID,
+  BI_BASE_RECORD_BLOCK_ID,
   BI_FUNCTION_BLOCK_ID,
   BI_COMMENT_BLOCK_ID,
   BI_REFERENCE_BLOCK_ID,
+  BI_TEMPLATE_BLOCK_ID,
+  BI_TEMPLATE_SPECIALIZATION_BLOCK_ID,
+  BI_TEMPLATE_PARAM_BLOCK_ID,
+  BI_TYPEDEF_BLOCK_ID,
   BI_LAST,
   BI_FIRST = BI_VERSION_BLOCK_ID
 };
@@ -87,25 +93,46 @@ enum RecordId {
   COMMENT_ATTRVAL,
   COMMENT_ARG,
   FIELD_TYPE_NAME,
+  FIELD_DEFAULT_VALUE,
   MEMBER_TYPE_NAME,
   MEMBER_TYPE_ACCESS,
   NAMESPACE_USR,
   NAMESPACE_NAME,
+  NAMESPACE_PATH,
   ENUM_USR,
   ENUM_NAME,
   ENUM_DEFLOCATION,
   ENUM_LOCATION,
-  ENUM_MEMBER,
   ENUM_SCOPED,
+  ENUM_VALUE_NAME,
+  ENUM_VALUE_VALUE,
+  ENUM_VALUE_EXPR,
   RECORD_USR,
   RECORD_NAME,
+  RECORD_PATH,
   RECORD_DEFLOCATION,
   RECORD_LOCATION,
   RECORD_TAG_TYPE,
+  RECORD_IS_TYPE_DEF,
+  BASE_RECORD_USR,
+  BASE_RECORD_NAME,
+  BASE_RECORD_PATH,
+  BASE_RECORD_TAG_TYPE,
+  BASE_RECORD_IS_VIRTUAL,
+  BASE_RECORD_ACCESS,
+  BASE_RECORD_IS_PARENT,
   REFERENCE_USR,
   REFERENCE_NAME,
+  REFERENCE_QUAL_NAME,
   REFERENCE_TYPE,
+  REFERENCE_PATH,
   REFERENCE_FIELD,
+  TEMPLATE_PARAM_CONTENTS,
+  TEMPLATE_SPECIALIZATION_OF,
+  TYPEDEF_USR,
+  TYPEDEF_NAME,
+  TYPEDEF_DEFLOCATION,
+  TYPEDEF_IS_USING,
   RI_LAST,
   RI_FIRST = VERSION
 };
@@ -138,12 +165,18 @@ public:
   // Block emission of different info types.
   void emitBlock(const NamespaceInfo &I);
   void emitBlock(const RecordInfo &I);
+  void emitBlock(const BaseRecordInfo &I);
   void emitBlock(const FunctionInfo &I);
   void emitBlock(const EnumInfo &I);
+  void emitBlock(const EnumValueInfo &I);
   void emitBlock(const TypeInfo &B);
+  void emitBlock(const TypedefInfo &B);
   void emitBlock(const FieldTypeInfo &B);
-  void emitBlock(const MemberTypeInfo &B);
+  void emitBlock(const MemberTypeInfo &T);
   void emitBlock(const CommentInfo &B);
+  void emitBlock(const TemplateInfo &T);
+  void emitBlock(const TemplateSpecializationInfo &T);
+  void emitBlock(const TemplateParamInfo &T);
   void emitBlock(const Reference &B, FieldId F);
 
 private:
@@ -190,6 +223,7 @@ private:
   void emitRecord(bool Value, RecordId ID);
   void emitRecord(int Value, RecordId ID);
   void emitRecord(unsigned Value, RecordId ID);
+  void emitRecord(const TemplateInfo &Templ);
   bool prepRecordData(RecordId ID, bool ShouldEmit = true);
 
   // Emission of appropriate abbreviation type.

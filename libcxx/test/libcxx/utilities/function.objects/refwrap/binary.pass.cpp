@@ -6,6 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: c++03 || c++11 || c++14
+
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 // <functional>
 
 // reference_wrapper
@@ -14,6 +18,8 @@
 
 #include <functional>
 #include <type_traits>
+
+#include "test_macros.h"
 
 class functor1
     : public std::unary_function<int, char>

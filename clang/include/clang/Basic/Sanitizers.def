@@ -40,6 +40,12 @@
 // AddressSanitizer
 SANITIZER("address", Address)
 
+// Requires AddressSanitizer
+SANITIZER("pointer-compare", PointerCompare)
+
+// Requires AddressSanitizer
+SANITIZER("pointer-subtract", PointerSubtract)
+
 // Kernel AddressSanitizer (KASan)
 SANITIZER("kernel-address", KernelAddress)
 
@@ -48,6 +54,12 @@ SANITIZER("hwaddress", HWAddress)
 
 // Kernel Hardware-assisted AddressSanitizer (KHWASan)
 SANITIZER("kernel-hwaddress", KernelHWAddress)
+
+// A variant of AddressSanitizer using AArch64 MTE extension.
+SANITIZER("memtag-stack", MemtagStack)
+SANITIZER("memtag-heap", MemtagHeap)
+SANITIZER("memtag-globals", MemtagGlobals)
+SANITIZER_GROUP("memtag", MemTag, MemtagStack | MemtagHeap | MemtagGlobals)
 
 // MemorySanitizer
 SANITIZER("memory", Memory)
@@ -98,6 +110,7 @@ SANITIZER("vptr", Vptr)
 
 // IntegerSanitizer
 SANITIZER("unsigned-integer-overflow", UnsignedIntegerOverflow)
+SANITIZER("unsigned-shift-base", UnsignedShiftBase)
 
 // DataFlowSanitizer
 SANITIZER("dataflow", DataFlow)
@@ -114,6 +127,9 @@ SANITIZER_GROUP("cfi", CFI,
                 CFIDerivedCast | CFIICall | CFIMFCall | CFIUnrelatedCast |
                     CFINVCall | CFIVCall)
 
+// Kernel Control Flow Integrity
+SANITIZER("kcfi", KCFI)
+
 // Safe Stack
 SANITIZER("safe-stack", SafeStack)
 
@@ -124,7 +140,7 @@ SANITIZER("shadow-call-stack", ShadowCallStack)
 // ABI or address space layout implications, and only catch undefined behavior.
 SANITIZER_GROUP("undefined", Undefined,
                 Alignment | Bool | Builtin | ArrayBounds | Enum |
-                    FloatCastOverflow | FloatDivideByZero |
+                    FloatCastOverflow |
                     IntegerDivideByZero | NonnullAttribute | Null | ObjectSize |
                     PointerOverflow | Return | ReturnsNonnullAttribute | Shift |
                     SignedIntegerOverflow | Unreachable | VLABound | Function |
@@ -147,6 +163,8 @@ SANITIZER_GROUP("implicit-integer-arithmetic-value-change",
                 ImplicitIntegerArithmeticValueChange,
                 ImplicitIntegerSignChange | ImplicitSignedIntegerTruncation)
 
+SANITIZER("objc-cast", ObjCCast)
+
 // FIXME:
 //SANITIZER_GROUP("implicit-integer-conversion", ImplicitIntegerConversion,
 //                ImplicitIntegerArithmeticValueChange |
@@ -160,24 +178,18 @@ SANITIZER_GROUP("implicit-conversion", ImplicitConversion,
 
 SANITIZER_GROUP("integer", Integer,
                 ImplicitConversion | IntegerDivideByZero | Shift |
-                    SignedIntegerOverflow | UnsignedIntegerOverflow)
+                    SignedIntegerOverflow | UnsignedIntegerOverflow |
+                    UnsignedShiftBase)
 
 SANITIZER("local-bounds", LocalBounds)
 SANITIZER_GROUP("bounds", Bounds, ArrayBounds | LocalBounds)
-
-// EfficiencySanitizer
-SANITIZER("efficiency-cache-frag", EfficiencyCacheFrag)
-SANITIZER("efficiency-working-set", EfficiencyWorkingSet)
-// Meta-group only used internally.
-SANITIZER_GROUP("efficiency-all", Efficiency,
-                EfficiencyCacheFrag | EfficiencyWorkingSet)
 
 // Scudo hardened allocator
 SANITIZER("scudo", Scudo)
 
 // Magic group, containing all sanitizers. For example, "-fno-sanitize=all"
 // can be used to disable all the sanitizers.
-SANITIZER_GROUP("all", All, ~0ULL)
+SANITIZER_GROUP("all", All, ~SanitizerMask())
 
 #undef SANITIZER
 #undef SANITIZER_GROUP

@@ -6,16 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_CommandObjectProcess_h_
-#define liblldb_CommandObjectProcess_h_
+#ifndef LLDB_SOURCE_COMMANDS_COMMANDOBJECTPROCESS_H
+#define LLDB_SOURCE_COMMANDS_COMMANDOBJECTPROCESS_H
 
 #include "lldb/Interpreter/CommandObjectMultiword.h"
 
 namespace lldb_private {
 
-//-------------------------------------------------------------------------
 // CommandObjectMultiwordProcess
-//-------------------------------------------------------------------------
 
 class CommandObjectMultiwordProcess : public CommandObjectMultiword {
 public:
@@ -26,4 +24,4 @@ public:
 
 } // namespace lldb_private
 
-#endif // liblldb_CommandObjectProcess_h_
+#endif // LLDB_SOURCE_COMMANDS_COMMANDOBJECTPROCESS_H

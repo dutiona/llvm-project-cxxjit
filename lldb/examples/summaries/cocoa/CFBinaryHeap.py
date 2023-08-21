@@ -143,7 +143,7 @@ def CFBinaryHeap_SummaryProvider(valobj, dict):
         #  the mask needs to be changed)
         if summary is None:
             summary = '<variable is not CFBinaryHeap>'
-        elif isinstance(summary, basestring):
+        elif isinstance(summary, str):
             pass
         else:
             if provider.sys_params.is_64_bit:

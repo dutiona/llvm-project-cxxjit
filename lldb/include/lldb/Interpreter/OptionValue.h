@@ -6,25 +6,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_OptionValue_h_
-#define liblldb_OptionValue_h_
+#ifndef LLDB_INTERPRETER_OPTIONVALUE_H
+#define LLDB_INTERPRETER_OPTIONVALUE_H
 
 #include "lldb/Core/FormatEntity.h"
+#include "lldb/Utility/Cloneable.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-defines.h"
 #include "lldb/lldb-private-enumerations.h"
 #include "lldb/lldb-private-interfaces.h"
+#include "llvm/Support/JSON.h"
 
 namespace lldb_private {
 
-//---------------------------------------------------------------------
 // OptionValue
-//---------------------------------------------------------------------
 class OptionValue {
 public:
-  typedef enum {
+  enum Type {
     eTypeInvalid = 0,
     eTypeArch,
     eTypeArgs,
@@ -33,6 +33,7 @@ public:
     eTypeChar,
     eTypeDictionary,
     eTypeEnum,
+    eTypeFileLineColumn,
     eTypeFileSpec,
     eTypeFileSpecList,
     eTypeFormat,
@@ -45,7 +46,7 @@ public:
     eTypeUInt64,
     eTypeUUID,
     eTypeFormatEntity
-  } Type;
+  };
 
   enum {
     eDumpOptionName = (1u << 0),
@@ -60,18 +61,11 @@ public:
     eDumpGroupExport = (eDumpOptionCommand | eDumpOptionName | eDumpOptionValue)
   };
 
-  OptionValue()
-      : m_callback(nullptr), m_baton(nullptr), m_value_was_set(false) {}
-
-  OptionValue(const OptionValue &rhs)
-      : m_callback(rhs.m_callback), m_baton(rhs.m_baton),
-        m_value_was_set(rhs.m_value_was_set) {}
+  OptionValue() = default;
 
   virtual ~OptionValue() = default;
 
-  //-----------------------------------------------------------------
   // Subclasses should override these functions
-  //-----------------------------------------------------------------
   virtual Type GetType() const = 0;
 
   // If this value is always hidden, the avoid showing any info on this value,
@@ -89,20 +83,29 @@ public:
   virtual void DumpValue(const ExecutionContext *exe_ctx, Stream &strm,
                          uint32_t dump_mask) = 0;
 
+  // TODO: make this function pure virtual after implementing it in all
+  // child classes.
+  virtual llvm::json::Value ToJSON(const ExecutionContext *exe_ctx) {
+    // Return nullptr which will create a llvm::json::Value() that is a NULL
+    // value. No setting should ever really have a NULL value in JSON. This
+    // indicates an error occurred and if/when we add a FromJSON() it will know
+    // to fail if someone tries to set it with a NULL JSON value.
+    return nullptr;
+  }
+
   virtual Status
   SetValueFromString(llvm::StringRef value,
                      VarSetOperationType op = eVarSetOperationAssign);
 
-  virtual bool Clear() = 0;
+  virtual void Clear() = 0;
 
-  virtual lldb::OptionValueSP DeepCopy() const = 0;
+  virtual lldb::OptionValueSP
+  DeepCopy(const lldb::OptionValueSP &new_parent) const;
 
-  virtual size_t AutoComplete(CommandInterpreter &interpreter,
-                              CompletionRequest &request);
+  virtual void AutoComplete(CommandInterpreter &interpreter,
+                            CompletionRequest &request);
 
-  //-----------------------------------------------------------------
   // Subclasses can override these functions
-  //-----------------------------------------------------------------
   virtual lldb::OptionValueSP GetSubValue(const ExecutionContext *exe_ctx,
                                           llvm::StringRef name,
                                           bool will_modify,
@@ -121,10 +124,8 @@ public:
 
   virtual bool DumpQualifiedName(Stream &strm) const;
 
-  //-----------------------------------------------------------------
   // Subclasses should NOT override these functions as they use the above
   // functions to implement functionality
-  //-----------------------------------------------------------------
   uint32_t GetTypeAsMask() { return 1u << GetType(); }
 
   static uint32_t ConvertTypeToMask(OptionValue::Type type) {
@@ -148,6 +149,8 @@ public:
       return eTypeDictionary;
     case 1u << eTypeEnum:
       return eTypeEnum;
+    case 1u << eTypeFileLineColumn:
+      return eTypeFileLineColumn;
     case 1u << eTypeFileSpec:
       return eTypeFileSpec;
     case 1u << eTypeFileSpecList:
@@ -316,30 +319,34 @@ public:
     m_parent_wp = parent_sp;
   }
 
-  void SetValueChangedCallback(OptionValueChangedCallback callback,
-                               void *baton) {
-    assert(m_callback == nullptr);
-    m_callback = callback;
-    m_baton = baton;
+  lldb::OptionValueSP GetParent() const { return m_parent_wp.lock(); }
+
+  void SetValueChangedCallback(std::function<void()> callback) {
+    m_callback = std::move(callback);
   }
 
   void NotifyValueChanged() {
     if (m_callback)
-      m_callback(m_baton, this);
+      m_callback();
   }
 
 protected:
+  using TopmostBase = OptionValue;
+
+  // Must be overriden by a derived class for correct downcasting the result of
+  // DeepCopy to it. Inherit from Cloneable to avoid doing this manually.
+  virtual lldb::OptionValueSP Clone() const = 0;
+
   lldb::OptionValueWP m_parent_wp;
-  OptionValueChangedCallback m_callback;
-  void *m_baton;
-  bool m_value_was_set; // This can be used to see if a value has been set
-                        // by a call to SetValueFromCString(). It is often
-                        // handy to know if an option value was set from the
-                        // command line or as a setting, versus if we just have
-                        // the default value that was already populated in the
-                        // option value.
+  std::function<void()> m_callback;
+  bool m_value_was_set = false; // This can be used to see if a value has been
+                                // set by a call to SetValueFromCString(). It is
+                                // often handy to know if an option value was
+                                // set from the command line or as a setting,
+                                // versus if we just have the default value that
+                                // was already populated in the option value.
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_OptionValue_h_
+#endif // LLDB_INTERPRETER_OPTIONVALUE_H

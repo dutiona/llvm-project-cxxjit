@@ -13,14 +13,9 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 void CopyConstructorInitCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   // In the future this might be extended to move constructors?
   Finder->addMatcher(
       cxxConstructorDecl(
@@ -113,8 +108,6 @@ void CopyConstructorInitCheck::check(const MatchFinder::MatchResult &Result) {
   FixItMsg += ' ';
 
   Diag << FixItHint::CreateInsertion(FixItLoc, FixItMsg);
-} // namespace misc
+}
 
-} // namespace misc
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

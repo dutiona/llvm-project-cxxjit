@@ -6,16 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CoreFoundationCPP_CFMutableArray_h_
-#define CoreFoundationCPP_CFMutableArray_h_
+#ifndef LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEARRAY_H
+#define LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEARRAY_H
 
 #include "CFCReleaser.h"
 
 class CFCMutableArray : public CFCReleaser<CFMutableArrayRef> {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   CFCMutableArray(CFMutableArrayRef array = NULL);
   CFCMutableArray(const CFCMutableArray &rhs); // This will copy the array
                                                // contents into a new array
@@ -23,7 +21,7 @@ public:
                                                           // the same array and
                                                           // just bump the ref
                                                           // count
-  virtual ~CFCMutableArray();
+  ~CFCMutableArray() override;
 
   CFIndex GetCount() const;
   CFIndex GetCountOfValue(const void *value) const;
@@ -42,4 +40,4 @@ public:
                                                 bool can_create = true);
 };
 
-#endif // #ifndef CoreFoundationCPP_CFMutableArray_h_
+#endif // LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCMUTABLEARRAY_H

@@ -9,12 +9,10 @@
 #include "ConcatNestedNamespacesCheck.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Lex/Lexer.h"
 #include <algorithm>
-#include <iterator>
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 static bool locationsInSameFile(const SourceManager &Sources,
                                 SourceLocation Loc1, SourceLocation Loc2) {
@@ -39,6 +37,7 @@ static bool alreadyConcatenated(std::size_t NumCandidates,
                                 const SourceRange &ReplacementRange,
                                 const SourceManager &Sources,
                                 const LangOptions &LangOpts) {
+  // FIXME: This logic breaks when there is a comment with ':'s in the middle.
   CharSourceRange TextRange =
       Lexer::getAsCharRange(ReplacementRange, Sources, LangOpts);
   StringRef CurrentNamespacesText =
@@ -62,9 +61,6 @@ ConcatNestedNamespacesCheck::concatNamespaces() {
 
 void ConcatNestedNamespacesCheck::registerMatchers(
     ast_matchers::MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus17)
-    return;
-
   Finder->addMatcher(ast_matchers::namespaceDecl().bind("namespace"), this);
 }
 
@@ -82,9 +78,6 @@ void ConcatNestedNamespacesCheck::check(
   const SourceManager &Sources = *Result.SourceManager;
 
   if (!locationsInSameFile(Sources, ND.getBeginLoc(), ND.getRBraceLoc()))
-    return;
-
-  if (!Sources.isInMainFile(ND.getBeginLoc()))
     return;
 
   if (anonymousOrInlineNamespace(ND))
@@ -107,6 +100,4 @@ void ConcatNestedNamespacesCheck::check(
   Namespaces.clear();
 }
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize

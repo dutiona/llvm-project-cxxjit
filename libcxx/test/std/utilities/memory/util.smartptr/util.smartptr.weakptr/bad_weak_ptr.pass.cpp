@@ -15,10 +15,13 @@
 //     bad_weak_ptr();
 // };
 
+#include <exception>
 #include <memory>
 #include <type_traits>
 #include <cassert>
 #include <cstring>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

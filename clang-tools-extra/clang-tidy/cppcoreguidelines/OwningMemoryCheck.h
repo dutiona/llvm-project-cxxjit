@@ -9,17 +9,15 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_OWNING_MEMORY_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_OWNING_MEMORY_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace cppcoreguidelines {
+namespace clang::tidy::cppcoreguidelines {
 
 /// Checks for common use cases for gsl::owner and enforces the unique owner
 /// nature of it whenever possible.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines-owning-memory.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines/owning-memory.html
 class OwningMemoryCheck : public ClangTidyCheck {
 public:
   OwningMemoryCheck(StringRef Name, ClangTidyContext *Context)
@@ -29,6 +27,9 @@ public:
                                        "::calloc;::fopen;::freopen;::tmpfile")),
         LegacyResourceConsumers(Options.get(
             "LegacyResourceConsumers", "::free;::realloc;::freopen;::fclose")) {
+  }
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus11;
   }
 
   /// Make configuration of checker discoverable.
@@ -49,14 +50,12 @@ private:
   /// List of old C-style functions that create resources.
   /// Defaults to
   /// `::malloc;::aligned_alloc;::realloc;::calloc;::fopen;::freopen;::tmpfile`.
-  const std::string LegacyResourceProducers;
+  const StringRef LegacyResourceProducers;
   /// List of old C-style functions that consume or release resources.
   /// Defaults to `::free;::realloc;::freopen;::fclose`.
-  const std::string LegacyResourceConsumers;
+  const StringRef LegacyResourceConsumers;
 };
 
-} // namespace cppcoreguidelines
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cppcoreguidelines
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_CPPCOREGUIDELINES_OWNING_MEMORY_H

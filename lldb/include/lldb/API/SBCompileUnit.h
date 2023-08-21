@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBCompileUnit_h_
-#define LLDB_SBCompileUnit_h_
+#ifndef LLDB_API_SBCOMPILEUNIT_H
+#define LLDB_API_SBCOMPILEUNIT_H
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBFileSpec.h"
@@ -24,6 +24,8 @@ public:
 
   const lldb::SBCompileUnit &operator=(const lldb::SBCompileUnit &rhs);
 
+  explicit operator bool() const;
+
   bool IsValid() const;
 
   lldb::SBFileSpec GetFileSpec() const;
@@ -31,6 +33,9 @@ public:
   uint32_t GetNumLineEntries() const;
 
   lldb::SBLineEntry GetLineEntryAtIndex(uint32_t idx) const;
+
+  uint32_t FindLineEntryIndex(lldb::SBLineEntry &line_entry,
+                              bool exact = false) const;
 
   uint32_t FindLineEntryIndex(uint32_t start_idx, uint32_t line,
                               lldb::SBFileSpec *inline_file_spec) const;
@@ -46,11 +51,10 @@ public:
   uint32_t FindSupportFileIndex(uint32_t start_idx, const SBFileSpec &sb_file,
                                 bool full);
 
-  //------------------------------------------------------------------
   /// Get all types matching \a type_mask from debug info in this
   /// compile unit.
   ///
-  /// @param[in] type_mask
+  /// \param[in] type_mask
   ///    A bitfield that consists of one or more bits logically OR'ed
   ///    together from the lldb::TypeClass enumeration. This allows
   ///    you to request only structure types, or only class, struct
@@ -58,9 +62,8 @@ public:
   ///    all types found in the debug information for this compile
   ///    unit.
   ///
-  /// @return
+  /// \return
   ///    A list of types in this compile unit that match \a type_mask
-  //------------------------------------------------------------------
   lldb::SBTypeList GetTypes(uint32_t type_mask = lldb::eTypeClassAny);
 
   lldb::LanguageType GetLanguage();
@@ -87,9 +90,9 @@ private:
 
   void reset(lldb_private::CompileUnit *lldb_object_ptr);
 
-  lldb_private::CompileUnit *m_opaque_ptr;
+  lldb_private::CompileUnit *m_opaque_ptr = nullptr;
 };
 
 } // namespace lldb
 
-#endif // LLDB_SBCompileUnit_h_
+#endif // LLDB_API_SBCOMPILEUNIT_H

@@ -6,7 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
+//
+// ALLOW_RETRIES: 2
 
 // <mutex>
 

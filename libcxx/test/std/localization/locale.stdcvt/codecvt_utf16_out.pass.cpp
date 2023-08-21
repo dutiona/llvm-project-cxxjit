@@ -8,6 +8,8 @@
 
 // <codecvt>
 
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
+
 // template <class Elem, unsigned long Maxcode = 0x10ffff,
 //           codecvt_mode Mode = (codecvt_mode)0>
 // class codecvt_utf16
@@ -23,6 +25,8 @@
 
 #include <codecvt>
 #include <cassert>
+
+#include "test_macros.h"
 
 template <class CharT, size_t = sizeof(CharT)>
 struct TestHelper;
@@ -348,7 +352,9 @@ void TestHelper<CharT, 4>::test() {
 
 int main(int, char**) {
   TestHelper<char32_t>::test();
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
   TestHelper<wchar_t>::test();
+#endif
 
   return 0;
 }

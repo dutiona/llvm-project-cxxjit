@@ -1,4 +1,4 @@
-//===------------------------ exception.cpp -------------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,12 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "exception"
-#include "new"
-#include "typeinfo"
+#include <exception>
+#include <new>
+#include <typeinfo>
 
-#if defined(LIBCXXRT) || defined(LIBCXX_BUILDING_LIBCXXABI) || \
-  (defined(__APPLE__) && !defined(_LIBCPP_BUILDING_HAS_NO_ABI_LIBRARY))
+#if defined(LIBCXXRT) || defined(LIBCXX_BUILDING_LIBCXXABI)
   #include <cxxabi.h>
   using namespace __cxxabiv1;
   #define HAVE_DEPENDENT_EH_ABI 1

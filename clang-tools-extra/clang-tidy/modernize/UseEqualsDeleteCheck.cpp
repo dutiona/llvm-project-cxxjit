@@ -13,9 +13,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 static const char SpecialFunction[] = "SpecialFunction";
 static const char DeletedNotPublic[] = "DeletedNotPublic";
@@ -25,9 +23,6 @@ void UseEqualsDeleteCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
 }
 
 void UseEqualsDeleteCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   auto PrivateSpecialFn = cxxMethodDecl(
       isPrivate(),
       anyOf(cxxConstructorDecl(anyOf(isDefaultConstructor(),
@@ -39,12 +34,12 @@ void UseEqualsDeleteCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       cxxMethodDecl(
           PrivateSpecialFn,
-          unless(anyOf(hasBody(stmt()), isDefaulted(), isDeleted(),
+          unless(anyOf(hasAnyBody(stmt()), isDefaulted(), isDeleted(),
                        ast_matchers::isTemplateInstantiation(),
                        // Ensure that all methods except private special member
                        // functions are defined.
                        hasParent(cxxRecordDecl(hasMethod(unless(
-                           anyOf(PrivateSpecialFn, hasBody(stmt()), isPure(),
+                           anyOf(PrivateSpecialFn, hasAnyBody(stmt()), isPure(),
                                  isDefaulted(), isDeleted()))))))))
           .bind(SpecialFunction),
       this);
@@ -78,6 +73,4 @@ void UseEqualsDeleteCheck::check(const MatchFinder::MatchResult &Result) {
   }
 }
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize

@@ -1,4 +1,12 @@
-// RUN: %clang_cc1 -triple x86_64-unknown-unknown -ast-dump %s | FileCheck -strict-whitespace %s
+// Test without serialization:
+// RUN: %clang_cc1 -triple x86_64-unknown-unknown -ast-dump %s \
+// RUN: | FileCheck --strict-whitespace %s
+//
+// Test with serialization:
+// RUN: %clang_cc1 -triple x86_64-unknown-unknown -emit-pch -o %t %s
+// RUN: %clang_cc1 -x c++ -triple x86_64-unknown-unknown -include-pch %t -ast-dump-all /dev/null \
+// RUN: | sed -e "s/ <undeserialized declarations>//" -e "s/ imported//" \
+// RUN: | FileCheck --strict-whitespace %s
 
 struct R {
   R() = default;
@@ -24,7 +32,7 @@ struct S {
   // CHECK-NEXT: CXXCtorInitializer Field 0x{{[^ ]*}} 'j' 'int'
   // CHECK-NEXT: IntegerLiteral 0x{{[^ ]*}} <col:17> 'int' 0
   // CHECK-NEXT: CXXCtorInitializer Field 0x{{[^ ]*}} 'r' 'R'
-  // CHECK-NEXT: CXXConstructExpr 0x{{[^ ]*}} <col:3> 'R' 'void () noexcept'
+  // CHECK-NEXT: CXXConstructExpr 0x{{[^ ]*}} <col:3> 'R':'R' 'void () noexcept'
   // CHECK-NEXT: CompoundStmt 0x{{[^ ]*}} <col:20, col:21>
 
   void a();

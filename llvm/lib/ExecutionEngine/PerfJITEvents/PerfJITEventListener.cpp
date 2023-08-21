@@ -26,16 +26,15 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/MutexGuard.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include <mutex>
 
 #include <sys/mman.h>  // mmap()
-#include <sys/types.h> // getpid()
 #include <time.h>      // clock_gettime(), time(), localtime_r() */
-#include <unistd.h>    // for getpid(), read(), close()
+#include <unistd.h>    // for read(), close()
 
 using namespace llvm;
 using namespace llvm::object;
@@ -80,7 +79,7 @@ private:
   void NotifyDebug(uint64_t CodeAddr, DILineInfoTable Lines);
 
   // cache lookups
-  pid_t Pid;
+  sys::Process::Pid Pid;
 
   // base directory for output data
   std::string JitPath;
@@ -176,7 +175,8 @@ static inline uint64_t perf_get_timestamp(void) {
   return timespec_to_ns(&ts);
 }
 
-PerfJITEventListener::PerfJITEventListener() : Pid(::getpid()) {
+PerfJITEventListener::PerfJITEventListener()
+    : Pid(sys::Process::getProcessId()) {
   // check if clock-source is supported
   if (!perf_get_timestamp()) {
     errs() << "kernel does not support CLOCK_MONOTONIC\n";
@@ -203,9 +203,9 @@ PerfJITEventListener::PerfJITEventListener() : Pid(::getpid()) {
     return;
   }
 
-  Dumpstream = make_unique<raw_fd_ostream>(DumpFd, true);
+  Dumpstream = std::make_unique<raw_fd_ostream>(DumpFd, true);
 
-  LLVMPerfJitHeader Header = {0};
+  LLVMPerfJitHeader Header = {0, 0, 0, 0, 0, 0, 0, 0};
   if (!FillMachine(Header))
     return;
 
@@ -265,17 +265,26 @@ void PerfJITEventListener::notifyObjectLoaded(
       consumeError(AddrOrErr.takeError());
       continue;
     }
-    uint64_t Addr = *AddrOrErr;
     uint64_t Size = P.second;
+    object::SectionedAddress Address;
+    Address.Address = *AddrOrErr;
+
+    uint64_t SectionIndex = object::SectionedAddress::UndefSection;
+    if (auto SectOrErr = Sym.getSection())
+        if (*SectOrErr != Obj.section_end())
+            SectionIndex = SectOrErr.get()->getIndex();
 
     // According to spec debugging info has to come before loading the
     // corresonding code load.
     DILineInfoTable Lines = Context->getLineInfoForAddressRange(
-        Addr, Size, FileLineInfoKind::AbsoluteFilePath);
+        {*AddrOrErr, SectionIndex}, Size, FileLineInfoKind::AbsoluteFilePath);
 
-    NotifyDebug(Addr, Lines);
-    NotifyCode(Name, Addr, Size);
+    NotifyDebug(*AddrOrErr, Lines);
+    NotifyCode(Name, *AddrOrErr, Size);
   }
+
+  // avoid races with writes
+  std::lock_guard<sys::Mutex> Guard(Mutex);
 
   Dumpstream->flush();
 }
@@ -321,7 +330,7 @@ bool PerfJITEventListener::InitDebuggingDir() {
     return false;
   }
 
-  JitPath = UniqueDebugDir.str();
+  JitPath = std::string(UniqueDebugDir.str());
 
   return true;
 }
@@ -335,8 +344,8 @@ bool PerfJITEventListener::OpenMarker() {
   //
   // Mapping must be PROT_EXEC to ensure it is captured by perf record
   // even when not using -d option.
-  MarkerAddr = ::mmap(NULL, sys::Process::getPageSize(), PROT_READ | PROT_EXEC,
-                      MAP_PRIVATE, DumpFd, 0);
+  MarkerAddr = ::mmap(NULL, sys::Process::getPageSizeEstimate(),
+                      PROT_READ | PROT_EXEC, MAP_PRIVATE, DumpFd, 0);
 
   if (MarkerAddr == MAP_FAILED) {
     errs() << "could not mmap JIT marker\n";
@@ -349,7 +358,7 @@ void PerfJITEventListener::CloseMarker() {
   if (!MarkerAddr)
     return;
 
-  munmap(MarkerAddr, sys::Process::getPageSize());
+  munmap(MarkerAddr, sys::Process::getPageSizeEstimate());
   MarkerAddr = nullptr;
 }
 
@@ -414,7 +423,7 @@ void PerfJITEventListener::NotifyCode(Expected<llvm::StringRef> &Symbol,
   rec.Tid = get_threadid();
 
   // avoid interspersing output
-  MutexGuard Guard(Mutex);
+  std::lock_guard<sys::Mutex> Guard(Mutex);
 
   rec.CodeIndex = CodeGeneration++; // under lock!
 
@@ -456,7 +465,7 @@ void PerfJITEventListener::NotifyDebug(uint64_t CodeAddr,
   // * char name[n]      : source file name in ASCII, including null termination
 
   // avoid interspersing output
-  MutexGuard Guard(Mutex);
+  std::lock_guard<sys::Mutex> Guard(Mutex);
 
   Dumpstream->write(reinterpret_cast<const char *>(&rec), sizeof(rec));
 
@@ -478,15 +487,14 @@ void PerfJITEventListener::NotifyDebug(uint64_t CodeAddr,
   }
 }
 
-// There should be only a single event listener per process, otherwise perf gets
-// confused.
-llvm::ManagedStatic<PerfJITEventListener> PerfListener;
-
 } // end anonymous namespace
 
 namespace llvm {
 JITEventListener *JITEventListener::createPerfJITEventListener() {
-  return &*PerfListener;
+  // There should be only a single event listener per process, otherwise perf
+  // gets confused.
+  static PerfJITEventListener PerfListener;
+  return &PerfListener;
 }
 
 } // namespace llvm

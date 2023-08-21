@@ -13,18 +13,10 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace google {
-namespace runtime {
+namespace clang::tidy::google::runtime {
 
 void OverloadedUnaryAndCheck::registerMatchers(
     ast_matchers::MatchFinder *Finder) {
-  // Only register the matchers for C++; the functionality currently does not
-  // provide any benefit to other languages, despite being benign.
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   // Match unary methods that overload operator&.
   Finder->addMatcher(
       cxxMethodDecl(parameterCountIs(0), hasOverloadedOperatorName("&"))
@@ -44,7 +36,4 @@ void OverloadedUnaryAndCheck::check(const MatchFinder::MatchResult &Result) {
        "do not overload unary operator&, it is dangerous.");
 }
 
-} // namespace runtime
-} // namespace google
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::google::runtime

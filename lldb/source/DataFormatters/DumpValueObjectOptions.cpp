@@ -1,5 +1,4 @@
-//===-- DumpValueObjectOptions.cpp -----------------------------------*- C++
-//-*-===//
+//===-- DumpValueObjectOptions.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -39,8 +38,9 @@ DumpValueObjectOptions::SetMaximumPointerDepth(PointerDepth depth) {
 }
 
 DumpValueObjectOptions &
-DumpValueObjectOptions::SetMaximumDepth(uint32_t depth) {
+DumpValueObjectOptions::SetMaximumDepth(uint32_t depth, bool is_default) {
   m_max_depth = depth;
+  m_max_depth_is_default = is_default;
   return *this;
 }
 

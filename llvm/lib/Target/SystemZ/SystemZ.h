@@ -18,8 +18,9 @@
 #include "llvm/Support/CodeGen.h"
 
 namespace llvm {
-class SystemZTargetMachine;
 class FunctionPass;
+class PassRegistry;
+class SystemZTargetMachine;
 
 namespace SystemZ {
 // Condition-code mask values.
@@ -55,7 +56,7 @@ const unsigned CCMASK_ARITH          = CCMASK_ANY;
 
 // Condition-code mask assignments for logical operations.
 const unsigned CCMASK_LOGICAL_ZERO     = CCMASK_0 | CCMASK_2;
-const unsigned CCMASK_LOGICAL_NONZERO  = CCMASK_1 | CCMASK_2;
+const unsigned CCMASK_LOGICAL_NONZERO  = CCMASK_1 | CCMASK_3;
 const unsigned CCMASK_LOGICAL_CARRY    = CCMASK_2 | CCMASK_3;
 const unsigned CCMASK_LOGICAL_NOCARRY  = CCMASK_0 | CCMASK_1;
 const unsigned CCMASK_LOGICAL_BORROW   = CCMASK_LOGICAL_NOCARRY;
@@ -190,11 +191,22 @@ static inline bool isImmHF(uint64_t Val) {
 FunctionPass *createSystemZISelDag(SystemZTargetMachine &TM,
                                    CodeGenOpt::Level OptLevel);
 FunctionPass *createSystemZElimComparePass(SystemZTargetMachine &TM);
-FunctionPass *createSystemZExpandPseudoPass(SystemZTargetMachine &TM);
 FunctionPass *createSystemZShortenInstPass(SystemZTargetMachine &TM);
 FunctionPass *createSystemZLongBranchPass(SystemZTargetMachine &TM);
 FunctionPass *createSystemZLDCleanupPass(SystemZTargetMachine &TM);
+FunctionPass *createSystemZCopyPhysRegsPass(SystemZTargetMachine &TM);
+FunctionPass *createSystemZPostRewritePass(SystemZTargetMachine &TM);
 FunctionPass *createSystemZTDCPass();
+
+void initializeSystemZCopyPhysRegsPass(PassRegistry &);
+void initializeSystemZDAGToDAGISelPass(PassRegistry &);
+void initializeSystemZElimComparePass(PassRegistry &);
+void initializeSystemZLDCleanupPass(PassRegistry &);
+void initializeSystemZLongBranchPass(PassRegistry &);
+void initializeSystemZPostRewritePass(PassRegistry &);
+void initializeSystemZShortenInstPass(PassRegistry &);
+void initializeSystemZTDCPassPass(PassRegistry &);
+
 } // end namespace llvm
 
 #endif

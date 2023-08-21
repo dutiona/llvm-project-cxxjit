@@ -10,7 +10,6 @@
 #define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_TARGETS_RUNTIMEDYLDMACHOI386_H
 
 #include "../RuntimeDyldMachO.h"
-#include <string>
 
 #define DEBUG_TYPE "dyld"
 
@@ -26,9 +25,9 @@ public:
                        JITSymbolResolver &Resolver)
       : RuntimeDyldMachOCRTPBase(MM, Resolver) {}
 
-  unsigned getMaxStubSize() override { return 0; }
+  unsigned getMaxStubSize() const override { return 0; }
 
-  unsigned getStubAlignment() override { return 1; }
+  Align getStubAlignment() override { return Align(1); }
 
   Expected<relocation_iterator>
   processRelocationRef(unsigned SectionID, relocation_iterator RelI,
@@ -128,7 +127,10 @@ public:
   Error finalizeSection(const ObjectFile &Obj, unsigned SectionID,
                        const SectionRef &Section) {
     StringRef Name;
-    Section.getName(Name);
+    if (Expected<StringRef> NameOrErr = Section.getName())
+      Name = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
 
     if (Name == "__jump_table")
       return populateJumpTable(cast<MachOObjectFile>(Obj), Section, SectionID);

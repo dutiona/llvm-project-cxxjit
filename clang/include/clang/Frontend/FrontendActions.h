@@ -10,13 +10,11 @@
 #define LLVM_CLANG_FRONTEND_FRONTENDACTIONS_H
 
 #include "clang/Frontend/FrontendAction.h"
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace clang {
-
-class Module;
-class FileEntry;
 
 //===----------------------------------------------------------------------===//
 // Custom Consumer Actions
@@ -31,6 +29,17 @@ class InitOnlyAction : public FrontendAction {
 public:
   // Don't claim to only use the preprocessor, we want to follow the AST path,
   // but do nothing.
+  bool usesPreprocessorOnly() const override { return false; }
+};
+
+/// Preprocessor-based frontend action that also loads PCH files.
+class ReadPCHAndPreprocessAction : public FrontendAction {
+  void ExecuteAction() override;
+
+  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+                                                 StringRef InFile) override;
+
+public:
   bool usesPreprocessorOnly() const override { return false; }
 };
 
@@ -69,12 +78,6 @@ protected:
 };
 
 class ASTViewAction : public ASTFrontendAction {
-protected:
-  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                 StringRef InFile) override;
-};
-
-class DeclContextPrintAction : public ASTFrontendAction {
 protected:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef InFile) override;
@@ -123,6 +126,17 @@ protected:
   }
 
   bool hasASTFileSupport() const override { return false; }
+
+  bool shouldEraseOutputFiles() override;
+};
+
+class GenerateInterfaceStubsAction : public ASTFrontendAction {
+protected:
+  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+                                                 StringRef InFile) override;
+
+  TranslationUnitKind getTranslationUnitKind() override { return TU_Module; }
+  bool hasASTFileSupport() const override { return false; }
 };
 
 class GenerateModuleFromModuleMapAction : public GenerateModuleAction {
@@ -141,13 +155,9 @@ private:
   CreateOutputFile(CompilerInstance &CI, StringRef InFile) override;
 };
 
-class GenerateHeaderModuleAction : public GenerateModuleAction {
-  /// The synthesized module input buffer for the current compilation.
-  std::unique_ptr<llvm::MemoryBuffer> Buffer;
-  std::vector<std::string> ModuleHeaders;
+class GenerateHeaderUnitAction : public GenerateModuleAction {
 
 private:
-  bool PrepareToExecuteAction(CompilerInstance &CI) override;
   bool BeginSourceFileAction(CompilerInstance &CI) override;
 
   std::unique_ptr<raw_pwrite_stream>
@@ -167,6 +177,10 @@ public:
 /// Dump information about the given module file, to be used for
 /// basic debugging and discovery.
 class DumpModuleInfoAction : public ASTFrontendAction {
+public:
+  // Allow other tools (ex lldb) to direct output for their use.
+  llvm::raw_ostream *OutputStream = nullptr;
+
 protected:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef InFile) override;
@@ -246,6 +260,17 @@ protected:
   bool usesPreprocessorOnly() const override { return true; }
 };
 
+class PrintDependencyDirectivesSourceMinimizerAction : public FrontendAction {
+protected:
+  void ExecuteAction() override;
+  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &,
+                                                 StringRef) override {
+    return nullptr;
+  }
+
+  bool usesPreprocessorOnly() const override { return true; }
+};
+
 //===----------------------------------------------------------------------===//
 // Preprocessor Actions
 //===----------------------------------------------------------------------===//
@@ -270,6 +295,15 @@ protected:
   void ExecuteAction() override;
 
   bool hasPCHSupport() const override { return true; }
+};
+
+class GetDependenciesByModuleNameAction : public PreprocessOnlyAction {
+  StringRef ModuleName;
+  void ExecuteAction() override;
+
+public:
+  GetDependenciesByModuleNameAction(StringRef ModuleName)
+      : ModuleName(ModuleName) {}
 };
 
 }  // end namespace clang

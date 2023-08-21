@@ -15,16 +15,12 @@ namespace llvm {
 
 struct DWARFSection {
   StringRef Data;
+  uint64_t Address = 0;
 };
 
 struct SectionName {
   StringRef Name;
   bool IsNameUnique;
-};
-
-struct SectionedAddress {
-  uint64_t Address;
-  uint64_t SectionIndex;
 };
 
 } // end namespace llvm

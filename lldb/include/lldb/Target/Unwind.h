@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_Unwind_h_
-#define liblldb_Unwind_h_
+#ifndef LLDB_TARGET_UNWIND_H
+#define LLDB_TARGET_UNWIND_H
 
 #include <mutex>
 
@@ -17,13 +17,11 @@ namespace lldb_private {
 
 class Unwind {
 protected:
-  //------------------------------------------------------------------
   // Classes that inherit from Unwind can see and modify these
-  //------------------------------------------------------------------
-  Unwind(Thread &thread) : m_thread(thread), m_unwind_mutex() {}
+  Unwind(Thread &thread) : m_thread(thread) {}
 
 public:
-  virtual ~Unwind() {}
+  virtual ~Unwind() = default;
 
   void Clear() {
     std::lock_guard<std::recursive_mutex> guard(m_unwind_mutex);
@@ -39,9 +37,10 @@ public:
     lldb::addr_t cfa;
     lldb::addr_t pc;
     uint32_t idx;
+    bool behaves_like_zeroth_frame = (end_idx == 0);
 
     for (idx = 0; idx < end_idx; idx++) {
-      if (!DoGetFrameInfoAtIndex(idx, cfa, pc)) {
+      if (!DoGetFrameInfoAtIndex(idx, cfa, pc, behaves_like_zeroth_frame)) {
         break;
       }
     }
@@ -49,9 +48,9 @@ public:
   }
 
   bool GetFrameInfoAtIndex(uint32_t frame_idx, lldb::addr_t &cfa,
-                           lldb::addr_t &pc) {
+                           lldb::addr_t &pc, bool &behaves_like_zeroth_frame) {
     std::lock_guard<std::recursive_mutex> guard(m_unwind_mutex);
-    return DoGetFrameInfoAtIndex(frame_idx, cfa, pc);
+    return DoGetFrameInfoAtIndex(frame_idx, cfa, pc, behaves_like_zeroth_frame);
   }
 
   lldb::RegisterContextSP CreateRegisterContextForFrame(StackFrame *frame) {
@@ -62,15 +61,14 @@ public:
   Thread &GetThread() { return m_thread; }
 
 protected:
-  //------------------------------------------------------------------
   // Classes that inherit from Unwind can see and modify these
-  //------------------------------------------------------------------
   virtual void DoClear() = 0;
 
   virtual uint32_t DoGetFrameCount() = 0;
 
   virtual bool DoGetFrameInfoAtIndex(uint32_t frame_idx, lldb::addr_t &cfa,
-                                     lldb::addr_t &pc) = 0;
+                                     lldb::addr_t &pc,
+                                     bool &behaves_like_zeroth_frame) = 0;
 
   virtual lldb::RegisterContextSP
   DoCreateRegisterContextForFrame(StackFrame *frame) = 0;
@@ -79,9 +77,10 @@ protected:
   std::recursive_mutex m_unwind_mutex;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(Unwind);
+  Unwind(const Unwind &) = delete;
+  const Unwind &operator=(const Unwind &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_Unwind_h_
+#endif // LLDB_TARGET_UNWIND_H

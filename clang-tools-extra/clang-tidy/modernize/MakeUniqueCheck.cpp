@@ -10,9 +10,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 MakeUniqueCheck::MakeUniqueCheck(StringRef Name,
                                  clang::tidy::ClangTidyContext *Context)
@@ -41,6 +39,6 @@ bool MakeUniqueCheck::isLanguageVersionSupported(
   return RequireCPlusPlus14 ? LangOpts.CPlusPlus14 : LangOpts.CPlusPlus11;
 }
 
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+// FixItHint is done by MakeSmartPtrCheck
+
+} // namespace clang::tidy::modernize

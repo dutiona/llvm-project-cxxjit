@@ -164,11 +164,11 @@
 // CHECK-PPC-NO-MCPU-NOT: as{{.*}} "-mcpu=invalid-cpu"
 //
 // RUN: %clang -target sparc64-linux -mcpu=invalid-cpu -### \
-// RUN:   -no-integrated-as -c %s 2>&1 \
+// RUN:   -no-integrated-as -fno-pic -c %s 2>&1 \
 // RUN:   | FileCheck -check-prefix=CHECK-SPARCV9 %s
 // CHECK-SPARCV9: as
 // CHECK-SPARCV9: -64
-// CHECK-SPARCV9: -Av9
+// CHECK-SPARCV9: -Av9a
 // CHECK-SPARCV9-NOT: -KPIC
 // CHECK-SPARCV9: -o
 //
@@ -177,7 +177,7 @@
 // RUN:   | FileCheck -check-prefix=CHECK-SPARCV9PIC %s
 // CHECK-SPARCV9PIC: as
 // CHECK-SPARCV9PIC: -64
-// CHECK-SPARCV9PIC: -Av9
+// CHECK-SPARCV9PIC: -Av9a
 // CHECK-SPARCV9PIC: -KPIC
 // CHECK-SPARCV9PIC: -o
 //

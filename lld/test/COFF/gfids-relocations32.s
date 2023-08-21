@@ -1,7 +1,7 @@
 # REQUIRES: x86
 # RUN: llvm-mc -triple i686-pc-win32 %s -filetype=obj -o %t.obj
-# RUN: lld-link %t.obj -guard:cf -out:%t.exe -entry:main
-# RUN: llvm-readobj -coff-load-config %t.exe | FileCheck %s --check-prefix=CHECK
+# RUN: lld-link -safeseh:no %t.obj -guard:cf -out:%t.exe -entry:main
+# RUN: llvm-readobj --coff-load-config %t.exe | FileCheck %s --check-prefix=CHECK
 
 # Only f and _main should go in the table.
 # (use /lldmap:map.txt to check their addresses).
@@ -11,7 +11,7 @@
 # CHECK-NEXT: 0x401030
 # CHECK-NEXT: ]
 
-# The input was loosly based on studying this program:
+# The input was loosely based on studying this program:
 #
 #  void foo() { return; }
 #  void bar() { return; }

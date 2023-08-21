@@ -14,7 +14,7 @@
 
 using namespace llvm;
 
-static std::string toHex(StringRef Input) {
+static std::string toHex(ArrayRef<uint8_t> Input) {
   static const char *const LUT = "0123456789ABCDEF";
   size_t Length = Input.size();
 
@@ -39,8 +39,24 @@ TEST(raw_sha1_ostreamTest, Basic) {
 TEST(sha1_hash_test, Basic) {
   ArrayRef<uint8_t> Input((const uint8_t *)"Hello World!", 12);
   std::array<uint8_t, 20> Vec = SHA1::hash(Input);
-  std::string Hash = toHex({(const char *)Vec.data(), 20});
+  std::string Hash = toHex(Vec);
   ASSERT_EQ("2EF7BDE608CE5404E97D5F042F95F89F1C232871", Hash);
+}
+
+TEST(sha1_hash_test, Update) {
+  SHA1 sha1;
+  std::string Input = "123456789012345678901234567890";
+  ASSERT_EQ(Input.size(), 30UL);
+  // 3 short updates.
+  sha1.update(Input);
+  sha1.update(Input);
+  sha1.update(Input);
+  // Long update that gets into the optimized loop with prefix/suffix.
+  sha1.update(Input + Input + Input + Input);
+  // 18 bytes buffered now.
+
+  std::string Hash = toHex(sha1.final());
+  ASSERT_EQ("3E4A614101AD84985AB0FE54DC12A6D71551E5AE", Hash);
 }
 
 // Check that getting the intermediate hash in the middle of the stream does

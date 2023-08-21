@@ -12,13 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LTO_THINLTOCODEGENERATOR_H
-#define LLVM_LTO_THINLTOCODEGENERATOR_H
+#ifndef LLVM_LTO_LEGACY_THINLTOCODEGENERATOR_H
+#define LLVM_LTO_LEGACY_THINLTOCODEGENERATOR_H
 
 #include "llvm-c/lto.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/ModuleSummaryIndex.h"
+#include "llvm/LTO/LTO.h"
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -28,25 +29,7 @@
 
 namespace llvm {
 class StringRef;
-class LLVMContext;
 class TargetMachine;
-
-/// Wrapper around MemoryBufferRef, owning the identifier
-class ThinLTOBuffer {
-  std::string OwnedIdentifier;
-  StringRef Buffer;
-
-public:
-  ThinLTOBuffer(StringRef Buffer, StringRef Identifier)
-      : OwnedIdentifier(Identifier), Buffer(Buffer) {}
-
-  MemoryBufferRef getMemBuffer() const {
-    return MemoryBufferRef(Buffer,
-                           {OwnedIdentifier.c_str(), OwnedIdentifier.size()});
-  }
-  StringRef getBuffer() const { return Buffer; }
-  StringRef getBufferIdentifier() const { return OwnedIdentifier; }
-};
 
 /// Helper to gather options relevant to the target machine creation
 struct TargetMachineBuilder {
@@ -54,7 +37,7 @@ struct TargetMachineBuilder {
   std::string MCpu;
   std::string MAttr;
   TargetOptions Options;
-  Optional<Reloc::Model> RelocModel;
+  std::optional<Reloc::Model> RelocModel;
   CodeGenOpt::Level CGOptLevel = CodeGenOpt::Aggressive;
 
   std::unique_ptr<TargetMachine> create() const;
@@ -228,7 +211,7 @@ public:
   void setFreestanding(bool Enabled) { Freestanding = Enabled; }
 
   /// CodeModel
-  void setCodePICModel(Optional<Reloc::Model> Model) {
+  void setCodePICModel(std::optional<Reloc::Model> Model) {
     TMBuilder.RelocModel = Model;
   }
 
@@ -241,6 +224,9 @@ public:
   void setOptLevel(unsigned NewOptLevel) {
     OptLevel = (NewOptLevel > 3) ? 3 : NewOptLevel;
   }
+
+  /// Enable or disable debug output for the new pass manager.
+  void setDebugPassManager(unsigned Enabled) { DebugPassManager = Enabled; }
 
   /// Disable CodeGen, only run the stages till codegen and stop. The output
   /// will be bitcode.
@@ -267,37 +253,49 @@ public:
    * and additionally resolve weak and linkonce symbols.
    * Index is updated to reflect linkage changes from weak resolution.
    */
-  void promote(Module &Module, ModuleSummaryIndex &Index);
+  void promote(Module &Module, ModuleSummaryIndex &Index,
+               const lto::InputFile &File);
 
   /**
    * Compute and emit the imported files for module at \p ModulePath.
    */
   void emitImports(Module &Module, StringRef OutputName,
-                   ModuleSummaryIndex &Index);
+                   ModuleSummaryIndex &Index,
+                   const lto::InputFile &File);
 
   /**
    * Perform cross-module importing for the module identified by
    * ModuleIdentifier.
    */
-  void crossModuleImport(Module &Module, ModuleSummaryIndex &Index);
+  void crossModuleImport(Module &Module, ModuleSummaryIndex &Index,
+                         const lto::InputFile &File);
 
   /**
    * Compute the list of summaries needed for importing into module.
    */
   void gatherImportedSummariesForModule(
       Module &Module, ModuleSummaryIndex &Index,
-      std::map<std::string, GVSummaryMapTy> &ModuleToSummariesForIndex);
+      std::map<std::string, GVSummaryMapTy> &ModuleToSummariesForIndex,
+      const lto::InputFile &File);
 
   /**
    * Perform internalization. Index is updated to reflect linkage changes.
    */
-  void internalize(Module &Module, ModuleSummaryIndex &Index);
+  void internalize(Module &Module, ModuleSummaryIndex &Index,
+                   const lto::InputFile &File);
 
   /**
    * Perform post-importing ThinLTO optimizations.
    */
   void optimize(Module &Module);
 
+  /**
+   * Write temporary object file to SavedObjectDirectoryPath, write symlink
+   * to Cache directory if needed. Returns the path to the generated file in
+   * SavedObjectsDirectoryPath.
+   */
+  std::string writeGeneratedObject(int count, StringRef CacheEntryPath,
+                                   const MemoryBuffer &OutputBuffer);
   /**@}*/
 
 private:
@@ -313,7 +311,7 @@ private:
 
   /// Vector holding the input buffers containing the bitcode modules to
   /// process.
-  std::vector<ThinLTOBuffer> Modules;
+  std::vector<std::unique_ptr<lto::InputFile>> Modules;
 
   /// Set of symbols that need to be preserved outside of the set of bitcode
   /// files.
@@ -345,6 +343,10 @@ private:
 
   /// IR Optimization Level [0-3].
   unsigned OptLevel = 3;
+
+  /// Flag to indicate whether debug output should be enabled for the new pass
+  /// manager.
+  bool DebugPassManager = false;
 };
 }
 #endif

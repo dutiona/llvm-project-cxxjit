@@ -20,17 +20,10 @@ AST_MATCHER(DeclRefExpr, hasExplicitTemplateArgs) {
 }
 } // namespace
 
-namespace tidy {
-namespace google {
-namespace build {
+namespace tidy::google::build {
 
 void ExplicitMakePairCheck::registerMatchers(
     ast_matchers::MatchFinder *Finder) {
-  // Only register the matchers for C++; the functionality currently does not
-  // provide any benefit to other languages, despite being benign.
-  if (!getLangOpts().CPlusPlus)
-    return;
-
   // Look for std::make_pair with explicit template args. Ignore calls in
   // templates.
   Finder->addMatcher(
@@ -71,7 +64,5 @@ void ExplicitMakePairCheck::check(const MatchFinder::MatchResult &Result) {
   }
 }
 
-} // namespace build
-} // namespace google
-} // namespace tidy
+} // namespace tidy::google::build
 } // namespace clang

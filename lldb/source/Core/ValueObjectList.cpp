@@ -1,4 +1,4 @@
-//===-- ValueObjectList.cpp -------------------------------------*- C++ -*-===//
+//===-- ValueObjectList.cpp -----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,19 +10,11 @@
 
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Utility/ConstString.h"
-#include "lldb/Utility/SharingPtr.h"
 
 #include <utility>
 
 using namespace lldb;
 using namespace lldb_private;
-
-ValueObjectList::ValueObjectList() : m_value_objects() {}
-
-ValueObjectList::ValueObjectList(const ValueObjectList &rhs)
-    : m_value_objects(rhs.m_value_objects) {}
-
-ValueObjectList::~ValueObjectList() {}
 
 const ValueObjectList &ValueObjectList::operator=(const ValueObjectList &rhs) {
   if (this != &rhs)

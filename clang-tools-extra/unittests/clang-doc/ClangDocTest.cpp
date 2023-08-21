@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ClangDocTest.h"
 #include "Representation.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "gtest/gtest.h"
@@ -33,7 +34,17 @@ EnumInfo *InfoAsEnum(Info *I) {
   return static_cast<EnumInfo *>(I);
 }
 
-void CheckCommentInfo(CommentInfo &Expected, CommentInfo &Actual) {
+TypedefInfo *InfoAsTypedef(Info *I) {
+  assert(I->IT == InfoType::IT_typedef);
+  return static_cast<TypedefInfo *>(I);
+}
+
+void CheckCommentInfo(const std::vector<CommentInfo> &Expected,
+                      const std::vector<CommentInfo> &Actual);
+void CheckCommentInfo(const std::vector<std::unique_ptr<CommentInfo>> &Expected,
+                      const std::vector<std::unique_ptr<CommentInfo>> &Actual);
+
+void CheckCommentInfo(const CommentInfo &Expected, const CommentInfo &Actual) {
   EXPECT_EQ(Expected.Kind, Actual.Kind);
   EXPECT_EQ(Expected.Text, Actual.Text);
   EXPECT_EQ(Expected.Name, Actual.Name);
@@ -55,14 +66,27 @@ void CheckCommentInfo(CommentInfo &Expected, CommentInfo &Actual) {
   for (size_t Idx = 0; Idx < Actual.Args.size(); ++Idx)
     EXPECT_EQ(Expected.Args[Idx], Actual.Args[Idx]);
 
-  ASSERT_EQ(Expected.Children.size(), Actual.Children.size());
-  for (size_t Idx = 0; Idx < Actual.Children.size(); ++Idx)
-    CheckCommentInfo(*Expected.Children[Idx], *Actual.Children[Idx]);
+  CheckCommentInfo(Expected.Children, Actual.Children);
+}
+
+void CheckCommentInfo(const std::vector<CommentInfo> &Expected,
+                      const std::vector<CommentInfo> &Actual) {
+  ASSERT_EQ(Expected.size(), Actual.size());
+  for (size_t Idx = 0; Idx < Actual.size(); ++Idx)
+    CheckCommentInfo(Expected[Idx], Actual[Idx]);
+}
+
+void CheckCommentInfo(const std::vector<std::unique_ptr<CommentInfo>> &Expected,
+                      const std::vector<std::unique_ptr<CommentInfo>> &Actual) {
+  ASSERT_EQ(Expected.size(), Actual.size());
+  for (size_t Idx = 0; Idx < Actual.size(); ++Idx)
+    CheckCommentInfo(*Expected[Idx], *Actual[Idx]);
 }
 
 void CheckReference(Reference &Expected, Reference &Actual) {
   EXPECT_EQ(Expected.Name, Actual.Name);
   EXPECT_EQ(Expected.RefType, Actual.RefType);
+  EXPECT_EQ(Expected.Path, Actual.Path);
 }
 
 void CheckTypeInfo(TypeInfo *Expected, TypeInfo *Actual) {
@@ -77,23 +101,23 @@ void CheckFieldTypeInfo(FieldTypeInfo *Expected, FieldTypeInfo *Actual) {
 void CheckMemberTypeInfo(MemberTypeInfo *Expected, MemberTypeInfo *Actual) {
   CheckFieldTypeInfo(Expected, Actual);
   EXPECT_EQ(Expected->Access, Actual->Access);
+  CheckCommentInfo(Expected->Description, Actual->Description);
 }
 
 void CheckBaseInfo(Info *Expected, Info *Actual) {
   EXPECT_EQ(size_t(20), Actual->USR.size());
   EXPECT_EQ(Expected->Name, Actual->Name);
+  EXPECT_EQ(Expected->Path, Actual->Path);
   ASSERT_EQ(Expected->Namespace.size(), Actual->Namespace.size());
   for (size_t Idx = 0; Idx < Actual->Namespace.size(); ++Idx)
     CheckReference(Expected->Namespace[Idx], Actual->Namespace[Idx]);
-  ASSERT_EQ(Expected->Description.size(), Actual->Description.size());
-  for (size_t Idx = 0; Idx < Actual->Description.size(); ++Idx)
-    CheckCommentInfo(Expected->Description[Idx], Actual->Description[Idx]);
+  CheckCommentInfo(Expected->Description, Actual->Description);
 }
 
 void CheckSymbolInfo(SymbolInfo *Expected, SymbolInfo *Actual) {
   CheckBaseInfo(Expected, Actual);
-  EXPECT_EQ(Expected->DefLoc.hasValue(), Actual->DefLoc.hasValue());
-  if (Expected->DefLoc.hasValue() && Actual->DefLoc.hasValue()) {
+  EXPECT_EQ(Expected->DefLoc.has_value(), Actual->DefLoc.has_value());
+  if (Expected->DefLoc && Actual->DefLoc.has_value()) {
     EXPECT_EQ(Expected->DefLoc->LineNumber, Actual->DefLoc->LineNumber);
     EXPECT_EQ(Expected->DefLoc->Filename, Actual->DefLoc->Filename);
   }
@@ -125,31 +149,43 @@ void CheckEnumInfo(EnumInfo *Expected, EnumInfo *Actual) {
     EXPECT_EQ(Expected->Members[Idx], Actual->Members[Idx]);
 }
 
+void CheckTypedefInfo(TypedefInfo *Expected, TypedefInfo *Actual) {
+  CheckSymbolInfo(Expected, Actual);
+  EXPECT_EQ(Expected->IsUsing, Actual->IsUsing);
+  CheckTypeInfo(&Expected->Underlying, &Actual->Underlying);
+}
+
 void CheckNamespaceInfo(NamespaceInfo *Expected, NamespaceInfo *Actual) {
   CheckBaseInfo(Expected, Actual);
 
-  ASSERT_EQ(Expected->ChildNamespaces.size(), Actual->ChildNamespaces.size());
-  for (size_t Idx = 0; Idx < Actual->ChildNamespaces.size(); ++Idx)
-    EXPECT_EQ(Expected->ChildNamespaces[Idx], Actual->ChildNamespaces[Idx]);
+  ASSERT_EQ(Expected->Children.Namespaces.size(),
+            Actual->Children.Namespaces.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Namespaces.size(); ++Idx)
+    CheckReference(Expected->Children.Namespaces[Idx],
+                   Actual->Children.Namespaces[Idx]);
 
-  ASSERT_EQ(Expected->ChildRecords.size(), Actual->ChildRecords.size());
-  for (size_t Idx = 0; Idx < Actual->ChildRecords.size(); ++Idx)
-    EXPECT_EQ(Expected->ChildRecords[Idx], Actual->ChildRecords[Idx]);
+  ASSERT_EQ(Expected->Children.Records.size(), Actual->Children.Records.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Records.size(); ++Idx)
+    CheckReference(Expected->Children.Records[Idx],
+                   Actual->Children.Records[Idx]);
 
-  ASSERT_EQ(Expected->ChildFunctions.size(), Actual->ChildFunctions.size());
-  for (size_t Idx = 0; Idx < Actual->ChildFunctions.size(); ++Idx)
-    CheckFunctionInfo(&Expected->ChildFunctions[Idx],
-                      &Actual->ChildFunctions[Idx]);
+  ASSERT_EQ(Expected->Children.Functions.size(),
+            Actual->Children.Functions.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Functions.size(); ++Idx)
+    CheckFunctionInfo(&Expected->Children.Functions[Idx],
+                      &Actual->Children.Functions[Idx]);
 
-  ASSERT_EQ(Expected->ChildEnums.size(), Actual->ChildEnums.size());
-  for (size_t Idx = 0; Idx < Actual->ChildEnums.size(); ++Idx)
-    CheckEnumInfo(&Expected->ChildEnums[Idx], &Actual->ChildEnums[Idx]);
+  ASSERT_EQ(Expected->Children.Enums.size(), Actual->Children.Enums.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Enums.size(); ++Idx)
+    CheckEnumInfo(&Expected->Children.Enums[Idx], &Actual->Children.Enums[Idx]);
 }
 
 void CheckRecordInfo(RecordInfo *Expected, RecordInfo *Actual) {
   CheckSymbolInfo(Expected, Actual);
 
   EXPECT_EQ(Expected->TagType, Actual->TagType);
+
+  EXPECT_EQ(Expected->IsTypeDef, Actual->IsTypeDef);
 
   ASSERT_EQ(Expected->Members.size(), Actual->Members.size());
   for (size_t Idx = 0; Idx < Actual->Members.size(); ++Idx)
@@ -163,18 +199,39 @@ void CheckRecordInfo(RecordInfo *Expected, RecordInfo *Actual) {
   for (size_t Idx = 0; Idx < Actual->VirtualParents.size(); ++Idx)
     CheckReference(Expected->VirtualParents[Idx], Actual->VirtualParents[Idx]);
 
-  ASSERT_EQ(Expected->ChildRecords.size(), Actual->ChildRecords.size());
-  for (size_t Idx = 0; Idx < Actual->ChildRecords.size(); ++Idx)
-    EXPECT_EQ(Expected->ChildRecords[Idx], Actual->ChildRecords[Idx]);
+  ASSERT_EQ(Expected->Bases.size(), Actual->Bases.size());
+  for (size_t Idx = 0; Idx < Actual->Bases.size(); ++Idx)
+    CheckBaseRecordInfo(&Expected->Bases[Idx], &Actual->Bases[Idx]);
 
-  ASSERT_EQ(Expected->ChildFunctions.size(), Actual->ChildFunctions.size());
-  for (size_t Idx = 0; Idx < Actual->ChildFunctions.size(); ++Idx)
-    CheckFunctionInfo(&Expected->ChildFunctions[Idx],
-                      &Actual->ChildFunctions[Idx]);
+  ASSERT_EQ(Expected->Children.Records.size(), Actual->Children.Records.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Records.size(); ++Idx)
+    CheckReference(Expected->Children.Records[Idx],
+                   Actual->Children.Records[Idx]);
 
-  ASSERT_EQ(Expected->ChildEnums.size(), Actual->ChildEnums.size());
-  for (size_t Idx = 0; Idx < Actual->ChildEnums.size(); ++Idx)
-    CheckEnumInfo(&Expected->ChildEnums[Idx], &Actual->ChildEnums[Idx]);
+  ASSERT_EQ(Expected->Children.Functions.size(),
+            Actual->Children.Functions.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Functions.size(); ++Idx)
+    CheckFunctionInfo(&Expected->Children.Functions[Idx],
+                      &Actual->Children.Functions[Idx]);
+
+  ASSERT_EQ(Expected->Children.Enums.size(), Actual->Children.Enums.size());
+  for (size_t Idx = 0; Idx < Actual->Children.Enums.size(); ++Idx)
+    CheckEnumInfo(&Expected->Children.Enums[Idx], &Actual->Children.Enums[Idx]);
+}
+
+void CheckBaseRecordInfo(BaseRecordInfo *Expected, BaseRecordInfo *Actual) {
+  CheckRecordInfo(Expected, Actual);
+
+  EXPECT_EQ(Expected->IsVirtual, Actual->IsVirtual);
+  EXPECT_EQ(Expected->Access, Actual->Access);
+  EXPECT_EQ(Expected->IsParent, Actual->IsParent);
+}
+
+void CheckIndex(Index &Expected, Index &Actual) {
+  CheckReference(Expected, Actual);
+  ASSERT_EQ(Expected.Children.size(), Actual.Children.size());
+  for (size_t Idx = 0; Idx < Actual.Children.size(); ++Idx)
+    CheckIndex(Expected.Children[Idx], Actual.Children[Idx]);
 }
 
 } // namespace doc

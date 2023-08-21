@@ -57,7 +57,7 @@ public:
   Callback(const NumberObjectConversionChecker *C,
            BugReporter &BR, AnalysisDeclContext *ADC)
       : C(C), BR(BR), ADC(ADC) {}
-  virtual void run(const MatchFinder::MatchResult &Result);
+  void run(const MatchFinder::MatchResult &Result) override;
 };
 } // end of anonymous namespace
 
@@ -143,7 +143,7 @@ void Callback::run(const MatchFinder::MatchResult &Result) {
   else
     OS << "Converting ";
 
-  OS << "a pointer value of type '" << ObjT.getAsString() << "' to a ";
+  OS << "a pointer value of type '" << ObjT << "' to a ";
 
   std::string EuphemismForPlain = "primitive";
   std::string SuggestedApi = IsObjC ? (IsInteger ? "" : "-boolValue")
@@ -196,12 +196,10 @@ void NumberObjectConversionChecker::checkASTCodeBody(const Decl *D,
                                                      AnalysisManager &AM,
                                                      BugReporter &BR) const {
   // Currently this matches CoreFoundation opaque pointer typedefs.
-  auto CSuspiciousNumberObjectExprM =
-      expr(ignoringParenImpCasts(
-          expr(hasType(
-              typedefType(hasDeclaration(anyOf(
-                  typedefDecl(hasName("CFNumberRef")),
-                  typedefDecl(hasName("CFBooleanRef")))))))
+  auto CSuspiciousNumberObjectExprM = expr(ignoringParenImpCasts(
+      expr(hasType(elaboratedType(namesType(typedefType(
+               hasDeclaration(anyOf(typedefDecl(hasName("CFNumberRef")),
+                                    typedefDecl(hasName("CFBooleanRef")))))))))
           .bind("c_object")));
 
   // Currently this matches XNU kernel number-object pointers.
@@ -240,8 +238,9 @@ void NumberObjectConversionChecker::checkASTCodeBody(const Decl *D,
 
   // The .bind here is in order to compose the error message more accurately.
   auto ObjCSuspiciousScalarBooleanTypeM =
-      qualType(typedefType(hasDeclaration(
-                   typedefDecl(hasName("BOOL"))))).bind("objc_bool_type");
+      qualType(elaboratedType(namesType(
+                   typedefType(hasDeclaration(typedefDecl(hasName("BOOL")))))))
+          .bind("objc_bool_type");
 
   // The .bind here is in order to compose the error message more accurately.
   auto SuspiciousScalarBooleanTypeM =
@@ -253,9 +252,9 @@ void NumberObjectConversionChecker::checkASTCodeBody(const Decl *D,
   // for storing pointers.
   auto SuspiciousScalarNumberTypeM =
       qualType(hasCanonicalType(isInteger()),
-               unless(typedefType(hasDeclaration(
-                   typedefDecl(matchesName("^::u?intptr_t$"))))))
-      .bind("int_type");
+               unless(elaboratedType(namesType(typedefType(hasDeclaration(
+                   typedefDecl(matchesName("^::u?intptr_t$"))))))))
+          .bind("int_type");
 
   auto SuspiciousScalarTypeM =
       qualType(anyOf(SuspiciousScalarBooleanTypeM,
@@ -338,7 +337,7 @@ void NumberObjectConversionChecker::checkASTCodeBody(const Decl *D,
   MatchFinder F;
   Callback CB(this, BR, AM.getAnalysisDeclContext(D));
 
-  F.addMatcher(stmt(forEachDescendant(FinalM)), &CB);
+  F.addMatcher(traverse(TK_AsIs, stmt(forEachDescendant(FinalM))), &CB);
   F.match(*D->getBody(), AM.getASTContext());
 }
 
@@ -346,9 +345,9 @@ void ento::registerNumberObjectConversionChecker(CheckerManager &Mgr) {
   NumberObjectConversionChecker *Chk =
       Mgr.registerChecker<NumberObjectConversionChecker>();
   Chk->Pedantic =
-      Mgr.getAnalyzerOptions().getCheckerBooleanOption("Pedantic", false, Chk);
+      Mgr.getAnalyzerOptions().getCheckerBooleanOption(Chk, "Pedantic");
 }
 
-bool ento::shouldRegisterNumberObjectConversionChecker(const LangOptions &LO) {
+bool ento::shouldRegisterNumberObjectConversionChecker(const CheckerManager &mgr) {
   return true;
 }

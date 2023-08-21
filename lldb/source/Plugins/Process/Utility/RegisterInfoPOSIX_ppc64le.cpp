@@ -1,4 +1,4 @@
-//===-- RegisterInfoPOSIX_ppc64le.cpp --------------------------*- C++ -*-===//
+//===-- RegisterInfoPOSIX_ppc64le.cpp -------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //===---------------------------------------------------------------------===//
 
 #include <cassert>
-#include <stddef.h>
+#include <cstddef>
 #include <vector>
 
 #include "lldb/lldb-defines.h"
@@ -15,9 +15,7 @@
 
 #include "RegisterInfoPOSIX_ppc64le.h"
 
-//-----------------------------------------------------------------------------
 // Include RegisterInfoPOSIX_ppc64le to declare our g_register_infos_ppc64le
-//-----------------------------------------------------------------------------
 #define DECLARE_REGISTER_INFOS_PPC64LE_STRUCT
 #include "RegisterInfos_ppc64le.h"
 #undef DECLARE_REGISTER_INFOS_PPC64LE_STRUCT
@@ -29,7 +27,7 @@ GetRegisterInfoPtr(const lldb_private::ArchSpec &target_arch) {
     return g_register_infos_ppc64le;
   default:
     assert(false && "Unhandled target architecture.");
-    return NULL;
+    return nullptr;
   }
 }
 

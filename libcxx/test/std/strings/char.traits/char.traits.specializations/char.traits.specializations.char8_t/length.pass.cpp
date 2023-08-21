@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// UNSUPPORTED: c++98, c++03, c++11, c++14, c++17
+// UNSUPPORTED: c++03, c++11, c++14, c++17
 
 // <string>
 
@@ -18,7 +18,7 @@
 
 #include "test_macros.h"
 
-#if defined(__cpp_lib_char8_t) && __cpp_lib_char8_t >= 201811L
+#ifndef TEST_HAS_NO_CHAR8_T
 constexpr bool test_constexpr()
 {
     return std::char_traits<char8_t>::length(u8"") == 0
@@ -34,9 +34,10 @@ int main(int, char**)
     assert(std::char_traits<char8_t>::length(u8"aaaa") == 4);
 
     static_assert(test_constexpr(), "");
+    return 0;
 }
 #else
-int main(int, char**) { 
+int main(int, char**) {
   return 0;
 }
 #endif

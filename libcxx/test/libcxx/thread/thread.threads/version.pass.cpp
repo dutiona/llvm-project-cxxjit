@@ -6,11 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <thread>
 
 #include <thread>
+
+#include "test_macros.h"
 
 #ifndef _LIBCPP_VERSION
 #error _LIBCPP_VERSION not defined

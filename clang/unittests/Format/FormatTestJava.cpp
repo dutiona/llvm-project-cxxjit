@@ -198,6 +198,8 @@ TEST_F(FormatTestJava, EnumDeclarations) {
                "  void f() {}\n"
                "}");
   verifyFormat("enum SomeThing {\n"
+               "  void f() {}");
+  verifyFormat("enum SomeThing {\n"
                "  ABC(1, \"ABC\"),\n"
                "  CDE(2, \"CDE\");\n"
                "  Something(int i, String s) {}\n"
@@ -335,6 +337,14 @@ TEST_F(FormatTestJava, Annotations) {
   verifyFormat("@Annotation(\"Some\"\n"
                "    + \" text\")\n"
                "List<Integer> list;");
+
+  verifyFormat(
+      "@Test\n"
+      "@Feature({\"Android-TabSwitcher\"})\n"
+      "@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})\n"
+      "@Features.EnableFeatures({FEATURE})\n"
+      "public void test(@Foo.bar(\"baz\") @Quux.Qoob int theFirstParaaaaam,\n"
+      "    @Foo.bar(\"baz\") @Quux.Qoob int theSecondParaaaaaaaaaaaaaaaam) {}");
 }
 
 TEST_F(FormatTestJava, Generics) {
@@ -423,6 +433,24 @@ TEST_F(FormatTestJava, SynchronizedKeyword) {
   verifyFormat("synchronized (mData) {\n"
                "  // ...\n"
                "}");
+
+  FormatStyle Style = getLLVMStyle(FormatStyle::LK_Java);
+  Style.BreakBeforeBraces = FormatStyle::BS_Custom;
+
+  Style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Always;
+  Style.BraceWrapping.AfterFunction = false;
+  verifyFormat("synchronized (mData)\n"
+               "{\n"
+               "  // ...\n"
+               "}",
+               Style);
+
+  Style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Never;
+  Style.BraceWrapping.AfterFunction = true;
+  verifyFormat("synchronized (mData) {\n"
+               "  // ...\n"
+               "}",
+               Style);
 }
 
 TEST_F(FormatTestJava, AssertKeyword) {
@@ -452,19 +480,18 @@ TEST_F(FormatTestJava, MethodDeclarations) {
 }
 
 TEST_F(FormatTestJava, MethodReference) {
-  EXPECT_EQ(
-      "private void foo() {\n"
-      "  f(this::methodReference);\n"
-      "  f(C.super::methodReference);\n"
-      "  Consumer<String> c = System.out::println;\n"
-      "  Iface<Integer> mRef = Ty::<Integer>meth;\n"
-      "}",
-      format("private void foo() {\n"
-             "  f(this ::methodReference);\n"
-             "  f(C.super ::methodReference);\n"
-             "  Consumer<String> c = System.out ::println;\n"
-             "  Iface<Integer> mRef = Ty :: <Integer> meth;\n"
-             "}"));
+  EXPECT_EQ("private void foo() {\n"
+            "  f(this::methodReference);\n"
+            "  f(C.super::methodReference);\n"
+            "  Consumer<String> c = System.out::println;\n"
+            "  Iface<Integer> mRef = Ty::<Integer>meth;\n"
+            "}",
+            format("private void foo() {\n"
+                   "  f(this ::methodReference);\n"
+                   "  f(C.super ::methodReference);\n"
+                   "  Consumer<String> c = System.out ::println;\n"
+                   "  Iface<Integer> mRef = Ty :: <Integer> meth;\n"
+                   "}"));
 }
 
 TEST_F(FormatTestJava, CppKeywords) {
@@ -557,6 +584,17 @@ TEST_F(FormatTestJava, AlignsBlockComments) {
                    "  void f() {}"));
 }
 
+TEST_F(FormatTestJava, AlignDeclarations) {
+  FormatStyle Style = getLLVMStyle(FormatStyle::LK_Java);
+  Style.AlignConsecutiveDeclarations.Enabled = true;
+  verifyFormat("private final String[]       args;\n"
+               "private final A_ParserHelper parserHelper;\n"
+               "private final int            numOfCmdArgs;\n"
+               "private int                  numOfCmdArgs;\n"
+               "private String[]             args;",
+               Style);
+}
+
 TEST_F(FormatTestJava, KeepsDelimitersOnOwnLineInJavaDocComments) {
   EXPECT_EQ("/**\n"
             " * javadoc line 1\n"
@@ -567,16 +605,26 @@ TEST_F(FormatTestJava, KeepsDelimitersOnOwnLineInJavaDocComments) {
 }
 
 TEST_F(FormatTestJava, RetainsLogicalShifts) {
-    verifyFormat("void f() {\n"
-                 "  int a = 1;\n"
-                 "  a >>>= 1;\n"
-                 "}");
-    verifyFormat("void f() {\n"
-                 "  int a = 1;\n"
-                 "  a = a >>> 1;\n"
-                 "}");
+  verifyFormat("void f() {\n"
+               "  int a = 1;\n"
+               "  a >>>= 1;\n"
+               "}");
+  verifyFormat("void f() {\n"
+               "  int a = 1;\n"
+               "  a = a >>> 1;\n"
+               "}");
 }
 
+TEST_F(FormatTestJava, ShortFunctions) {
+  FormatStyle Style = getLLVMStyle(FormatStyle::LK_Java);
+  Style.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_Inline;
+  verifyFormat("enum Enum {\n"
+               "  E1,\n"
+               "  E2;\n"
+               "  void f() { return; }\n"
+               "}",
+               Style);
+}
 
-} // end namespace tooling
+} // namespace format
 } // end namespace clang

@@ -53,7 +53,7 @@ static void WarnSize(int Offset, MachineFunction &MF, DebugLoc& DL)
   }
 }
 
-void BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
+bool BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                           int SPAdj, unsigned FIOperandNum,
                                           RegScavenger *RS) const {
   assert(SPAdj == 0 && "Unexpected");
@@ -77,7 +77,7 @@ void BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     assert(i < MI.getNumOperands() && "Instr doesn't have FrameIndex operand!");
   }
 
-  unsigned FrameReg = getFrameRegister(MF);
+  Register FrameReg = getFrameRegister(MF);
   int FrameIndex = MI.getOperand(i).getIndex();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
 
@@ -86,11 +86,11 @@ void BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
     WarnSize(Offset, MF, DL);
     MI.getOperand(i).ChangeToRegister(FrameReg, false);
-    unsigned reg = MI.getOperand(i - 1).getReg();
+    Register reg = MI.getOperand(i - 1).getReg();
     BuildMI(MBB, ++II, DL, TII.get(BPF::ADD_ri), reg)
         .addReg(reg)
         .addImm(Offset);
-    return;
+    return false;
   }
 
   int Offset = MF.getFrameInfo().getObjectOffset(FrameIndex) +
@@ -105,7 +105,7 @@ void BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     // architecture does not really support FI_ri, replace it with
     //    MOV_rr <target_reg>, frame_reg
     //    ADD_ri <target_reg>, imm
-    unsigned reg = MI.getOperand(i - 1).getReg();
+    Register reg = MI.getOperand(i - 1).getReg();
 
     BuildMI(MBB, ++II, DL, TII.get(BPF::MOV_rr), reg)
         .addReg(FrameReg);
@@ -119,8 +119,9 @@ void BPFRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     MI.getOperand(i).ChangeToRegister(FrameReg, false);
     MI.getOperand(i + 1).ChangeToImmediate(Offset);
   }
+  return false;
 }
 
-unsigned BPFRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
+Register BPFRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return BPF::R10;
 }

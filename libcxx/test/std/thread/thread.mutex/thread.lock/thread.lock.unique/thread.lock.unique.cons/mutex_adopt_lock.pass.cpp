@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <mutex>
 
@@ -16,7 +16,9 @@
 
 #include <mutex>
 #include <cassert>
-#include "nasty_containers.hpp"
+#include "nasty_containers.h"
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

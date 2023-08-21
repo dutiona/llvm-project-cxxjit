@@ -68,7 +68,7 @@ namespace llvm {
 template <typename Underlying> class fallible_iterator {
 private:
   template <typename T>
-  using enable_if_struct_deref_supported = std::enable_if<
+  using enable_if_struct_deref_supported = std::enable_if_t<
       !std::is_void<decltype(std::declval<T>().operator->())>::value,
       decltype(std::declval<T>().operator->())>;
 
@@ -86,7 +86,7 @@ public:
     return fallible_iterator(std::move(I), &Err);
   }
 
-  /// Construct a fallible iteratro that can be used as an end-of-range value.
+  /// Construct a fallible iterator that can be used as an end-of-range value.
   ///
   /// A value created by this method can be dereferenced (if the underlying
   /// value points at a valid value) and compared, but not incremented or
@@ -96,24 +96,22 @@ public:
   }
 
   /// Forward dereference to the underlying iterator.
-  auto operator*() -> decltype(*std::declval<Underlying>()) { return *I; }
+  decltype(auto) operator*() { return *I; }
 
   /// Forward const dereference to the underlying iterator.
-  auto operator*() const -> decltype(*std::declval<const Underlying>()) {
-    return *I;
-  }
+  decltype(auto) operator*() const { return *I; }
 
   /// Forward structure dereference to the underlying iterator (if the
   /// underlying iterator supports it).
   template <typename T = Underlying>
-  typename enable_if_struct_deref_supported<T>::type operator->() {
+  enable_if_struct_deref_supported<T> operator->() {
     return I.operator->();
   }
 
   /// Forward const structure dereference to the underlying iterator (if the
   /// underlying iterator supports it).
   template <typename T = Underlying>
-  typename enable_if_struct_deref_supported<const T>::type operator->() const {
+  enable_if_struct_deref_supported<const T> operator->() const {
     return I.operator->();
   }
 

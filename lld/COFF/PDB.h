@@ -11,27 +11,26 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include <optional>
 
-namespace llvm {
-namespace codeview {
+namespace llvm::codeview {
 union DebugInfo;
-}
 }
 
 namespace lld {
+class Timer;
+
 namespace coff {
-class OutputSection;
 class SectionChunk;
-class SymbolTable;
+class COFFLinkerContext;
 
-void createPDB(SymbolTable *Symtab,
-               llvm::ArrayRef<OutputSection *> OutputSections,
-               llvm::ArrayRef<uint8_t> SectionTable,
-               llvm::codeview::DebugInfo *BuildId);
+void createPDB(COFFLinkerContext &ctx, llvm::ArrayRef<uint8_t> sectionTable,
+               llvm::codeview::DebugInfo *buildId);
 
-std::pair<llvm::StringRef, uint32_t> getFileLine(const SectionChunk *C,
-                                                 uint32_t Addr);
-}
-}
+std::optional<std::pair<llvm::StringRef, uint32_t>>
+getFileLineCodeView(const SectionChunk *c, uint32_t addr);
+
+} // namespace coff
+} // namespace lld
 
 #endif

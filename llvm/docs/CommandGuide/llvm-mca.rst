@@ -1,6 +1,8 @@
 llvm-mca - LLVM Machine Code Analyzer
 =====================================
 
+.. program:: llvm-mca
+
 SYNOPSIS
 --------
 
@@ -14,8 +16,8 @@ available in LLVM (e.g. scheduling models) to statically measure the performance
 of machine code in a specific CPU.
 
 Performance is measured in terms of throughput as well as processor resource
-consumption. The tool currently works for processors with an out-of-order
-backend, for which there is a scheduling model available in LLVM.
+consumption. The tool currently works for processors with a backend for which
+there is a scheduling model available in LLVM.
 
 The main goal of this tool is not just to predict the performance of the code
 when run on the target, but also help with diagnosing potential performance
@@ -38,6 +40,21 @@ Or for Intel syntax:
 
   $ clang foo.c -O2 -target x86_64-unknown-unknown -mllvm -x86-asm-syntax=intel -S -o - | llvm-mca -mcpu=btver2
 
+(:program:`llvm-mca` detects Intel syntax by the presence of an `.intel_syntax`
+directive at the beginning of the input.  By default its output syntax matches
+that of its input.)
+
+Scheduling models are not just used to compute instruction latencies and
+throughput, but also to understand what processor resources are available
+and how to simulate them.
+
+By design, the quality of the analysis conducted by :program:`llvm-mca` is
+inevitably affected by the quality of the scheduling models in LLVM.
+
+If you see that the performance report is not accurate for a processor,
+please `file a bug <https://bugs.llvm.org/enter_bug.cgi?product=libraries>`_
+against the appropriate backend.
+
 OPTIONS
 -------
 
@@ -52,6 +69,11 @@ option specifies "``-``", then the output will also be sent to standard output.
 .. option:: -help
 
  Print a summary of command line options.
+
+.. option:: -o <filename>
+
+ Use ``<filename>`` as the output filename. See the summary above for more
+ details.
 
 .. option:: -mtriple=<target triple>
 
@@ -73,6 +95,11 @@ option specifies "``-``", then the output will also be sent to standard output.
  On x86, possible values are [0, 1]. A value of 0 (vic. 1) for this flag enables
  the AT&T (vic. Intel) assembly format for the code printed out by the tool in
  the analysis report.
+
+.. option:: -print-imm-hex
+
+ Prefer hex format for numeric literals in the output assembly printed as part
+ of the report.
 
 .. option:: -dispatch=<width>
 
@@ -101,7 +128,7 @@ option specifies "``-``", then the output will also be sent to standard output.
   Specify the size of the load queue in the load/store unit emulated by the tool.
   By default, the tool assumes an unbound number of entries in the load queue.
   A value of zero for this flag is ignored, and the default load queue size is
-  used instead. 
+  used instead.
 
 .. option:: -squeue=<store queue size>
 
@@ -121,8 +148,8 @@ option specifies "``-``", then the output will also be sent to standard output.
 
 .. option:: -timeline-max-cycles=<cycles>
 
-  Limit the number of cycles in the timeline view. By default, the number of
-  cycles is set to 80.
+  Limit the number of cycles in the timeline view, or use 0 for no limit. By
+  default, the number of cycles is set to 80.
 
 .. option:: -resource-pressure
 
@@ -151,6 +178,15 @@ option specifies "``-``", then the output will also be sent to standard output.
 
   Enable the instruction info view. This is enabled by default.
 
+.. option:: -show-encoding
+
+  Enable the printing of instruction encodings within the instruction info view.
+
+.. option:: -show-barriers
+
+  Enable the printing of LoadBarrier and StoreBarrier flags within the
+  instruction info view.
+
 .. option:: -all-stats
 
   Print all hardware statistics. This enables extra statistics related to the
@@ -169,6 +205,34 @@ option specifies "``-``", then the output will also be sent to standard output.
   the theoretical uniform distribution of resource pressure for every
   instruction in sequence.
 
+.. option:: -bottleneck-analysis
+
+  Print information about bottlenecks that affect the throughput. This analysis
+  can be expensive, and it is disabled by default. Bottlenecks are highlighted
+  in the summary view. Bottleneck analysis is currently not supported for
+  processors with an in-order backend.
+
+.. option:: -json
+
+  Print the requested views in valid JSON format. The instructions and the
+  processor resources are printed as members of special top level JSON objects.
+  The individual views refer to them by index. However, not all views are
+  currently supported. For example, the report from the bottleneck analysis is
+  not printed out in JSON. All the default views are currently supported.
+
+.. option:: -disable-cb
+
+  Force usage of the generic CustomBehaviour and InstrPostProcess classes rather
+  than using the target specific implementation. The generic classes never
+  detect any custom hazards or make any post processing modifications to
+  instructions.
+
+.. option:: -disable-im
+
+  Force usage of the generic InstrumentManager rather than using the target
+  specific implementation. The generic class creates Instruments that provide
+  no extra information, and InstrumentManager never overrides the default
+  schedule class for a given instruction.
 
 EXIT STATUS
 -----------
@@ -180,35 +244,167 @@ USING MARKERS TO ANALYZE SPECIFIC CODE BLOCKS
 ---------------------------------------------
 :program:`llvm-mca` allows for the optional usage of special code comments to
 mark regions of the assembly code to be analyzed.  A comment starting with
-substring ``LLVM-MCA-BEGIN`` marks the beginning of a code region. A comment
-starting with substring ``LLVM-MCA-END`` marks the end of a code region.  For
-example:
+substring ``LLVM-MCA-BEGIN`` marks the beginning of an analysis region. A
+comment starting with substring ``LLVM-MCA-END`` marks the end of a region.
+For example:
 
 .. code-block:: none
 
-  # LLVM-MCA-BEGIN My Code Region
+  # LLVM-MCA-BEGIN
     ...
   # LLVM-MCA-END
 
-Multiple regions can be specified provided that they do not overlap.  A code
-region can have an optional description. If no user-defined region is specified,
-then :program:`llvm-mca` assumes a default region which contains every
-instruction in the input file.  Every region is analyzed in isolation, and the
-final performance report is the union of all the reports generated for every
-code region.
+If no user-defined region is specified, then :program:`llvm-mca` assumes a
+default region which contains every instruction in the input file.  Every region
+is analyzed in isolation, and the final performance report is the union of all
+the reports generated for every analysis region.
 
-Inline assembly directives may be used from source code to annotate the
-assembly text:
+Analysis regions can have names. For example:
+
+.. code-block:: none
+
+  # LLVM-MCA-BEGIN A simple example
+    add %eax, %eax
+  # LLVM-MCA-END
+
+The code from the example above defines a region named "A simple example" with a
+single instruction in it. Note how the region name doesn't have to be repeated
+in the ``LLVM-MCA-END`` directive. In the absence of overlapping regions,
+an anonymous ``LLVM-MCA-END`` directive always ends the currently active user
+defined region.
+
+Example of nesting regions:
+
+.. code-block:: none
+
+  # LLVM-MCA-BEGIN foo
+    add %eax, %edx
+  # LLVM-MCA-BEGIN bar
+    sub %eax, %edx
+  # LLVM-MCA-END bar
+  # LLVM-MCA-END foo
+
+Example of overlapping regions:
+
+.. code-block:: none
+
+  # LLVM-MCA-BEGIN foo
+    add %eax, %edx
+  # LLVM-MCA-BEGIN bar
+    sub %eax, %edx
+  # LLVM-MCA-END foo
+    add %eax, %edx
+  # LLVM-MCA-END bar
+
+Note that multiple anonymous regions cannot overlap. Also, overlapping regions
+cannot have the same name.
+
+There is no support for marking regions from high-level source code, like C or
+C++. As a workaround, inline assembly directives may be used:
 
 .. code-block:: c++
 
   int foo(int a, int b) {
-    __asm volatile("# LLVM-MCA-BEGIN foo");
+    __asm volatile("# LLVM-MCA-BEGIN foo":::"memory");
     a += 42;
-    __asm volatile("# LLVM-MCA-END");
+    __asm volatile("# LLVM-MCA-END":::"memory");
     a *= b;
     return a;
   }
+
+However, this interferes with optimizations like loop vectorization and may have
+an impact on the code generated. This is because the ``__asm`` statements are
+seen as real code having important side effects, which limits how the code
+around them can be transformed. If users want to make use of inline assembly
+to emit markers, then the recommendation is to always verify that the output
+assembly is equivalent to the assembly generated in the absence of markers.
+The `Clang options to emit optimization reports <https://clang.llvm.org/docs/UsersManual.html#options-to-emit-optimization-reports>`_
+can also help in detecting missed optimizations.
+
+INSTRUMENT REGIONS
+------------------
+
+An InstrumentRegion describes a region of assembly code guarded by
+special LLVM-MCA comment directives.
+
+.. code-block:: none
+
+  # LLVM-MCA-<INSTRUMENT_TYPE> <data>
+    ...  ## asm
+
+where `INSTRUMENT_TYPE` is a type defined by the target and expects
+to use `data`.
+
+A comment starting with substring `LLVM-MCA-<INSTRUMENT_TYPE>`
+brings data into scope for llvm-mca to use in its analysis for
+all following instructions.
+
+If a comment with the same `INSTRUMENT_TYPE` is found later in the
+instruction list, then the original InstrumentRegion will be
+automatically ended, and a new InstrumentRegion will begin.
+
+If there are comments containing the different `INSTRUMENT_TYPE`,
+then both data sets remain available. In contrast with an AnalysisRegion,
+an InstrumentRegion does not need a comment to end the region.
+
+Comments that are prefixed with `LLVM-MCA-` but do not correspond to
+a valid `INSTRUMENT_TYPE` for the target cause an error, except for
+`BEGIN` and `END`, since those correspond to AnalysisRegions. Comments
+that do not start with `LLVM-MCA-` are ignored by :program `llvm-mca`.
+
+An instruction (a MCInst) is added to an InstrumentRegion R only
+if its location is in range [R.RangeStart, R.RangeEnd].
+
+On RISCV targets, vector instructions have different behaviour depending
+on the LMUL. Code can be instrumented with a comment that takes the
+following form:
+
+.. code-block:: none
+
+  # LLVM-MCA-RISCV-LMUL <M1|M2|M4|M8|MF2|MF4|MF8>
+
+The RISCV InstrumentManager will override the schedule class for vector
+instructions to use the scheduling behaviour of its pseudo-instruction
+which is LMUL dependent. It makes sense to place RISCV instrument
+comments directly after `vset{i}vl{i}` instructions, although
+they can be placed anywhere in the program.
+
+Example of program with no call to `vset{i}vl{i}`:
+
+.. code-block:: none
+
+  # LLVM-MCA-RISCV-LMUL M2
+  vadd.vv v2, v2, v2
+
+Example of program with call to `vset{i}vl{i}`:
+
+.. code-block:: none
+
+  vsetvli zero, a0, e8, m1, tu, mu
+  # LLVM-MCA-RISCV-LMUL M1
+  vadd.vv v2, v2, v2
+
+Example of program with multiple calls to `vset{i}vl{i}`:
+
+.. code-block:: none
+
+  vsetvli zero, a0, e8, m1, tu, mu
+  # LLVM-MCA-RISCV-LMUL M1
+  vadd.vv v2, v2, v2
+  vsetvli zero, a0, e8, m8, tu, mu
+  # LLVM-MCA-RISCV-LMUL M8
+  vadd.vv v2, v2, v2
+
+Example of program with call to `vsetvl`:
+
+.. code-block:: none
+
+ vsetvl rd, rs1, rs2
+ # LLVM-MCA-RISCV-LMUL M1
+ vadd.vv v12, v12, v12
+ vsetvl rd, rs1, rs2
+ # LLVM-MCA-RISCV-LMUL M4
+ vadd.vv v12, v12, v12
 
 HOW LLVM-MCA WORKS
 ------------------
@@ -297,17 +493,30 @@ overview of the performance throughput. Important performance indicators are
 **IPC**, **uOps Per Cycle**, and  **Block RThroughput** (Block Reciprocal
 Throughput).
 
+Field *DispatchWidth* is the maximum number of micro opcodes that are dispatched
+to the out-of-order backend every simulated cycle. For processors with an
+in-order backend, *DispatchWidth* is the maximum number of micro opcodes issued
+to the backend every simulated cycle.
+
 IPC is computed dividing the total number of simulated instructions by the total
-number of cycles. In the absence of loop-carried data dependencies, the
-observed IPC tends to a theoretical maximum which can be computed by dividing
-the number of instructions of a single iteration by the *Block RThroughput*.
+number of cycles.
+
+Field *Block RThroughput* is the reciprocal of the block throughput. Block
+throughput is a theoretical quantity computed as the maximum number of blocks
+(i.e. iterations) that can be executed per simulated clock cycle in the absence
+of loop carried dependencies. Block throughput is superiorly limited by the
+dispatch rate, and the availability of hardware resources.
+
+In the absence of loop-carried data dependencies, the observed IPC tends to a
+theoretical maximum which can be computed by dividing the number of instructions
+of a single iteration by the `Block RThroughput`.
 
 Field 'uOps Per Cycle' is computed dividing the total number of simulated micro
 opcodes by the total number of cycles. A delta between Dispatch Width and this
 field is an indicator of a performance issue. In the absence of loop-carried
 data dependencies, the observed 'uOps Per Cycle' should tend to a theoretical
 maximum throughput which can be computed by dividing the number of uOps of a
-single iteration by the *Block RThroughput*.
+single iteration by the `Block RThroughput`.
 
 Field *uOps Per Cycle* is bounded from above by the dispatch width. That is
 because the dispatch width limits the maximum size of a dispatch group. Both IPC
@@ -316,22 +525,54 @@ availability of hardware resources affects the resource pressure distribution,
 and it limits the number of instructions that can be executed in parallel every
 cycle.  A delta between Dispatch Width and the theoretical maximum uOps per
 Cycle (computed by dividing the number of uOps of a single iteration by the
-*Block RTrhoughput*) is an indicator of a performance bottleneck caused by the
+`Block RThroughput`) is an indicator of a performance bottleneck caused by the
 lack of hardware resources.
 In general, the lower the Block RThroughput, the better.
 
 In this example, ``uOps per iteration/Block RThroughput`` is 1.50. Since there
-are no loop-carried dependencies, the observed *uOps Per Cycle* is expected to
+are no loop-carried dependencies, the observed `uOps Per Cycle` is expected to
 approach 1.50 when the number of iterations tends to infinity. The delta between
 the Dispatch Width (2.00), and the theoretical maximum uOp throughput (1.50) is
 an indicator of a performance bottleneck caused by the lack of hardware
 resources, and the *Resource pressure view* can help to identify the problematic
 resource usage.
 
-The second section of the report shows the latency and reciprocal
-throughput of every instruction in the sequence. That section also reports
-extra information related to the number of micro opcodes, and opcode properties
-(i.e., 'MayLoad', 'MayStore', and 'HasSideEffects').
+The second section of the report is the `instruction info view`. It shows the
+latency and reciprocal throughput of every instruction in the sequence. It also
+reports extra information related to the number of micro opcodes, and opcode
+properties (i.e., 'MayLoad', 'MayStore', and 'HasSideEffects').
+
+Field *RThroughput* is the reciprocal of the instruction throughput. Throughput
+is computed as the maximum number of instructions of a same type that can be
+executed per clock cycle in the absence of operand dependencies. In this
+example, the reciprocal throughput of a vector float multiply is 1
+cycles/instruction.  That is because the FP multiplier JFPM is only available
+from pipeline JFPU1.
+
+Instruction encodings are displayed within the instruction info view when flag
+`-show-encoding` is specified.
+
+Below is an example of `-show-encoding` output for the dot-product kernel:
+
+.. code-block:: none
+
+  Instruction Info:
+  [1]: #uOps
+  [2]: Latency
+  [3]: RThroughput
+  [4]: MayLoad
+  [5]: MayStore
+  [6]: HasSideEffects (U)
+  [7]: Encoding Size
+
+  [1]    [2]    [3]    [4]    [5]    [6]    [7]    Encodings:                    Instructions:
+   1      2     1.00                         4     c5 f0 59 d0                   vmulps	%xmm0, %xmm1, %xmm2
+   1      4     1.00                         4     c5 eb 7c da                   vhaddps	%xmm2, %xmm2, %xmm3
+   1      4     1.00                         4     c5 e3 7c e3                   vhaddps	%xmm3, %xmm3, %xmm4
+
+The `Encoding Size` column shows the size in bytes of instructions.  The
+`Encodings` column shows the actual instruction encodings (byte sequences in
+hex).
 
 The third section is the *Resource pressure view*.  This view reports
 the average number of resource cycles consumed every iteration by instructions
@@ -400,6 +641,7 @@ Below is the timeline view for a subset of the dot-product example located in
   0.     3     1.0    1.0    3.3       vmulps	%xmm0, %xmm1, %xmm2
   1.     3     3.3    0.7    1.0       vhaddps	%xmm2, %xmm2, %xmm3
   2.     3     5.7    0.0    0.0       vhaddps	%xmm3, %xmm3, %xmm4
+         3     3.3    0.5    1.4       <total>
 
 The timeline view is interesting because it shows instruction state changes
 during execution.  It also gives an idea of how the tool processes instructions
@@ -451,7 +693,8 @@ and therefore consuming physical registers).
 
 Table *Average Wait times* helps diagnose performance issues that are caused by
 the presence of long latency instructions and potentially long data dependencies
-which may limit the ILP.  Note that :program:`llvm-mca`, by default, assumes at
+which may limit the ILP. Last row, ``<total>``, shows a global average over all
+instructions measured. Note that :program:`llvm-mca`, by default, assumes at
 least 1cy between the dispatch event and the issue event.
 
 When the performance is limited by data dependencies and/or long latency
@@ -463,6 +706,63 @@ instructions.  When performance is mostly limited by the lack of hardware
 resources, the delta between the two counters is small.  However, the number of
 cycles spent in the queue tends to be larger (i.e., more than 1-3cy),
 especially when compared to other low latency instructions.
+
+Bottleneck Analysis
+^^^^^^^^^^^^^^^^^^^
+The ``-bottleneck-analysis`` command line option enables the analysis of
+performance bottlenecks.
+
+This analysis is potentially expensive. It attempts to correlate increases in
+backend pressure (caused by pipeline resource pressure and data dependencies) to
+dynamic dispatch stalls.
+
+Below is an example of ``-bottleneck-analysis`` output generated by
+:program:`llvm-mca` for 500 iterations of the dot-product example on btver2.
+
+.. code-block:: none
+
+
+  Cycles with backend pressure increase [ 48.07% ]
+  Throughput Bottlenecks:
+    Resource Pressure       [ 47.77% ]
+    - JFPA  [ 47.77% ]
+    - JFPU0  [ 47.77% ]
+    Data Dependencies:      [ 0.30% ]
+    - Register Dependencies [ 0.30% ]
+    - Memory Dependencies   [ 0.00% ]
+
+  Critical sequence based on the simulation:
+
+                Instruction                         Dependency Information
+   +----< 2.    vhaddps %xmm3, %xmm3, %xmm4
+   |
+   |    < loop carried >
+   |
+   |      0.    vmulps  %xmm0, %xmm1, %xmm2
+   +----> 1.    vhaddps %xmm2, %xmm2, %xmm3         ## RESOURCE interference:  JFPA [ probability: 74% ]
+   +----> 2.    vhaddps %xmm3, %xmm3, %xmm4         ## REGISTER dependency:  %xmm3
+   |
+   |    < loop carried >
+   |
+   +----> 1.    vhaddps %xmm2, %xmm2, %xmm3         ## RESOURCE interference:  JFPA [ probability: 74% ]
+
+
+According to the analysis, throughput is limited by resource pressure and not by
+data dependencies.  The analysis observed increases in backend pressure during
+48.07% of the simulated run. Almost all those pressure increase events were
+caused by contention on processor resources JFPA/JFPU0.
+
+The `critical sequence` is the most expensive sequence of instructions according
+to the simulation. It is annotated to provide extra information about critical
+register dependencies and resource interferences between instructions.
+
+Instructions from the critical sequence are expected to significantly impact
+performance. By construction, the accuracy of this analysis is strongly
+dependent on the simulation and (as always) by the quality of the processor
+model in llvm.
+
+Bottleneck analysis is currently not supported for processors with an in-order
+backend.
 
 Extra Statistics to Further Diagnose Performance Issues
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -492,7 +792,7 @@ sections.
    2,              314  (51.5%)
 
 
-  Schedulers - number of cycles where we saw N instructions issued:
+  Schedulers - number of cycles where we saw N micro opcodes issued:
   [# issued], [# cycles]
    0,          7  (1.1%)
    1,          306  (50.2%)
@@ -546,9 +846,9 @@ dispatch statistics are displayed by either using the command option
 ``-all-stats`` or ``-dispatch-stats``.
 
 The next table, *Schedulers*, presents a histogram displaying a count,
-representing the number of instructions issued on some number of cycles.  In
-this case, of the 610 simulated cycles, single instructions were issued 306
-times (50.2%) and there were 7 cycles where no instructions were issued.
+representing the number of micro opcodes issued on some number of cycles. In
+this case, of the 610 simulated cycles, single opcodes were issued 306 times
+(50.2%) and there were 7 cycles where no opcodes were issued.
 
 The *Scheduler's queue usage* table shows that the average and maximum number of
 buffer entries (i.e., scheduler queue entries) used at runtime.  Resource JFPU01
@@ -607,11 +907,14 @@ process instructions.
 * Write Back (Instruction is executed, and results are written back).
 * Retire (Instruction is retired; writes are architecturally committed).
 
-The default pipeline only models the out-of-order portion of a processor.
-Therefore, the instruction fetch and decode stages are not modeled. Performance
-bottlenecks in the frontend are not diagnosed. :program:`llvm-mca` assumes that
-instructions have all been decoded and placed into a queue before the simulation
-start.  Also, :program:`llvm-mca` does not model branch prediction.
+The in-order pipeline implements the following sequence of stages:
+* InOrderIssue (Instruction is issued to the processor pipelines).
+* Retire (Instruction is retired; writes are architecturally committed).
+
+:program:`llvm-mca` assumes that instructions have all been decoded and placed
+into a queue before the simulation start. Therefore, the instruction fetch and
+decode stages are not modeled. Performance bottlenecks in the frontend are not
+diagnosed. Also, :program:`llvm-mca` does not model branch prediction.
 
 Instruction Dispatch
 """"""""""""""""""""
@@ -742,15 +1045,16 @@ cache.  It only knows if an instruction "MayLoad" and/or "MayStore."  For
 loads, the scheduling model provides an "optimistic" load-to-use latency (which
 usually matches the load-to-use latency for when there is a hit in the L1D).
 
-:program:`llvm-mca` does not know about serializing operations or memory-barrier
-like instructions.  The LSUnit conservatively assumes that an instruction which
-has both "MayLoad" and unmodeled side effects behaves like a "soft"
-load-barrier.  That means, it serializes loads without forcing a flush of the
-load queue.  Similarly, instructions that "MayStore" and have unmodeled side
-effects are treated like store barriers.  A full memory barrier is a "MayLoad"
-and "MayStore" instruction with unmodeled side effects.  This is inaccurate, but
-it is the best that we can do at the moment with the current information
-available in LLVM.
+:program:`llvm-mca` does not (on its own) know about serializing operations or
+memory-barrier like instructions.  The LSUnit used to conservatively use an
+instruction's "MayLoad", "MayStore", and unmodeled side effects flags to
+determine whether an instruction should be treated as a memory-barrier. This was
+inaccurate in general and was changed so that now each instruction has an
+IsAStoreBarrier and IsALoadBarrier flag. These flags are mca specific and
+default to false for every instruction. If any instruction should have either of
+these flags set, it should be done within the target's InstrPostProcess class.
+For an example, look at the `X86InstrPostProcess::postProcessInstruction` method
+within `llvm/lib/Target/X86/MCA/X86CustomBehaviour.cpp`.
 
 A load/store barrier consumes one entry of the load/store queue.  A load/store
 barrier enforces ordering of loads/stores.  A younger load cannot pass a load
@@ -767,3 +1071,95 @@ In conclusion, the full set of load/store consistency rules are:
 #. A load may pass a previous load.
 #. A load may not pass a previous store unless ``-noalias`` is set.
 #. A load has to wait until an older load barrier is fully executed.
+
+In-order Issue and Execute
+""""""""""""""""""""""""""""""""""""
+In-order processors are modelled as a single ``InOrderIssueStage`` stage. It
+bypasses Dispatch, Scheduler and Load/Store unit. Instructions are issued as
+soon as their operand registers are available and resource requirements are
+met. Multiple instructions can be issued in one cycle according to the value of
+the ``IssueWidth`` parameter in LLVM's scheduling model.
+
+Once issued, an instruction is moved to ``IssuedInst`` set until it is ready to
+retire. :program:`llvm-mca` ensures that writes are committed in-order. However,
+an instruction is allowed to commit writes and retire out-of-order if
+``RetireOOO`` property is true for at least one of its writes.
+
+Custom Behaviour
+""""""""""""""""""""""""""""""""""""
+Due to certain instructions not being expressed perfectly within their
+scheduling model, :program:`llvm-mca` isn't always able to simulate them
+perfectly. Modifying the scheduling model isn't always a viable
+option though (maybe because the instruction is modeled incorrectly on
+purpose or the instruction's behaviour is quite complex). The
+CustomBehaviour class can be used in these cases to enforce proper
+instruction modeling (often by customizing data dependencies and detecting
+hazards that :program:`llvm-mca` has no way of knowing about).
+
+:program:`llvm-mca` comes with one generic and multiple target specific
+CustomBehaviour classes. The generic class will be used if the ``-disable-cb``
+flag is used or if a target specific CustomBehaviour class doesn't exist for
+that target. (The generic class does nothing.) Currently, the CustomBehaviour
+class is only a part of the in-order pipeline, but there are plans to add it
+to the out-of-order pipeline in the future.
+
+CustomBehaviour's main method is `checkCustomHazard()` which uses the
+current instruction and a list of all instructions still executing within
+the pipeline to determine if the current instruction should be dispatched.
+As output, the method returns an integer representing the number of cycles
+that the current instruction must stall for (this can be an underestimate
+if you don't know the exact number and a value of 0 represents no stall).
+
+If you'd like to add a CustomBehaviour class for a target that doesn't
+already have one, refer to an existing implementation to see how to set it
+up. The classes are implemented within the target specific backend (for
+example `/llvm/lib/Target/AMDGPU/MCA/`) so that they can access backend symbols.
+
+Instrument Manager
+""""""""""""""""""""""""""""""""""""
+On certain architectures, scheduling information for certain instructions
+do not contain all of the information required to identify the most precise
+schedule class. For example, data that can have an impact on scheduling can
+be stored in CSR registers.
+
+One example of this is on RISCV, where values in registers such as `vtype`
+and `vl` change the scheduling behaviour of vector instructions. Since MCA
+does not keep track of the values in registers, instrument comments can
+be used to specify these values.
+
+InstrumentManager's main function is `getSchedClassID()` which has access
+to the MCInst and all of the instruments that are active for that MCInst.
+This function can use the instruments to override the schedule class of
+the MCInst.
+
+On RISCV, instrument comments containing LMUL information are used
+by `getSchedClassID()` to map a vector instruction and the active
+LMUL to the scheduling class of the pseudo-instruction that describes
+that base instruction and the active LMUL.
+
+Custom Views
+""""""""""""""""""""""""""""""""""""
+:program:`llvm-mca` comes with several Views such as the Timeline View and
+Summary View. These Views are generic and can work with most (if not all)
+targets. If you wish to add a new View to :program:`llvm-mca` and it does not
+require any backend functionality that is not already exposed through MC layer
+classes (MCSubtargetInfo, MCInstrInfo, etc.), please add it to the
+`/tools/llvm-mca/View/` directory. However, if your new View is target specific
+AND requires unexposed backend symbols or functionality, you can define it in
+the `/lib/Target/<TargetName>/MCA/` directory.
+
+To enable this target specific View, you will have to use this target's
+CustomBehaviour class to override the `CustomBehaviour::getViews()` methods.
+There are 3 variations of these methods based on where you want your View to
+appear in the output: `getStartViews()`, `getPostInstrInfoViews()`, and
+`getEndViews()`. These methods returns a vector of Views so you will want to
+return a vector containing all of the target specific Views for the target in
+question.
+
+Because these target specific (and backend dependent) Views require the
+`CustomBehaviour::getViews()` variants, these Views will not be enabled if
+the `-disable-cb` flag is used.
+
+Enabling these custom Views does not affect the non-custom (generic) Views.
+Continue to use the usual command line arguments to enable / disable those
+Views.

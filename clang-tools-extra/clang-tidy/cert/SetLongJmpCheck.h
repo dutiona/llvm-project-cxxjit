@@ -9,29 +9,27 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_SETLONGJMPCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_SETLONGJMPCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace cert {
+namespace clang::tidy::cert {
 
 /// Guards against use of setjmp/longjmp in C++ code
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/cert-err52-cpp.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/cert/err52-cpp.html
 class SetLongJmpCheck : public ClangTidyCheck {
 public:
   SetLongJmpCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
-  void registerPPCallbacks(CompilerInstance &Compiler) override;
-
-  static const char DiagWording[];
+  void registerPPCallbacks(const SourceManager &SM, Preprocessor *PP,
+                           Preprocessor *ModuleExpanderPP) override;
 };
 
-} // namespace cert
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cert
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_SETLONGJMPCHECK_H

@@ -222,7 +222,7 @@ def CFDictionary_SummaryProvider(valobj, dict):
         logger >> "got summary " + str(summary)
         if summary is None:
             return '<variable is not NSDictionary>'
-        if isinstance(summary, basestring):
+        if isinstance(summary, str):
             return summary
         return str(summary) + (" key/value pairs" if summary !=
                                1 else " key/value pair")
@@ -244,7 +244,7 @@ def CFDictionary_SummaryProvider2(valobj, dict):
         logger >> "got summary " + str(summary)
         if summary is None:
             summary = '<variable is not CFDictionary>'
-        if isinstance(summary, basestring):
+        if isinstance(summary, str):
             return summary
         else:
             # needed on OSX Mountain Lion

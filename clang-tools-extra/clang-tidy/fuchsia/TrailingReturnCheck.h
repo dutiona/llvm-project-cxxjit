@@ -9,28 +9,27 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_TRAILING_RETURN_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_TRAILING_RETURN_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace fuchsia {
+namespace clang::tidy::fuchsia {
 
 /// Functions that have trailing returns are disallowed, except for those 
 /// using decltype specifiers and lambda with otherwise unutterable 
 /// return types.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/fuchsia-trailing-return.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/fuchsia/trailing-return.html
 class TrailingReturnCheck : public ClangTidyCheck {
 public:
   TrailingReturnCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus11;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace fuchsia
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::fuchsia
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FUCHSIA_TRAILING_RETURN_H

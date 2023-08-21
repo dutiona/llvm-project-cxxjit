@@ -1,6 +1,6 @@
-// RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.cplusplus.UninitializedObject \
-// RUN: -analyzer-config alpha.cplusplus.UninitializedObject:Pedantic=true -DPEDANTIC \
-// RUN: -analyzer-config alpha.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
+// RUN: %clang_analyze_cc1 -analyzer-checker=core,optin.cplusplus.UninitializedObject \
+// RUN: -analyzer-config optin.cplusplus.UninitializedObject:Pedantic=true -DPEDANTIC \
+// RUN: -analyzer-config optin.cplusplus.UninitializedObject:CheckPointeeInitialization=true \
 // RUN: -std=c++11 -verify  %s
 
 //===----------------------------------------------------------------------===//
@@ -783,7 +783,7 @@ void fVirtualDiamondInheritanceTest3() {
 
 struct DynTBase1 {};
 struct DynTDerived1 : DynTBase1 {
-  int y; // expected-note{{uninitialized field 'static_cast<struct DynTDerived1 *>(this->bptr)->y'}}
+  int y; // expected-note{{uninitialized field 'static_cast<DynTDerived1 *>(this->bptr)->y'}}
 };
 
 struct DynamicTypeTest1 {
@@ -799,10 +799,10 @@ void fDynamicTypeTest1() {
 };
 
 struct DynTBase2 {
-  int x; // expected-note{{uninitialized field 'static_cast<struct DynTDerived2 *>(this->bptr)->DynTBase2::x'}}
+  int x; // expected-note{{uninitialized field 'static_cast<DynTDerived2 *>(this->bptr)->DynTBase2::x'}}
 };
 struct DynTDerived2 : DynTBase2 {
-  int y; // expected-note{{uninitialized field 'static_cast<struct DynTDerived2 *>(this->bptr)->y'}}
+  int y; // expected-note{{uninitialized field 'static_cast<DynTDerived2 *>(this->bptr)->y'}}
 };
 
 struct DynamicTypeTest2 {

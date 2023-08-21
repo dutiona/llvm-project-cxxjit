@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <condition_variable>
 
@@ -18,6 +18,9 @@
 #include <mutex>
 #include <thread>
 #include <cassert>
+
+#include "make_test_thread.h"
+#include "test_macros.h"
 
 std::condition_variable cv;
 std::mutex mut;
@@ -38,8 +41,8 @@ void f()
 
 int main(int, char**)
 {
-    std::unique_lock<std::mutex>lk(mut);
-    std::thread t(f);
+    std::unique_lock<std::mutex> lk(mut);
+    std::thread t = support::make_test_thread(f);
     assert(test1 == 0);
     while (test1 == 0)
         cv.wait(lk);

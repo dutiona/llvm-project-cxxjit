@@ -14,15 +14,13 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 void SwappedArgumentsCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(callExpr().bind("call"), this);
 }
 
-/// \brief Look through lvalue to rvalue and nop casts. This filters out
+/// Look through lvalue to rvalue and nop casts. This filters out
 /// implicit conversions that have no effect on the input but block our view for
 /// other implicit casts.
 static const Expr *ignoreNoOpCasts(const Expr *E) {
@@ -33,7 +31,7 @@ static const Expr *ignoreNoOpCasts(const Expr *E) {
   return E;
 }
 
-/// \brief Restrict the warning to implicit casts that are most likely
+/// Restrict the warning to implicit casts that are most likely
 /// accidental. User defined or integral conversions fit in this category,
 /// lvalue to rvalue or derived to base does not.
 static bool isImplicitCastCandidate(const CastExpr *Cast) {
@@ -96,6 +94,4 @@ void SwappedArgumentsCheck::check(const MatchFinder::MatchResult &Result) {
   }
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

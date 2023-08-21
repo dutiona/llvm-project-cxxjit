@@ -19,19 +19,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __DNBDataRef_h__
-#define __DNBDataRef_h__
+#ifndef LLDB_TOOLS_DEBUGSERVER_SOURCE_DNBDATAREF_H
+#define LLDB_TOOLS_DEBUGSERVER_SOURCE_DNBDATAREF_H
 
 #include "DNBDefs.h"
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include <climits>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 
 class DNBDataRef {
 public:
   // For use with Dump
-  typedef enum {
+  enum Type {
     TypeUInt8 = 0,
     TypeChar,
     TypeUInt16,
@@ -40,7 +40,7 @@ public:
     TypePointer,
     TypeULEB128,
     TypeSLEB128
-  } Type;
+  };
   typedef uint32_t offset_t;
   typedef nub_addr_t addr_t;
 
@@ -121,4 +121,4 @@ protected:
   addr_t m_addrDATA;
 };
 
-#endif // #ifndef __DNBDataRef_h__
+#endif // LLDB_TOOLS_DEBUGSERVER_SOURCE_DNBDATAREF_H

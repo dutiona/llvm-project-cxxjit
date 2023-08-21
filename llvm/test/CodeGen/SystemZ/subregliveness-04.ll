@@ -27,7 +27,7 @@ bb5:                                              ; preds = %bb3
   %tmp11 = ashr exact i64 %tmp10, 48
   %tmp12 = and i64 %tmp11, %tmp4
   %tmp13 = trunc i64 %tmp12 to i32
-  store i32 %tmp13, i32* undef, align 4
+  store i32 %tmp13, ptr undef, align 4
   br label %bb15
 
 bb14:                                             ; preds = %bb3
@@ -38,4 +38,4 @@ bb15:                                             ; preds = %bb14, %bb5
   br label %bb3
 }
 
-attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="z13" "target-features"="+transactional-execution,+vector" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "frame-pointer"="none" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="z13" "target-features"="+transactional-execution,+vector" "unsafe-fp-math"="false" "use-soft-float"="false" }

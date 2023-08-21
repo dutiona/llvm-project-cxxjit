@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBWatchpoint_h_
-#define LLDB_SBWatchpoint_h_
+#ifndef LLDB_API_SBWATCHPOINT_H
+#define LLDB_API_SBWATCHPOINT_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -24,6 +24,12 @@ public:
   ~SBWatchpoint();
 
   const lldb::SBWatchpoint &operator=(const lldb::SBWatchpoint &rhs);
+
+  explicit operator bool() const;
+
+  bool operator==(const SBWatchpoint &rhs) const;
+
+  bool operator!=(const SBWatchpoint &rhs) const;
 
   bool IsValid() const;
 
@@ -76,4 +82,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBWatchpoint_h_
+#endif // LLDB_API_SBWATCHPOINT_H

@@ -12,9 +12,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 namespace {
 AST_MATCHER_P(Stmt, ignoringTemporaryExpr,
@@ -53,21 +51,18 @@ void UndelegatedConstructorCheck::registerMatchers(MatchFinder *Finder) {
   // depending on the type's destructor and the number of arguments on the
   // constructor call, this is handled by ignoringTemporaryExpr. Ignore template
   // instantiations to reduce the number of duplicated warnings.
-  //
-  // Only register the matchers for C++11; the functionality currently does not
-  // provide any benefit to other languages, despite being benign.
-  if (!getLangOpts().CPlusPlus11)
-    return;
 
   Finder->addMatcher(
-      compoundStmt(
-          hasParent(
-              cxxConstructorDecl(ofClass(cxxRecordDecl().bind("parent")))),
-          forEach(ignoringTemporaryExpr(
-              cxxConstructExpr(hasDeclaration(cxxConstructorDecl(ofClass(
+      traverse(
+          TK_AsIs,
+          compoundStmt(hasParent(cxxConstructorDecl(
+                           ofClass(cxxRecordDecl().bind("parent")))),
+                       forEach(ignoringTemporaryExpr(
+                           cxxConstructExpr(
+                               hasDeclaration(cxxConstructorDecl(ofClass(
                                    cxxRecordDecl(baseOfBoundNode("parent"))))))
-                  .bind("construct"))),
-          unless(isInTemplateInstantiation())),
+                               .bind("construct"))),
+                       unless(isInTemplateInstantiation()))),
       this);
 }
 
@@ -78,6 +73,4 @@ void UndelegatedConstructorCheck::check(
                          "A temporary object is created here instead");
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

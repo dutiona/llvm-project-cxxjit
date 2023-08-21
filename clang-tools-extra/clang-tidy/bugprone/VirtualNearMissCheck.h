@@ -9,24 +9,25 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_VIRTUAL_NEAR_MISS_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_VIRTUAL_NEAR_MISS_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "llvm/ADT/DenseMap.h"
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
-/// \brief Checks for near miss of virtual methods.
+/// Checks for near miss of virtual methods.
 ///
 /// For a method in a derived class, this check looks for virtual method with a
 /// very similar name and an identical signature defined in a base class.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone-virtual-near-miss.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone/virtual-near-miss.html
 class VirtualNearMissCheck : public ClangTidyCheck {
 public:
   VirtualNearMissCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 
@@ -57,8 +58,6 @@ private:
   const unsigned EditDistanceThreshold = 1;
 };
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_VIRTUAL_NEAR_MISS_H

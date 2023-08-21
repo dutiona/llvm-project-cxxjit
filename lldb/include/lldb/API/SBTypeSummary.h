@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBTypeSummary_h_
-#define LLDB_SBTypeSummary_h_
+#ifndef LLDB_API_SBTYPESUMMARY_H
+#define LLDB_API_SBTYPESUMMARY_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -19,9 +19,11 @@ public:
 
   SBTypeSummaryOptions(const lldb::SBTypeSummaryOptions &rhs);
 
-  SBTypeSummaryOptions(const lldb_private::TypeSummaryOptions *lldb_object_ptr);
+  SBTypeSummaryOptions(const lldb_private::TypeSummaryOptions &lldb_object);
 
   ~SBTypeSummaryOptions();
+
+  explicit operator bool() const;
 
   bool IsValid();
 
@@ -45,8 +47,6 @@ protected:
   lldb_private::TypeSummaryOptions &ref();
 
   const lldb_private::TypeSummaryOptions &ref() const;
-
-  void SetOptions(const lldb_private::TypeSummaryOptions *lldb_object_ptr);
 
 private:
   std::unique_ptr<lldb_private::TypeSummaryOptions> m_opaque_up;
@@ -78,6 +78,8 @@ public:
   SBTypeSummary(const lldb::SBTypeSummary &rhs);
 
   ~SBTypeSummary();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -132,4 +134,4 @@ protected:
 
 } // namespace lldb
 
-#endif // LLDB_SBTypeSummary_h_
+#endif // LLDB_API_SBTYPESUMMARY_H

@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads, libcpp-has-thread-api-external
+// UNSUPPORTED: no-threads, libcpp-has-thread-api-external
 // REQUIRES: libcpp-has-thread-api-pthread
 
 // <thread>
@@ -20,6 +20,8 @@
 
 #include <thread>
 #include <type_traits>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

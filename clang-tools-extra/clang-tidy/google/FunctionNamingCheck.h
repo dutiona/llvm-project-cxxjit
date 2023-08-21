@@ -9,13 +9,10 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_GOOGLE_OBJC_FUNCTION_NAMING_CHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_GOOGLE_OBJC_FUNCTION_NAMING_CHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "llvm/ADT/StringRef.h"
 
-namespace clang {
-namespace tidy {
-namespace google {
-namespace objc {
+namespace clang::tidy::google::objc {
 
 /// Finds function names that do not conform to the recommendations of the
 /// Google Objective-C Style Guide. Function names should be in upper camel case
@@ -25,18 +22,18 @@ namespace objc {
 /// method or property declarations.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/google-objc-function-naming.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/google/objc-function-naming.html
 class FunctionNamingCheck : public ClangTidyCheck {
 public:
   FunctionNamingCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.ObjC;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace objc
-} // namespace google
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::google::objc
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_GOOGLE_OBJC_FUNCTION_NAMING_CHECK_H

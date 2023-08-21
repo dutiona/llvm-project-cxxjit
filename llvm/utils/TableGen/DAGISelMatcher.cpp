@@ -211,6 +211,11 @@ void CheckCondCodeMatcher::printImpl(raw_ostream &OS, unsigned indent) const {
   OS.indent(indent) << "CheckCondCode ISD::" << CondCodeName << '\n';
 }
 
+void CheckChild2CondCodeMatcher::printImpl(raw_ostream &OS,
+                                           unsigned indent) const {
+  OS.indent(indent) << "CheckChild2CondCode ISD::" << CondCodeName << '\n';
+}
+
 void CheckValueTypeMatcher::printImpl(raw_ostream &OS, unsigned indent) const {
   OS.indent(indent) << "CheckValueType MVT::" << TypeName << '\n';
 }
@@ -230,6 +235,16 @@ void CheckOrImmMatcher::printImpl(raw_ostream &OS, unsigned indent) const {
 void CheckFoldableChainNodeMatcher::printImpl(raw_ostream &OS,
                                               unsigned indent) const {
   OS.indent(indent) << "CheckFoldableChainNode\n";
+}
+
+void CheckImmAllOnesVMatcher::printImpl(raw_ostream &OS,
+                                        unsigned indent) const {
+  OS.indent(indent) << "CheckAllOnesV\n";
+}
+
+void CheckImmAllZerosVMatcher::printImpl(raw_ostream &OS,
+                                         unsigned indent) const {
+  OS.indent(indent) << "CheckAllZerosV\n";
 }
 
 void EmitIntegerMatcher::printImpl(raw_ostream &OS, unsigned indent) const {
@@ -397,3 +412,24 @@ bool CheckValueTypeMatcher::isContradictoryImpl(const Matcher *M) const {
   return false;
 }
 
+bool CheckImmAllOnesVMatcher::isContradictoryImpl(const Matcher *M) const {
+  // AllZeros is contradictory.
+  return isa<CheckImmAllZerosVMatcher>(M);
+}
+
+bool CheckImmAllZerosVMatcher::isContradictoryImpl(const Matcher *M) const {
+  // AllOnes is contradictory.
+  return isa<CheckImmAllOnesVMatcher>(M);
+}
+
+bool CheckCondCodeMatcher::isContradictoryImpl(const Matcher *M) const {
+  if (const auto *CCCM = dyn_cast<CheckCondCodeMatcher>(M))
+    return CCCM->getCondCodeName() != getCondCodeName();
+  return false;
+}
+
+bool CheckChild2CondCodeMatcher::isContradictoryImpl(const Matcher *M) const {
+  if (const auto *CCCCM = dyn_cast<CheckChild2CondCodeMatcher>(M))
+    return CCCCM->getCondCodeName() != getCondCodeName();
+  return false;
+}

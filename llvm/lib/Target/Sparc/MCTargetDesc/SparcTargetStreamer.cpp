@@ -11,7 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "SparcTargetStreamer.h"
-#include "InstPrinter/SparcInstPrinter.h"
+#include "SparcInstPrinter.h"
+#include "llvm/MC/MCRegister.h"
 #include "llvm/Support/FormattedStream.h"
 
 using namespace llvm;

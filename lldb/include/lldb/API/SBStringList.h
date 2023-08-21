@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBStringList_h_
-#define LLDB_SBStringList_h_
+#ifndef LLDB_API_SBSTRINGLIST_H
+#define LLDB_API_SBSTRINGLIST_H
 
 #include "lldb/API/SBDefines.h"
 
@@ -22,6 +22,8 @@ public:
   const SBStringList &operator=(const SBStringList &rhs);
 
   ~SBStringList();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -60,4 +62,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBStringList_h_
+#endif // LLDB_API_SBSTRINGLIST_H

@@ -11,7 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/WarnMissedTransforms.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 
 using namespace llvm;
@@ -46,12 +48,12 @@ static void warnAboutLeftoverTransformations(Loop *L,
 
   if (hasVectorizeTransformation(L) == TM_ForcedByUser) {
     LLVM_DEBUG(dbgs() << "Leftover vectorization transformation\n");
-    Optional<int> VectorizeWidth =
-        getOptionalIntLoopAttribute(L, "llvm.loop.vectorize.width");
-    Optional<int> InterleaveCount =
+    std::optional<ElementCount> VectorizeWidth =
+        getOptionalElementCountLoopAttribute(L);
+    std::optional<int> InterleaveCount =
         getOptionalIntLoopAttribute(L, "llvm.loop.interleave.count");
 
-    if (VectorizeWidth.getValueOr(0) != 1)
+    if (!VectorizeWidth || VectorizeWidth->isVector())
       ORE->emit(
           DiagnosticInfoOptimizationFailure(DEBUG_TYPE,
                                             "FailedRequestedVectorization",
@@ -59,7 +61,7 @@ static void warnAboutLeftoverTransformations(Loop *L,
           << "loop not vectorized: the optimizer was unable to perform the "
              "requested transformation; the transformation might be disabled "
              "or specified as part of an unsupported transformation ordering");
-    else if (InterleaveCount.getValueOr(0) != 1)
+    else if (InterleaveCount.value_or(0) != 1)
       ORE->emit(
           DiagnosticInfoOptimizationFailure(DEBUG_TYPE,
                                             "FailedRequestedInterleaving",
@@ -92,7 +94,7 @@ PreservedAnalyses
 WarnMissedTransformationsPass::run(Function &F, FunctionAnalysisManager &AM) {
   // Do not warn about not applied transformations if optimizations are
   // disabled.
-  if (F.hasFnAttribute(Attribute::OptimizeNone))
+  if (F.hasOptNone())
     return PreservedAnalyses::all();
 
   auto &ORE = AM.getResult<OptimizationRemarkEmitterAnalysis>(F);

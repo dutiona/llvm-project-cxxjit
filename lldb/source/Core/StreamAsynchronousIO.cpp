@@ -1,4 +1,4 @@
-//===-- StreamAsynchronousIO.cpp --------------------------------*- C++ -*-===//
+//===-- StreamAsynchronousIO.cpp ------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,8 +14,9 @@
 using namespace lldb;
 using namespace lldb_private;
 
-StreamAsynchronousIO::StreamAsynchronousIO(Debugger &debugger, bool for_stdout)
-    : Stream(0, 4, eByteOrderBig), m_debugger(debugger), m_data(),
+StreamAsynchronousIO::StreamAsynchronousIO(Debugger &debugger, bool for_stdout,
+                                           bool colors)
+    : Stream(0, 4, eByteOrderBig, colors), m_debugger(debugger), m_data(),
       m_for_stdout(for_stdout) {}
 
 StreamAsynchronousIO::~StreamAsynchronousIO() {

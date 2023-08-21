@@ -20,16 +20,16 @@ static const DiagnosticRecord BuiltinDiagnosticsByName[] = {
 };
 
 llvm::ArrayRef<DiagnosticRecord> diagtool::getBuiltinDiagnosticsByName() {
-  return llvm::makeArrayRef(BuiltinDiagnosticsByName);
+  return llvm::ArrayRef(BuiltinDiagnosticsByName);
 }
 
 
 // FIXME: Is it worth having two tables, especially when this one can get
 // out of sync easily?
 static const DiagnosticRecord BuiltinDiagnosticsByID[] = {
-#define DIAG(ENUM,CLASS,DEFAULT_MAPPING,DESC,GROUP,               \
-             SFINAE,NOWERROR,SHOWINSYSHEADER,CATEGORY)            \
-  { #ENUM, diag::ENUM, STR_SIZE(#ENUM, uint8_t) },
+#define DIAG(ENUM, CLASS, DEFAULT_MAPPING, DESC, GROUP, SFINAE, NOWERROR,      \
+             SHOWINSYSHEADER, SHOWINSYSMACRO, DEFER, CATEGORY)                 \
+  {#ENUM, diag::ENUM, STR_SIZE(#ENUM, uint8_t)},
 #include "clang/Basic/DiagnosticCommonKinds.inc"
 #include "clang/Basic/DiagnosticCrossTUKinds.inc"
 #include "clang/Basic/DiagnosticDriverKinds.inc"
@@ -54,9 +54,7 @@ const DiagnosticRecord &diagtool::getDiagnosticForID(short DiagID) {
   DiagnosticRecord Key = {nullptr, DiagID, 0};
 
   const DiagnosticRecord *Result =
-    std::lower_bound(std::begin(BuiltinDiagnosticsByID),
-                     std::end(BuiltinDiagnosticsByID),
-                     Key, orderByID);
+      llvm::lower_bound(BuiltinDiagnosticsByID, Key, orderByID);
   assert(Result && "diagnostic not found; table may be out of date");
   return *Result;
 }
@@ -68,9 +66,10 @@ const DiagnosticRecord &diagtool::getDiagnosticForID(short DiagID) {
 
 // Second the table of options, sorted by name for fast binary lookup.
 static const GroupRecord OptionTable[] = {
-#define GET_DIAG_TABLE
+#define DIAG_ENTRY(GroupName, FlagNameOffset, Members, SubGroups, Docs)        \
+  {FlagNameOffset, Members, SubGroups},
 #include "clang/Basic/DiagnosticGroups.inc"
-#undef GET_DIAG_TABLE
+#undef DIAG_ENTRY
 };
 
 llvm::StringRef GroupRecord::getName() const {
@@ -104,5 +103,5 @@ GroupRecord::diagnostics() const {
 }
 
 llvm::ArrayRef<GroupRecord> diagtool::getDiagnosticGroups() {
-  return llvm::makeArrayRef(OptionTable);
+  return llvm::ArrayRef(OptionTable);
 }

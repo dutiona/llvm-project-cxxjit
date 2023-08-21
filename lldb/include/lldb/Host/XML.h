@@ -6,10 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_XML_h_
-#define liblldb_XML_h_
+#ifndef LLDB_HOST_XML_H
+#define LLDB_HOST_XML_H
 
-#if defined(LIBXML2_DEFINED)
+#include "lldb/Host/Config.h"
+
+#if LLDB_ENABLE_LIBXML2
 #include <libxml/xmlreader.h>
 #endif
 
@@ -25,7 +27,7 @@
 
 namespace lldb_private {
 
-#if defined(LIBXML2_DEFINED)
+#if LLDB_ENABLE_LIBXML2
 typedef xmlNodePtr XMLNodeImpl;
 typedef xmlDocPtr XMLDocumentImpl;
 #else
@@ -74,8 +76,8 @@ public:
 
   XMLNode GetChild() const;
 
-  llvm::StringRef GetAttributeValue(const char *name,
-                                    const char *fail_value = nullptr) const;
+  std::string GetAttributeValue(const char *name,
+                                const char *fail_value = nullptr) const;
 
   bool GetAttributeValueAsUnsigned(const char *name, uint64_t &value,
                                    uint64_t fail_value = 0, int base = 0) const;
@@ -84,20 +86,14 @@ public:
 
   XMLNode GetElementForPath(const NamePath &path);
 
-  //----------------------------------------------------------------------
   // Iterate through all sibling nodes of any type
-  //----------------------------------------------------------------------
   void ForEachSiblingNode(NodeCallback const &callback) const;
 
-  //----------------------------------------------------------------------
   // Iterate through only the sibling nodes that are elements
-  //----------------------------------------------------------------------
   void ForEachSiblingElement(NodeCallback const &callback) const;
 
-  //----------------------------------------------------------------------
   // Iterate through only the sibling nodes that are elements and whose name
   // matches \a name.
-  //----------------------------------------------------------------------
   void ForEachSiblingElementWithName(const char *name,
                                      NodeCallback const &callback) const;
 
@@ -111,7 +107,7 @@ public:
   void ForEachAttribute(AttributeCallback const &callback) const;
 
 protected:
-  XMLNodeImpl m_node;
+  XMLNodeImpl m_node = nullptr;
 };
 
 class XMLDocument {
@@ -131,10 +127,8 @@ public:
   bool ParseMemory(const char *xml, size_t xml_length,
                    const char *url = "untitled.xml");
 
-  //----------------------------------------------------------------------
   // If \a name is nullptr, just get the root element node, else only return a
   // value XMLNode if the name of the root element matches \a name.
-  //----------------------------------------------------------------------
   XMLNode GetRootElement(const char *required_name = nullptr);
 
   llvm::StringRef GetErrors() const;
@@ -144,7 +138,7 @@ public:
   static bool XMLEnabled();
 
 protected:
-  XMLDocumentImpl m_document;
+  XMLDocumentImpl m_document = nullptr;
   StreamString m_errors;
 };
 
@@ -185,4 +179,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif // liblldb_XML_h_
+#endif // LLDB_HOST_XML_H

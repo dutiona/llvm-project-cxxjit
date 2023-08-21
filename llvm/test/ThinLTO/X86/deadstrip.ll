@@ -5,8 +5,8 @@
 ; RUN: opt -module-summary %p/Inputs/deadstrip.ll -o %t2.bc
 ; RUN: llvm-lto -thinlto-action=thinlink -o %t.index.bc %t1.bc %t2.bc
 
-; RUN: llvm-lto -exported-symbol=_main -thinlto-action=promote %t1.bc -thinlto-index=%t.index.bc -o - | llvm-lto -exported-symbol=_main -thinlto-action=internalize -thinlto-index %t.index.bc -thinlto-module-id=%t1.bc - -o - | llvm-dis -o - | FileCheck %s
-; RUN: llvm-lto -exported-symbol=_main -thinlto-action=promote %t2.bc -thinlto-index=%t.index.bc -o - | llvm-lto -exported-symbol=_main -thinlto-action=internalize -thinlto-index %t.index.bc -thinlto-module-id=%t2.bc - -o - | llvm-dis -o - | FileCheck %s --check-prefix=CHECK2
+; RUN: llvm-lto -exported-symbol=_main -thinlto-action=internalize %t1.bc -thinlto-index=%t.index.bc -o - | llvm-dis -o - | FileCheck %s
+; RUN: llvm-lto -exported-symbol=_main -thinlto-action=internalize %t2.bc -thinlto-index=%t.index.bc -o - | llvm-dis -o - | FileCheck %s --check-prefix=CHECK2
 
 ; RUN: llvm-lto -exported-symbol=_main -thinlto-action=run -stats %t1.bc %t2.bc 2>&1 | FileCheck %s --check-prefix=STATS
 ; RUN: llvm-nm %t1.bc.thinlto.o | FileCheck %s --check-prefix=CHECK-NM
@@ -29,6 +29,7 @@
 ; RUN:   -r %t2.bc,_another_dead_func,pl \
 ; RUN:   -r %t2.bc,_linkonceodrfuncwithalias,pl \
 ; RUN:   -thinlto-threads=1 \
+; RUN:   -disable-thinlto-funcattrs=0 \
 ; RUN:	 -debug-only=function-import 2>&1 | FileCheck %s --check-prefix=DEBUG --check-prefix=STATS
 ; RUN: llvm-dis < %t.out.1.3.import.bc | FileCheck %s --check-prefix=LTO2
 ; RUN: llvm-dis < %t.out.2.3.import.bc | FileCheck %s --check-prefix=LTO2-CHECK2
@@ -66,7 +67,7 @@
 ; LTO2-NOT: available_externally {{.*}} @baz()
 ; LTO2: @llvm.global_ctors =
 ; LTO2: define internal void @_GLOBAL__I_a()
-; LTO2: define internal void @bar() {
+; LTO2: define internal void @bar() [[ATTR:#[0-9]+]] {
 ; LTO2: define internal void @bar_internal()
 ; LTO2-NOT: @dead_func()
 ; LTO2-NOT: available_externally {{.*}} @baz()
@@ -78,7 +79,7 @@
 
 ; Make sure we keep @linkonceodrfuncwithalias in Input/deadstrip.ll alive as it
 ; is reachable from @main.
-; LTO2-CHECK2: define weak_odr dso_local void @linkonceodrfuncwithalias() {
+; LTO2-CHECK2: define weak_odr dso_local void @linkonceodrfuncwithalias() [[ATTR:#[0-9]+]] {
 
 ; We should have eventually removed @baz since it was internalized and unused
 ; CHECK2-NM-NOT: _baz
@@ -97,6 +98,8 @@
 ; DEBUG-DAG: Ignores Dead GUID: 7546896869197086323 (baz)
 ; DEBUG-DAG: Initialize import for 15611644523426561710 (boo)
 ; DEBUG-DAG: Ignores Dead GUID: 2384416018110111308 (another_dead_func)
+
+; LTO2-DAG: attributes [[ATTR]] = { norecurse nounwind }
 
 ; STATS: 3 function-import  - Number of dead stripped symbols in index
 
@@ -132,11 +135,11 @@
 ; and called from @dead_func.
 ; CHECK-NM-NOTDEAD: T _baz
 
-target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-apple-macosx10.11.0"
 
 
-@llvm.global_ctors = appending global [1 x { i32, void ()* }] [{ i32, void ()* } { i32 65535, void ()* @_GLOBAL__I_a }]
+@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @_GLOBAL__I_a, ptr null }]
 
 declare void @baz()
 
@@ -180,7 +183,7 @@ define available_externally void @live_available_externally_func() {
 ; alive.
 ; We want to make sure the @linkonceodrfuncwithalias copy in Input/deadstrip.ll
 ; is also scanned when computing reachability.
-@linkonceodralias = linkonce_odr alias void (), void ()* @linkonceodrfuncwithalias
+@linkonceodralias = linkonce_odr alias void (), ptr @linkonceodrfuncwithalias
 
 define linkonce_odr void @linkonceodrfuncwithalias() {
 entry:

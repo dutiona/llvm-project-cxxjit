@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: c++03
+
 // <functional>
 
 // class function<R(ArgTypes...)>
@@ -13,7 +15,7 @@
 // function(Fp);
 
 // Ensure that __not_null works for all function types.
-// See https://bugs.llvm.org/show_bug.cgi?id=23589
+// See https://llvm.org/PR23589
 
 //------------------------------------------------------------------------------
 // TESTING std::function<...>::__not_null(Callable)
@@ -164,14 +166,14 @@ void test_imp() {
     { // Check that the null value is detected
         TestFn tf = nullptr;
         std::function<Fn> f = tf;
-        assert(f.template target<TestFn>() == nullptr);
+        RTTI_ASSERT(f.template target<TestFn>() == nullptr);
     }
     { // Check that the non-null value is detected.
         TestFn tf = Creator<TestFn>::create();
         assert(tf != nullptr);
         std::function<Fn> f = tf;
-        assert(f.template target<TestFn>() != nullptr);
-        assert(*f.template target<TestFn>() == tf);
+        RTTI_ASSERT(f.template target<TestFn>() != nullptr);
+        RTTI_ASSERT(*f.template target<TestFn>() == tf);
     }
 }
 

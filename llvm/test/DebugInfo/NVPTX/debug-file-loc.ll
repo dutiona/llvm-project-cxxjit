@@ -1,4 +1,5 @@
 ; RUN: llc < %s -mtriple=nvptx64-nvidia-cuda | FileCheck %s
+; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64-nvidia-cuda | %ptxas-verify %}
 
 ; // Bitcode int this test case is reduced version of compiled code below:
 ;extern "C" {
@@ -27,8 +28,8 @@ bb:
   ret void, !dbg !11
 }
 
-; CHECK-DAG: .file [[FOO]] "{{.*}}foo.h"
-; CHECK-DAG: .file [[BAR]] "{{.*}}bar.cu"
+; CHECK-DAG: .file [[FOO]] "/source/dir{{/|\\\\}}foo.h"
+; CHECK-DAG: .file [[BAR]] "/source/dir{{/|\\\\}}bar.cu"
 ; CHECK: .section .debug_abbrev
 ; CHECK-NEXT: {
 ; CHECK-NEXT: .b8 1                                // Abbreviation Code
@@ -63,18 +64,31 @@ bb:
 ; CHECK-NEXT: .b8 0                                // DW_AT_producer
 ; CHECK-NEXT: .b8 4                                // DW_AT_language
 ; CHECK-NEXT: .b8 0
-; CHECK-NEXT: .b8 98,97,114,46,99,117              // DW_AT_name
+; CHECK-NEXT: .b8 98                               // DW_AT_name
+; CHECK-NEXT: .b8 97
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 46
+; CHECK-NEXT: .b8 99
+; CHECK-NEXT: .b8 117
 ; CHECK-NEXT: .b8 0
 ; CHECK-NEXT: .b32 .debug_line                     // DW_AT_stmt_list
-; CHECK-NEXT: .b8 47,115,111,117,114,99,101,47,100,105,114                // DW_AT_comp_dir
+; CHECK-NEXT: .b8 47                               // DW_AT_comp_dir
+; CHECK-NEXT: .b8 115
+; CHECK-NEXT: .b8 111
+; CHECK-NEXT: .b8 117
+; CHECK-NEXT: .b8 114
+; CHECK-NEXT: .b8 99
+; CHECK-NEXT: .b8 101
+; CHECK-NEXT: .b8 47
+; CHECK-NEXT: .b8 100
+; CHECK-NEXT: .b8 105
+; CHECK-NEXT: .b8 114
 ; CHECK-NEXT: .b8 0
-; CHECK-NEXT: .b64 Lfunc_begin0                    // DW_AT_low_pc
-; CHECK-NEXT: .b64 Lfunc_end1                      // DW_AT_high_pc
+; CHECK-NEXT: .b64 $L__func_begin0                 // DW_AT_low_pc
+; CHECK-NEXT: .b64 $L__func_end1                   // DW_AT_high_pc
 ; CHECK-NEXT: }
-; CHECK-NEXT: .section .debug_macinfo
-; CHECK-NEXT: {
-; CHECK-NEXT: .b8 0                                // End Of Macro List Mark
-; CHECK:      }
+; CHECK-NEXT: .section .debug_loc { }
+; CHECK-NOT: debug_
 
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!8, !9}

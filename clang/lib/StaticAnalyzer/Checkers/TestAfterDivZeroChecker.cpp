@@ -17,6 +17,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "llvm/ADT/FoldingSet.h"
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -69,9 +70,9 @@ public:
     ID.Add(SFC);
   }
 
-  std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *Succ,
-                                                 BugReporterContext &BRC,
-                                                 BugReport &BR) override;
+  PathDiagnosticPieceRef VisitNode(const ExplodedNode *Succ,
+                                   BugReporterContext &BRC,
+                                   PathSensitiveBugReport &BR) override;
 };
 
 class TestAfterDivZeroChecker
@@ -92,15 +93,15 @@ public:
 
 REGISTER_SET_WITH_PROGRAMSTATE(DivZeroMap, ZeroState)
 
-std::shared_ptr<PathDiagnosticPiece>
-DivisionBRVisitor::VisitNode(const ExplodedNode *Succ, 
-                             BugReporterContext &BRC, BugReport &BR) {
+PathDiagnosticPieceRef
+DivisionBRVisitor::VisitNode(const ExplodedNode *Succ, BugReporterContext &BRC,
+                             PathSensitiveBugReport &BR) {
   if (Satisfied)
     return nullptr;
 
   const Expr *E = nullptr;
 
-  if (Optional<PostStmt> P = Succ->getLocationAs<PostStmt>())
+  if (std::optional<PostStmt> P = Succ->getLocationAs<PostStmt>())
     if (const BinaryOperator *BO = P->getStmtAs<BinaryOperator>()) {
       BinaryOperator::Opcode Op = BO->getOpcode();
       if (Op == BO_Div || Op == BO_Rem || Op == BO_DivAssign ||
@@ -132,7 +133,7 @@ DivisionBRVisitor::VisitNode(const ExplodedNode *Succ,
 }
 
 bool TestAfterDivZeroChecker::isZero(SVal S, CheckerContext &C) const {
-  Optional<DefinedSVal> DSV = S.getAs<DefinedSVal>();
+  std::optional<DefinedSVal> DSV = S.getAs<DefinedSVal>();
 
   if (!DSV)
     return false;
@@ -167,12 +168,12 @@ void TestAfterDivZeroChecker::reportBug(SVal Val, CheckerContext &C) const {
     if (!DivZeroBug)
       DivZeroBug.reset(new BuiltinBug(this, "Division by zero"));
 
-    auto R = llvm::make_unique<BugReport>(
+    auto R = std::make_unique<PathSensitiveBugReport>(
         *DivZeroBug, "Value being compared against zero has already been used "
                      "for division",
         N);
 
-    R->addVisitor(llvm::make_unique<DivisionBRVisitor>(Val.getAsSymbol(),
+    R->addVisitor(std::make_unique<DivisionBRVisitor>(Val.getAsSymbol(),
                                                        C.getStackFrame()));
     C.emitReport(std::move(R));
   }
@@ -261,6 +262,6 @@ void ento::registerTestAfterDivZeroChecker(CheckerManager &mgr) {
   mgr.registerChecker<TestAfterDivZeroChecker>();
 }
 
-bool ento::shouldRegisterTestAfterDivZeroChecker(const LangOptions &LO) {
+bool ento::shouldRegisterTestAfterDivZeroChecker(const CheckerManager &mgr) {
   return true;
 }

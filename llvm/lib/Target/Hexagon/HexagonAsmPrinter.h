@@ -1,4 +1,4 @@
-//===- HexagonAsmPrinter.h - Print machine code to an Hexagon .s file -----===//
+//===- HexagonAsmPrinter.h - Print machine code -----------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,7 +13,6 @@
 #ifndef LLVM_LIB_TARGET_HEXAGON_HEXAGONASMPRINTER_H
 #define LLVM_LIB_TARGET_HEXAGON_HEXAGONASMPRINTER_H
 
-#include "Hexagon.h"
 #include "HexagonSubtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -37,7 +36,11 @@ class TargetMachine;
 
     bool runOnMachineFunction(MachineFunction &Fn) override {
       Subtarget = &Fn.getSubtarget<HexagonSubtarget>();
-      return AsmPrinter::runOnMachineFunction(Fn);
+      const bool Modified = AsmPrinter::runOnMachineFunction(Fn);
+      // Emit the XRay table for this function.
+      emitXRayTable();
+
+      return Modified;
     }
 
     StringRef getPassName() const override {
@@ -47,16 +50,24 @@ class TargetMachine;
     bool isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB)
           const override;
 
-    void EmitInstruction(const MachineInstr *MI) override;
+    void emitInstruction(const MachineInstr *MI) override;
+
+    //===------------------------------------------------------------------===//
+    // XRay implementation
+    //===------------------------------------------------------------------===//
+    // XRay-specific lowering for Hexagon.
+    void LowerPATCHABLE_FUNCTION_ENTER(const MachineInstr &MI);
+    void LowerPATCHABLE_FUNCTION_EXIT(const MachineInstr &MI);
+    void LowerPATCHABLE_TAIL_CALL(const MachineInstr &MI);
+    void EmitSled(const MachineInstr &MI, SledKind Kind);
+
     void HexagonProcessInstruction(MCInst &Inst, const MachineInstr &MBB);
 
     void printOperand(const MachineInstr *MI, unsigned OpNo, raw_ostream &O);
     bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
-                         unsigned AsmVariant, const char *ExtraCode,
-                         raw_ostream &OS) override;
+                         const char *ExtraCode, raw_ostream &OS) override;
     bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
-                               unsigned AsmVariant, const char *ExtraCode,
-                               raw_ostream &OS) override;
+                               const char *ExtraCode, raw_ostream &OS) override;
   };
 
 } // end namespace llvm

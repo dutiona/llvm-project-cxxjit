@@ -9,14 +9,12 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ASSERTSIDEEFFECTCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ASSERTSIDEEFFECTCHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include <string>
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 /// Finds `assert()` with side effect.
 ///
@@ -40,12 +38,11 @@ public:
 
 private:
   const bool CheckFunctionCalls;
-  const std::string RawAssertList;
+  const StringRef RawAssertList;
   SmallVector<StringRef, 5> AssertMacros;
+  const std::vector<StringRef> IgnoredFunctions;
 };
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_ASSERTSIDEEFFECTCHECK_H

@@ -21,9 +21,9 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
 
@@ -163,7 +163,7 @@ static inline XCore::CondCode GetOppositeBranchCondition(XCore::CondCode CC)
   }
 }
 
-/// AnalyzeBranch - Analyze the branching code at the end of MBB, returning
+/// analyzeBranch - Analyze the branching code at the end of MBB, returning
 /// true if it cannot be understood (e.g. it's a switch dispatch or isn't
 /// implemented for a target).  Upon success, this returns false and returns
 /// with the following information in various cases:
@@ -330,8 +330,8 @@ XCoreInstrInfo::removeBranch(MachineBasicBlock &MBB, int *BytesRemoved) const {
 
 void XCoreInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator I,
-                                 const DebugLoc &DL, unsigned DestReg,
-                                 unsigned SrcReg, bool KillSrc) const {
+                                 const DebugLoc &DL, MCRegister DestReg,
+                                 MCRegister SrcReg, bool KillSrc) const {
   bool GRDest = XCore::GRRegsRegClass.contains(DestReg);
   bool GRSrc  = XCore::GRRegsRegClass.contains(SrcReg);
 
@@ -355,13 +355,10 @@ void XCoreInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   llvm_unreachable("Impossible reg-to-reg copy");
 }
 
-void XCoreInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
-                                         MachineBasicBlock::iterator I,
-                                         unsigned SrcReg, bool isKill,
-                                         int FrameIndex,
-                                         const TargetRegisterClass *RC,
-                                         const TargetRegisterInfo *TRI) const
-{
+void XCoreInstrInfo::storeRegToStackSlot(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator I, Register SrcReg,
+    bool isKill, int FrameIndex, const TargetRegisterClass *RC,
+    const TargetRegisterInfo *TRI, Register VReg) const {
   DebugLoc DL;
   if (I != MBB.end() && !I->isDebugInstr())
     DL = I->getDebugLoc();
@@ -370,7 +367,7 @@ void XCoreInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
   MachineMemOperand *MMO = MF->getMachineMemOperand(
       MachinePointerInfo::getFixedStack(*MF, FrameIndex),
       MachineMemOperand::MOStore, MFI.getObjectSize(FrameIndex),
-      MFI.getObjectAlignment(FrameIndex));
+      MFI.getObjectAlign(FrameIndex));
   BuildMI(MBB, I, DL, get(XCore::STWFI))
     .addReg(SrcReg, getKillRegState(isKill))
     .addFrameIndex(FrameIndex)
@@ -380,10 +377,10 @@ void XCoreInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
 
 void XCoreInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
                                           MachineBasicBlock::iterator I,
-                                          unsigned DestReg, int FrameIndex,
+                                          Register DestReg, int FrameIndex,
                                           const TargetRegisterClass *RC,
-                                          const TargetRegisterInfo *TRI) const
-{
+                                          const TargetRegisterInfo *TRI,
+                                          Register VReg) const {
   DebugLoc DL;
   if (I != MBB.end() && !I->isDebugInstr())
     DL = I->getDebugLoc();
@@ -392,7 +389,7 @@ void XCoreInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   MachineMemOperand *MMO = MF->getMachineMemOperand(
       MachinePointerInfo::getFixedStack(*MF, FrameIndex),
       MachineMemOperand::MOLoad, MFI.getObjectSize(FrameIndex),
-      MFI.getObjectAlignment(FrameIndex));
+      MFI.getObjectAlign(FrameIndex));
   BuildMI(MBB, I, DL, get(XCore::LDWFI), DestReg)
     .addFrameIndex(FrameIndex)
     .addImm(0)
@@ -419,7 +416,7 @@ static bool isImmMskBitp(unsigned val) {
   if (!isMask_32(val)) {
     return false;
   }
-  int N = Log2_32(val) + 1;
+  int N = llvm::bit_width(val);
   return (N >= 1 && N <= 8) || N == 16 || N == 24 || N == 32;
 }
 
@@ -431,7 +428,7 @@ MachineBasicBlock::iterator XCoreInstrInfo::loadImmediate(
   if (MI != MBB.end() && !MI->isDebugInstr())
     dl = MI->getDebugLoc();
   if (isImmMskBitp(Value)) {
-    int N = Log2_32(Value) + 1;
+    int N = llvm::bit_width(Value);
     return BuildMI(MBB, MI, dl, get(XCore::MKMSK_rus), Reg)
         .addImm(N)
         .getInstr();
@@ -443,7 +440,7 @@ MachineBasicBlock::iterator XCoreInstrInfo::loadImmediate(
   MachineConstantPool *ConstantPool = MBB.getParent()->getConstantPool();
   const Constant *C = ConstantInt::get(
         Type::getInt32Ty(MBB.getParent()->getFunction().getContext()), Value);
-  unsigned Idx = ConstantPool->getConstantPoolIndex(C, 4);
+  unsigned Idx = ConstantPool->getConstantPoolIndex(C, Align(4));
   return BuildMI(MBB, MI, dl, get(XCore::LDWCP_lru6), Reg)
       .addConstantPoolIndex(Idx)
       .getInstr();

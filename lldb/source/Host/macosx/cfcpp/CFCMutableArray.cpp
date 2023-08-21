@@ -1,4 +1,4 @@
-//===-- CFCMutableArray.cpp -------------------------------------*- C++ -*-===//
+//===-- CFCMutableArray.cpp -----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,24 +9,17 @@
 #include "CFCMutableArray.h"
 #include "CFCString.h"
 
-//----------------------------------------------------------------------
 // CFCString constructor
-//----------------------------------------------------------------------
 CFCMutableArray::CFCMutableArray(CFMutableArrayRef s)
     : CFCReleaser<CFMutableArrayRef>(s) {}
 
-//----------------------------------------------------------------------
 // CFCMutableArray copy constructor
-//----------------------------------------------------------------------
-CFCMutableArray::CFCMutableArray(const CFCMutableArray &rhs)
-    : CFCReleaser<CFMutableArrayRef>(rhs) // NOTE: this won't make a copy of the
-                                          // array, just add a new reference to
-                                          // it
-{}
+CFCMutableArray::CFCMutableArray(const CFCMutableArray &rhs) =
+    default; // NOTE: this won't make a copy of the
+             // array, just add a new reference to
+             // it
 
-//----------------------------------------------------------------------
 // CFCMutableArray copy constructor
-//----------------------------------------------------------------------
 CFCMutableArray &CFCMutableArray::operator=(const CFCMutableArray &rhs) {
   if (this != &rhs)
     *this = rhs; // NOTE: this operator won't make a copy of the array, just add
@@ -34,10 +27,8 @@ CFCMutableArray &CFCMutableArray::operator=(const CFCMutableArray &rhs) {
   return *this;
 }
 
-//----------------------------------------------------------------------
 // Destructor
-//----------------------------------------------------------------------
-CFCMutableArray::~CFCMutableArray() {}
+CFCMutableArray::~CFCMutableArray() = default;
 
 CFIndex CFCMutableArray::GetCount() const {
   CFMutableArrayRef array = get();

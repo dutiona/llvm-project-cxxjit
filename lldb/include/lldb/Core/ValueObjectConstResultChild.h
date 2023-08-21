@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_ValueObjectConstResultChild_h_
-#define liblldb_ValueObjectConstResultChild_h_
+#ifndef LLDB_CORE_VALUEOBJECTCONSTRESULTCHILD_H
+#define LLDB_CORE_VALUEOBJECTCONSTRESULTCHILD_H
 
 #include "lldb/Core/ValueObjectChild.h"
 #include "lldb/Core/ValueObjectConstResultImpl.h"
@@ -17,28 +17,20 @@
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-types.h"
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+
 namespace lldb_private {
 class DataExtractor;
-}
-namespace lldb_private {
 class Status;
-}
-namespace lldb_private {
 class ValueObject;
-}
 
-namespace lldb_private {
-
-//----------------------------------------------------------------------
 // A child of a ValueObjectConstResult.
-//----------------------------------------------------------------------
 class ValueObjectConstResultChild : public ValueObjectChild {
 public:
   ValueObjectConstResultChild(ValueObject &parent,
                               const CompilerType &compiler_type,
-                              const ConstString &name, uint32_t byte_size,
+                              ConstString name, uint32_t byte_size,
                               int32_t byte_offset, uint32_t bitfield_bit_size,
                               uint32_t bitfield_bit_offset, bool is_base_class,
                               bool is_deref_of_parent,
@@ -78,9 +70,11 @@ private:
   friend class ValueObjectConstResult;
   friend class ValueObjectConstResultImpl;
 
-  DISALLOW_COPY_AND_ASSIGN(ValueObjectConstResultChild);
+  ValueObjectConstResultChild(const ValueObjectConstResultChild &) = delete;
+  const ValueObjectConstResultChild &
+  operator=(const ValueObjectConstResultChild &) = delete;
 };
 
 } // namespace lldb_private
 
-#endif // liblldb_ValueObjectConstResultChild_h_
+#endif // LLDB_CORE_VALUEOBJECTCONSTRESULTCHILD_H

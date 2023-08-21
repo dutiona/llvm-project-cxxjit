@@ -1,4 +1,4 @@
-//===------------------------ cxa_aux_runtime.cpp -------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //
 // This file implements the "Auxiliary Runtime APIs"
-// http://mentorembedded.github.io/cxx-abi/abi-eh.html#cxx-aux
+// https://itanium-cxx-abi.github.io/cxx-abi/abi-eh.html#cxx-aux
 //===----------------------------------------------------------------------===//
 
 #include "cxxabi.h"

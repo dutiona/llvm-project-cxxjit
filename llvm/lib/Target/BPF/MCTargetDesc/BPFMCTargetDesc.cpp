@@ -11,17 +11,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/BPFMCTargetDesc.h"
-#include "BPF.h"
-#include "InstPrinter/BPFInstPrinter.h"
+#include "MCTargetDesc/BPFInstPrinter.h"
 #include "MCTargetDesc/BPFMCAsmInfo.h"
+#include "TargetInfo/BPFTargetInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Host.h"
-#include "llvm/Support/TargetRegistry.h"
 
 #define GET_INSTRINFO_MC_DESC
+#define ENABLE_INSTR_PREDICATE_VERIFIER
 #include "BPFGenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_MC_DESC
@@ -46,7 +47,7 @@ static MCRegisterInfo *createBPFMCRegisterInfo(const Triple &TT) {
 
 static MCSubtargetInfo *createBPFMCSubtargetInfo(const Triple &TT,
                                                  StringRef CPU, StringRef FS) {
-  return createBPFMCSubtargetInfoImpl(TT, CPU, FS);
+  return createBPFMCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
 }
 
 static MCStreamer *createBPFMCStreamer(const Triple &T, MCContext &Ctx,
@@ -97,7 +98,7 @@ static MCInstrAnalysis *createBPFInstrAnalysis(const MCInstrInfo *Info) {
   return new BPFMCInstrAnalysis(Info);
 }
 
-extern "C" void LLVMInitializeBPFTargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTargetMC() {
   for (Target *T :
        {&getTheBPFleTarget(), &getTheBPFbeTarget(), &getTheBPFTarget()}) {
     // Register the MC asm info.

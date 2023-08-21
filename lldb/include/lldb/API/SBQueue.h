@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBQueue_h_
-#define LLDB_SBQueue_h_
+#ifndef LLDB_API_SBQUEUE_H
+#define LLDB_API_SBQUEUE_H
 
 #include <vector>
 
@@ -27,6 +27,8 @@ public:
   const SBQueue &operator=(const lldb::SBQueue &rhs);
 
   ~SBQueue();
+
+  explicit operator bool() const;
 
   bool IsValid() const;
 
@@ -64,4 +66,4 @@ private:
 
 } // namespace lldb
 
-#endif // LLDB_SBQueue_h_
+#endif // LLDB_API_SBQUEUE_H

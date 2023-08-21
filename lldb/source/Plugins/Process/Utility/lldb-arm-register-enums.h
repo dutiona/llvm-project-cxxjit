@@ -6,15 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_arm_register_enums_h
-#define lldb_arm_register_enums_h
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_LLDB_ARM_REGISTER_ENUMS_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_LLDB_ARM_REGISTER_ENUMS_H
 
 namespace lldb_private {
 // LLDB register codes (e.g. RegisterKind == eRegisterKindLLDB)
 
-//---------------------------------------------------------------------------
 // Internal codes for all ARM registers.
-//---------------------------------------------------------------------------
 enum {
   k_first_gpr_arm = 0,
   gpr_r0_arm = k_first_gpr_arm,
@@ -198,4 +196,4 @@ enum {
 };
 }
 
-#endif // #ifndef lldb_arm64_register_enums_h
+#endif // LLDB_SOURCE_PLUGINS_PROCESS_UTILITY_LLDB_ARM_REGISTER_ENUMS_H

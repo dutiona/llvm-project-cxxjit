@@ -27,17 +27,8 @@ class MCRegisterInfo;
 class MCSubtargetInfo;
 class MCTargetOptions;
 class Target;
-class Triple;
-class StringRef;
-class raw_pwrite_stream;
-class raw_ostream;
-
-Target &getTheSparcTarget();
-Target &getTheSparcV9Target();
-Target &getTheSparcelTarget();
 
 MCCodeEmitter *createSparcMCCodeEmitter(const MCInstrInfo &MCII,
-                                        const MCRegisterInfo &MRI,
                                         MCContext &Ctx);
 MCAsmBackend *createSparcAsmBackend(const Target &T, const MCSubtargetInfo &STI,
                                     const MCRegisterInfo &MRI,
@@ -55,6 +46,7 @@ std::unique_ptr<MCObjectTargetWriter> createSparcELFObjectWriter(bool Is64Bit,
 // Defines symbolic names for the Sparc instructions.
 //
 #define GET_INSTRINFO_ENUM
+#define GET_INSTRINFO_MC_HELPER_DECLS
 #include "SparcGenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_ENUM

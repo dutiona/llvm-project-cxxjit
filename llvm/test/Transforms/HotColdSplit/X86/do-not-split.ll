@@ -1,4 +1,4 @@
-; RUN: opt -hotcoldsplit -hotcoldsplit-threshold=2 -S < %s | FileCheck %s
+; RUN: opt -passes=hotcoldsplit -hotcoldsplit-threshold=2 -S < %s | FileCheck %s
 
 target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-apple-macosx10.14.0"
@@ -47,6 +47,16 @@ if.then:                                          ; preds = %entry
   br label %if.end
 
 if.end:                                           ; preds = %entry
+  ret void
+}
+
+; Make sure we don't try to outline the entire function, especially when the
+; entry block is cold.
+; CHECK: define void @cold_entry_block() [[COLD_ATTR:#[0-9]+]]
+; CHECK-NOT: cold_entry_block.cold.1
+define void @cold_entry_block() {
+entry:
+  call void @sink()
   ret void
 }
 
@@ -109,6 +119,80 @@ if.end:                                           ; preds = %entry
   call void @sink()
   ret void
 }
+
+; CHECK-LABEL: @sanitize_address
+; CHECK-NOT: sanitize_address.cold.1
+define void @sanitize_address() sanitize_address {
+entry:
+  br i1 undef, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  call void @sink()
+  ret void
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+
+; CHECK-LABEL: @sanitize_hwaddress
+; CHECK-NOT: sanitize_hwaddress.cold.1
+define void @sanitize_hwaddress() sanitize_hwaddress {
+entry:
+  br i1 undef, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  call void @sink()
+  ret void
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+
+; CHECK-LABEL: @sanitize_thread
+; CHECK-NOT: sanitize_thread.cold.1
+define void @sanitize_thread() sanitize_thread {
+entry:
+  br i1 undef, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  call void @sink()
+  ret void
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+
+; CHECK-LABEL: @sanitize_memory
+; CHECK-NOT: sanitize_memory.cold.1
+define void @sanitize_memory() sanitize_memory {
+entry:
+  br i1 undef, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  call void @sink()
+  ret void
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+
+declare void @llvm.trap() cold noreturn
+
+; CHECK-LABEL: @nosanitize_call
+; CHECK-NOT: nosanitize_call.cold.1
+define void @nosanitize_call() sanitize_memory {
+entry:
+  br i1 undef, label %if.then, label %if.end
+
+if.then:                                          ; preds = %entry
+  call void @llvm.trap(), !nosanitize !2
+  unreachable
+
+if.end:                                           ; preds = %entry
+  ret void
+}
+
+; CHECK: attributes [[COLD_ATTR]] = { {{.*}}cold
 
 declare void @llvm.dbg.value(metadata, metadata, metadata)
 

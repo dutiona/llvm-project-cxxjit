@@ -15,18 +15,23 @@
 
 #include "kmp.h"
 
+#if OMPT_SUPPORT
 /*****************************************************************************
  * forward declarations
  ****************************************************************************/
 
+/// Entrypoint used by libomptarget to register callbacks in libomp, if not
+/// done already
+void __ompt_force_initialization();
+
 void __ompt_team_assign_id(kmp_team_t *team, ompt_data_t ompt_pid);
 void __ompt_thread_assign_wait_id(void *variable);
 
-void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
-                             int gtid, ompt_data_t *ompt_pid, void *codeptr);
+void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr, int gtid,
+                             ompt_data_t *ompt_pid, void *codeptr);
 
 void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
-                             int on_heap);
+                             int on_heap, bool always = false);
 
 void __ompt_lw_taskteam_unlink(kmp_info_t *thr);
 
@@ -50,6 +55,8 @@ ompt_data_t *__ompt_get_thread_data_internal();
 static uint64_t __ompt_get_get_unique_id_internal();
 */
 
+ompt_sync_region_t __ompt_get_barrier_kind(enum barrier_type, kmp_info_t *);
+
 /*****************************************************************************
  * macros
  ****************************************************************************/
@@ -72,12 +79,30 @@ inline void *__ompt_load_return_address(int gtid) {
   return return_address;
 }
 
-#define OMPT_STORE_RETURN_ADDRESS(gtid)                                        \
+/*#define OMPT_STORE_RETURN_ADDRESS(gtid) \
   if (ompt_enabled.enabled && gtid >= 0 && __kmp_threads[gtid] &&              \
       !__kmp_threads[gtid]->th.ompt_thread_info.return_address)                \
   __kmp_threads[gtid]->th.ompt_thread_info.return_address =                    \
-      __builtin_return_address(0)
+      __builtin_return_address(0)*/
+#define OMPT_STORE_RETURN_ADDRESS(gtid)                                        \
+  OmptReturnAddressGuard ReturnAddressGuard{gtid, __builtin_return_address(0)};
 #define OMPT_LOAD_RETURN_ADDRESS(gtid) __ompt_load_return_address(gtid)
+#define OMPT_LOAD_OR_GET_RETURN_ADDRESS(gtid)                                  \
+  ((ompt_enabled.enabled && gtid >= 0 && __kmp_threads[gtid] &&                \
+    __kmp_threads[gtid]->th.ompt_thread_info.return_address)                   \
+       ? __ompt_load_return_address(gtid)                                      \
+       : __builtin_return_address(0))
+
+#define OMPT_GET_DISPATCH_CHUNK(chunk, lb, ub, incr)                           \
+  do {                                                                         \
+    if (incr > 0) {                                                            \
+      chunk.start = static_cast<uint64_t>(lb);                                 \
+      chunk.iterations = static_cast<uint64_t>(((ub) - (lb)) / (incr) + 1);    \
+    } else {                                                                   \
+      chunk.start = static_cast<uint64_t>(ub);                                 \
+      chunk.iterations = static_cast<uint64_t>(((lb) - (ub)) / -(incr) + 1);   \
+    }                                                                          \
+  } while (0)
 
 //******************************************************************************
 // inline functions
@@ -93,11 +118,57 @@ inline kmp_info_t *ompt_get_thread() {
 }
 
 inline void ompt_set_thread_state(kmp_info_t *thread, ompt_state_t state) {
-  thread->th.ompt_thread_info.state = state;
+  if (thread)
+    thread->th.ompt_thread_info.state = state;
 }
 
 inline const char *ompt_get_runtime_version() {
   return &__kmp_version_lib_ver[KMP_VERSION_MAGIC_LEN];
 }
+
+class OmptReturnAddressGuard {
+private:
+  bool SetAddress{false};
+  int Gtid;
+
+public:
+  OmptReturnAddressGuard(int Gtid, void *ReturnAddress) : Gtid(Gtid) {
+    if (ompt_enabled.enabled && Gtid >= 0 && __kmp_threads[Gtid] &&
+        !__kmp_threads[Gtid]->th.ompt_thread_info.return_address) {
+      SetAddress = true;
+      __kmp_threads[Gtid]->th.ompt_thread_info.return_address = ReturnAddress;
+    }
+  }
+  ~OmptReturnAddressGuard() {
+    if (SetAddress)
+      __kmp_threads[Gtid]->th.ompt_thread_info.return_address = NULL;
+  }
+};
+
+#endif // OMPT_SUPPORT
+
+// macros providing the OMPT callbacks for reduction clause
+#if OMPT_SUPPORT && OMPT_OPTIONAL
+#define OMPT_REDUCTION_DECL(this_thr, gtid)                                    \
+  ompt_data_t *my_task_data = OMPT_CUR_TASK_DATA(this_thr);                    \
+  ompt_data_t *my_parallel_data = OMPT_CUR_TEAM_DATA(this_thr);                \
+  void *return_address = OMPT_LOAD_RETURN_ADDRESS(gtid);
+#define OMPT_REDUCTION_BEGIN                                                   \
+  if (ompt_enabled.enabled && ompt_enabled.ompt_callback_reduction) {          \
+    ompt_callbacks.ompt_callback(ompt_callback_reduction)(                     \
+        ompt_sync_region_reduction, ompt_scope_begin, my_parallel_data,        \
+        my_task_data, return_address);                                         \
+  }
+#define OMPT_REDUCTION_END                                                     \
+  if (ompt_enabled.enabled && ompt_enabled.ompt_callback_reduction) {          \
+    ompt_callbacks.ompt_callback(ompt_callback_reduction)(                     \
+        ompt_sync_region_reduction, ompt_scope_end, my_parallel_data,          \
+        my_task_data, return_address);                                         \
+  }
+#else // OMPT_SUPPORT && OMPT_OPTIONAL
+#define OMPT_REDUCTION_DECL(this_thr, gtid)
+#define OMPT_REDUCTION_BEGIN
+#define OMPT_REDUCTION_END
+#endif // ! OMPT_SUPPORT && OMPT_OPTIONAL
 
 #endif

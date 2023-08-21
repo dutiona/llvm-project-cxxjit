@@ -3,10 +3,17 @@ static_library("TextAPI") {
   deps = [
     "//llvm/lib/BinaryFormat",
     "//llvm/lib/Support",
+    "//llvm/lib/TargetParser",
   ]
-  include_dirs = [ "." ]
   sources = [
-    "ELF/ELFStub.cpp",
-    "ELF/TBEHandler.cpp",
+    "Architecture.cpp",
+    "ArchitectureSet.cpp",
+    "InterfaceFile.cpp",
+    "PackedVersion.cpp",
+    "Platform.cpp",
+    "Symbol.cpp",
+    "Target.cpp",
+    "TextStub.cpp",
+    "TextStubCommon.cpp",
   ]
 }

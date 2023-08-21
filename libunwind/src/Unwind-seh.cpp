@@ -1,4 +1,4 @@
-//===--------------------------- Unwind-seh.cpp ---------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -46,21 +46,10 @@ using namespace libunwind;
 /// handling.
 #define STATUS_GCC_UNWIND MAKE_GCC_EXCEPTION(1) // 0x21474343
 
-/// Class of foreign exceptions based on unrecognized SEH exceptions.
-static const uint64_t kSEHExceptionClass = 0x434C4E4753454800; // CLNGSEH\0
-
-/// Exception cleanup routine used by \c _GCC_specific_handler to
-/// free foreign exceptions.
-static void seh_exc_cleanup(_Unwind_Reason_Code urc, _Unwind_Exception *exc) {
-  (void)urc;
-  if (exc->exception_class != kSEHExceptionClass)
-    _LIBUNWIND_ABORT("SEH cleanup called on non-SEH exception");
-  free(exc);
-}
-
-static int _unw_init_seh(unw_cursor_t *cursor, CONTEXT *ctx);
-static DISPATCHER_CONTEXT *_unw_seh_get_disp_ctx(unw_cursor_t *cursor);
-static void _unw_seh_set_disp_ctx(unw_cursor_t *cursor, DISPATCHER_CONTEXT *disp);
+static int __unw_init_seh(unw_cursor_t *cursor, CONTEXT *ctx);
+static DISPATCHER_CONTEXT *__unw_seh_get_disp_ctx(unw_cursor_t *cursor);
+static void __unw_seh_set_disp_ctx(unw_cursor_t *cursor,
+                                   DISPATCHER_CONTEXT *disp);
 
 /// Common implementation of SEH-style handler functions used by Itanium-
 /// style frames.  Depending on how and why it was called, it may do one of:
@@ -68,7 +57,7 @@ static void _unw_seh_set_disp_ctx(unw_cursor_t *cursor, DISPATCHER_CONTEXT *disp
 ///  b) Initiate a collided unwind to halt unwinding.
 _LIBUNWIND_EXPORT EXCEPTION_DISPOSITION
 _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
-                      DISPATCHER_CONTEXT *disp, __personality_routine pers) {
+                      DISPATCHER_CONTEXT *disp, _Unwind_Personality_Fn pers) {
   unw_cursor_t cursor;
   _Unwind_Exception *exc;
   _Unwind_Action action;
@@ -107,15 +96,15 @@ _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
     }
   } else {
     // Foreign exception.
-    exc = (_Unwind_Exception *)malloc(sizeof(_Unwind_Exception));
-    exc->exception_class = kSEHExceptionClass;
-    exc->exception_cleanup = seh_exc_cleanup;
-    memset(exc->private_, 0, sizeof(exc->private_));
+    // We can't interact with them (we don't know the original target frame
+    // that we should pass on to RtlUnwindEx in _Unwind_Resume), so just
+    // pass without calling our destructors here.
+    return ExceptionContinueSearch;
   }
   if (!ctx) {
-    _unw_init_seh(&cursor, disp->ContextRecord);
-    _unw_seh_set_disp_ctx(&cursor, disp);
-    unw_set_reg(&cursor, UNW_REG_IP, disp->ControlPc-1);
+    __unw_init_seh(&cursor, disp->ContextRecord);
+    __unw_seh_set_disp_ctx(&cursor, disp);
+    __unw_set_reg(&cursor, UNW_REG_IP, disp->ControlPc);
     ctx = (struct _Unwind_Context *)&cursor;
 
     if (!IS_UNWINDING(ms_exc->ExceptionFlags)) {
@@ -148,7 +137,7 @@ _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
     // If we were called by __libunwind_seh_personality(), indicate that
     // a handler was found; otherwise, initiate phase 2 by unwinding.
     if (ours && ms_exc->NumberParameters > 1)
-      return 4 /* ExecptionExecuteHandler in mingw */;
+      return 4 /* ExceptionExecuteHandler in mingw */;
     // This should never happen in phase 2.
     if (IS_UNWINDING(ms_exc->ExceptionFlags))
       _LIBUNWIND_ABORT("Personality indicated exception handler in phase 2!");
@@ -166,24 +155,24 @@ _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
     // a handler was found; otherwise, it's time to initiate a collided
     // unwind to the target.
     if (ours && !IS_UNWINDING(ms_exc->ExceptionFlags) && ms_exc->NumberParameters > 1)
-      return 4 /* ExecptionExecuteHandler in mingw */;
+      return 4 /* ExceptionExecuteHandler in mingw */;
     // This should never happen in phase 1.
     if (!IS_UNWINDING(ms_exc->ExceptionFlags))
       _LIBUNWIND_ABORT("Personality installed context during phase 1!");
 #ifdef __x86_64__
     exc->private_[2] = disp->TargetIp;
-    unw_get_reg(&cursor, UNW_X86_64_RAX, &retval);
-    unw_get_reg(&cursor, UNW_X86_64_RDX, &exc->private_[3]);
+    __unw_get_reg(&cursor, UNW_X86_64_RAX, &retval);
+    __unw_get_reg(&cursor, UNW_X86_64_RDX, &exc->private_[3]);
 #elif defined(__arm__)
     exc->private_[2] = disp->TargetPc;
-    unw_get_reg(&cursor, UNW_ARM_R0, &retval);
-    unw_get_reg(&cursor, UNW_ARM_R1, &exc->private_[3]);
+    __unw_get_reg(&cursor, UNW_ARM_R0, &retval);
+    __unw_get_reg(&cursor, UNW_ARM_R1, &exc->private_[3]);
 #elif defined(__aarch64__)
     exc->private_[2] = disp->TargetPc;
-    unw_get_reg(&cursor, UNW_ARM64_X0, &retval);
-    unw_get_reg(&cursor, UNW_ARM64_X1, &exc->private_[3]);
+    __unw_get_reg(&cursor, UNW_AARCH64_X0, &retval);
+    __unw_get_reg(&cursor, UNW_AARCH64_X1, &exc->private_[3]);
 #endif
-    unw_get_reg(&cursor, UNW_REG_IP, &target);
+    __unw_get_reg(&cursor, UNW_REG_IP, &target);
     ms_exc->ExceptionCode = STATUS_GCC_UNWIND;
 #ifdef __x86_64__
     ms_exc->ExceptionInformation[2] = disp->TargetIp;
@@ -203,7 +192,7 @@ _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
   }
 }
 
-/// Personality function returned by \c unw_get_proc_info() in SEH contexts.
+/// Personality function returned by \c __unw_get_proc_info() in SEH contexts.
 /// This is a wrapper that calls the real SEH handler function, which in
 /// turn (at least, for Itanium-style frames) calls the real Itanium
 /// personality function (see \c _GCC_specific_handler()).
@@ -221,7 +210,8 @@ __libunwind_seh_personality(int version, _Unwind_Action state,
   ms_exc.ExceptionInformation[0] = (ULONG_PTR)exc;
   ms_exc.ExceptionInformation[1] = (ULONG_PTR)context;
   ms_exc.ExceptionInformation[2] = state;
-  DISPATCHER_CONTEXT *disp_ctx = _unw_seh_get_disp_ctx((unw_cursor_t *)context);
+  DISPATCHER_CONTEXT *disp_ctx =
+      __unw_seh_get_disp_ctx((unw_cursor_t *)context);
   EXCEPTION_DISPOSITION ms_act = disp_ctx->LanguageHandler(&ms_exc,
                                                            (PVOID)disp_ctx->EstablisherFrame,
                                                            disp_ctx->ContextRecord,
@@ -240,35 +230,37 @@ unwind_phase2_forced(unw_context_t *uc,
                      _Unwind_Exception *exception_object,
                      _Unwind_Stop_Fn stop, void *stop_parameter) {
   unw_cursor_t cursor2;
-  unw_init_local(&cursor2, uc);
+  __unw_init_local(&cursor2, uc);
 
   // Walk each frame until we reach where search phase said to stop
-  while (unw_step(&cursor2) > 0) {
+  while (__unw_step(&cursor2) > 0) {
 
     // Update info about this frame.
     unw_proc_info_t frameInfo;
-    if (unw_get_proc_info(&cursor2, &frameInfo) != UNW_ESUCCESS) {
-      _LIBUNWIND_TRACE_UNWINDING("unwind_phase2_forced(ex_ojb=%p): unw_step "
+    if (__unw_get_proc_info(&cursor2, &frameInfo) != UNW_ESUCCESS) {
+      _LIBUNWIND_TRACE_UNWINDING("unwind_phase2_forced(ex_ojb=%p): __unw_step "
                                  "failed => _URC_END_OF_STACK",
                                  (void *)exception_object);
       return _URC_FATAL_PHASE2_ERROR;
     }
 
+#ifndef NDEBUG
     // When tracing, print state information.
     if (_LIBUNWIND_TRACING_UNWINDING) {
       char functionBuf[512];
       const char *functionName = functionBuf;
       unw_word_t offset;
-      if ((unw_get_proc_name(&cursor2, functionBuf, sizeof(functionBuf),
-                             &offset) != UNW_ESUCCESS) ||
+      if ((__unw_get_proc_name(&cursor2, functionBuf, sizeof(functionBuf),
+                               &offset) != UNW_ESUCCESS) ||
           (frameInfo.start_ip + offset > frameInfo.end_ip))
         functionName = ".anonymous.";
       _LIBUNWIND_TRACE_UNWINDING(
-          "unwind_phase2_forced(ex_ojb=%p): start_ip=0x%" PRIx64
-          ", func=%s, lsda=0x%" PRIx64 ", personality=0x%" PRIx64,
+          "unwind_phase2_forced(ex_ojb=%p): start_ip=0x%" PRIxPTR
+          ", func=%s, lsda=0x%" PRIxPTR ", personality=0x%" PRIxPTR,
           (void *)exception_object, frameInfo.start_ip, functionName,
           frameInfo.lsda, frameInfo.handler);
     }
+#endif
 
     // Call stop function at each frame.
     _Unwind_Action action =
@@ -288,8 +280,8 @@ unwind_phase2_forced(unw_context_t *uc,
 
     // If there is a personality routine, tell it we are unwinding.
     if (frameInfo.handler != 0) {
-      __personality_routine p =
-          (__personality_routine)(intptr_t)(frameInfo.handler);
+      _Unwind_Personality_Fn p =
+          (_Unwind_Personality_Fn)(intptr_t)(frameInfo.handler);
       _LIBUNWIND_TRACE_UNWINDING(
           "unwind_phase2_forced(ex_ojb=%p): calling personality function %p",
           (void *)exception_object, (void *)(uintptr_t)p);
@@ -310,7 +302,7 @@ unwind_phase2_forced(unw_context_t *uc,
                                    "_URC_INSTALL_CONTEXT",
                                    (void *)exception_object);
         // We may get control back if landing pad calls _Unwind_Resume().
-        unw_resume(&cursor2);
+        __unw_resume(&cursor2);
         break;
       default:
         // Personality routine returned an unknown result code.
@@ -362,7 +354,7 @@ _Unwind_RaiseException(_Unwind_Exception *exception_object) {
 /// may force a jump to a landing pad in that function; the landing
 /// pad code may then call \c _Unwind_Resume() to continue with the
 /// unwinding.  Note: the call to \c _Unwind_Resume() is from compiler
-/// geneated user code.  All other \c _Unwind_* routines are called
+/// generated user code.  All other \c _Unwind_* routines are called
 /// by the C++ runtime \c __cxa_* routines.
 ///
 /// Note: re-throwing an exception (as opposed to continuing the unwind)
@@ -375,7 +367,7 @@ _Unwind_Resume(_Unwind_Exception *exception_object) {
   if (exception_object->private_[0] != 0) {
     unw_context_t uc;
 
-    unw_getcontext(&uc);
+    __unw_getcontext(&uc);
     unwind_phase2_forced(&uc, exception_object,
                          (_Unwind_Stop_Fn) exception_object->private_[0],
                          (void *)exception_object->private_[4]);
@@ -413,7 +405,7 @@ _Unwind_ForcedUnwind(_Unwind_Exception *exception_object,
   _LIBUNWIND_TRACE_API("_Unwind_ForcedUnwind(ex_obj=%p, stop=%p)",
                        (void *)exception_object, (void *)(uintptr_t)stop);
   unw_context_t uc;
-  unw_getcontext(&uc);
+  __unw_getcontext(&uc);
 
   // Mark that this is a forced unwind, so _Unwind_Resume() can do
   // the right thing.
@@ -427,7 +419,8 @@ _Unwind_ForcedUnwind(_Unwind_Exception *exception_object,
 /// Called by personality handler during phase 2 to get LSDA for current frame.
 _LIBUNWIND_EXPORT uintptr_t
 _Unwind_GetLanguageSpecificData(struct _Unwind_Context *context) {
-  uintptr_t result = (uintptr_t)_unw_seh_get_disp_ctx((unw_cursor_t *)context)->HandlerData;
+  uintptr_t result =
+      (uintptr_t)__unw_seh_get_disp_ctx((unw_cursor_t *)context)->HandlerData;
   _LIBUNWIND_TRACE_API(
       "_Unwind_GetLanguageSpecificData(context=%p) => 0x%" PRIxPTR,
       (void *)context, result);
@@ -438,15 +431,14 @@ _Unwind_GetLanguageSpecificData(struct _Unwind_Context *context) {
 /// function.
 _LIBUNWIND_EXPORT uintptr_t
 _Unwind_GetRegionStart(struct _Unwind_Context *context) {
-  DISPATCHER_CONTEXT *disp = _unw_seh_get_disp_ctx((unw_cursor_t *)context);
+  DISPATCHER_CONTEXT *disp = __unw_seh_get_disp_ctx((unw_cursor_t *)context);
   uintptr_t result = (uintptr_t)disp->FunctionEntry->BeginAddress + disp->ImageBase;
   _LIBUNWIND_TRACE_API("_Unwind_GetRegionStart(context=%p) => 0x%" PRIxPTR,
                        (void *)context, result);
   return result;
 }
 
-static int
-_unw_init_seh(unw_cursor_t *cursor, CONTEXT *context) {
+static int __unw_init_seh(unw_cursor_t *cursor, CONTEXT *context) {
 #ifdef _LIBUNWIND_TARGET_X86_64
   new (reinterpret_cast<UnwindCursor<LocalAddressSpace, Registers_x86_64> *>(cursor))
       UnwindCursor<LocalAddressSpace, Registers_x86_64>(
@@ -473,8 +465,7 @@ _unw_init_seh(unw_cursor_t *cursor, CONTEXT *context) {
 #endif
 }
 
-static DISPATCHER_CONTEXT *
-_unw_seh_get_disp_ctx(unw_cursor_t *cursor) {
+static DISPATCHER_CONTEXT *__unw_seh_get_disp_ctx(unw_cursor_t *cursor) {
 #ifdef _LIBUNWIND_TARGET_X86_64
   return reinterpret_cast<UnwindCursor<LocalAddressSpace, Registers_x86_64> *>(cursor)->getDispatcherContext();
 #elif defined(_LIBUNWIND_TARGET_ARM)
@@ -486,8 +477,8 @@ _unw_seh_get_disp_ctx(unw_cursor_t *cursor) {
 #endif
 }
 
-static void
-_unw_seh_set_disp_ctx(unw_cursor_t *cursor, DISPATCHER_CONTEXT *disp) {
+static void __unw_seh_set_disp_ctx(unw_cursor_t *cursor,
+                                   DISPATCHER_CONTEXT *disp) {
 #ifdef _LIBUNWIND_TARGET_X86_64
   reinterpret_cast<UnwindCursor<LocalAddressSpace, Registers_x86_64> *>(cursor)->setDispatcherContext(disp);
 #elif defined(_LIBUNWIND_TARGET_ARM)

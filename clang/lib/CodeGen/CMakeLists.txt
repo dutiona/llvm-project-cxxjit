@@ -6,7 +6,12 @@ set(LLVM_LINK_COMPONENTS
   CodeGen
   Coroutines
   Coverage
+  Demangle
+  Extensions
+  FrontendHLSL
+  FrontendOpenMP
   IPO
+  IRPrinter
   IRReader
   AggressiveInstCombine
   InstCombine
@@ -21,9 +26,11 @@ set(LLVM_LINK_COMPONENTS
   Passes
   ProfileData
   RuntimeDyld
+  Remarks
   ScalarOpts
   Support
   Target
+  TargetParser
   TransformUtils
   Vectorize
   ExecutionEngine
@@ -32,19 +39,6 @@ set(LLVM_LINK_COMPONENTS
   )
 # Note that above we depend on ${LLVM_TARGETS_TO_BUILD} instead of just native
 # because we might need NVPTX, etc.
-
-# In a standard Clang+LLVM build, we need to generate intrinsics before
-# building codegen. In a standalone build, LLVM is already built and we don't
-# need this dependency. Furthermore, LLVM doesn't export it so we can't have
-# this dependency.
-set(codegen_deps intrinsics_gen)
-if (CLANG_BUILT_STANDALONE)
-  set(codegen_deps)
-endif()
-
-if (MSVC)
-  set_source_files_properties(CodeGenModule.cpp PROPERTIES COMPILE_FLAGS /bigobj)
-endif()
 
 add_clang_library(clangCodeGen
   BackendUtil.cpp
@@ -70,6 +64,7 @@ add_clang_library(clangCodeGen
   CGExprConstant.cpp
   CGExprScalar.cpp
   CGGPUBuiltin.cpp
+  CGHLSLRuntime.cpp
   CGLoopInfo.cpp
   CGNonTrivialStruct.cpp
   CGObjC.cpp
@@ -78,7 +73,7 @@ add_clang_library(clangCodeGen
   CGObjCRuntime.cpp
   CGOpenCLRuntime.cpp
   CGOpenMPRuntime.cpp
-  CGOpenMPRuntimeNVPTX.cpp
+  CGOpenMPRuntimeGPU.cpp
   CGRecordLayoutBuilder.cpp
   CGStmt.cpp
   CGStmtOpenMP.cpp
@@ -98,6 +93,7 @@ add_clang_library(clangCodeGen
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   ObjectFilePCHContainerOperations.cpp
+  PatternInit.cpp
   SanitizerMetadata.cpp
   SwiftCallingConv.cpp
   TargetInfo.cpp
@@ -105,7 +101,7 @@ add_clang_library(clangCodeGen
   JIT.cpp
 
   DEPENDS
-  ${codegen_deps}
+  intrinsics_gen
 
   LINK_LIBS
   clangAnalysis

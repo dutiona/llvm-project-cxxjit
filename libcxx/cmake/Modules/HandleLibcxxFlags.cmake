@@ -42,7 +42,7 @@ endmacro(remove_flags)
 
 macro(check_flag_supported flag)
     mangle_name("${flag}" flagname)
-    check_cxx_compiler_flag("${flag}" "LIBCXX_SUPPORTS_${flagname}_FLAG")
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
 endmacro()
 
 macro(append_flags DEST)
@@ -63,8 +63,8 @@ endmacro()
 macro(append_flags_if_supported DEST)
   foreach(flag ${ARGN})
     mangle_name("${flag}" flagname)
-    check_cxx_compiler_flag("${flag}" "LIBCXX_SUPPORTS_${flagname}_FLAG")
-    append_flags_if(LIBCXX_SUPPORTS_${flagname}_FLAG ${DEST} ${flag})
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+    append_flags_if(CXX_SUPPORTS_${flagname}_FLAG ${DEST} ${flag})
   endforeach()
 endmacro()
 
@@ -88,20 +88,17 @@ endmacro()
 macro(config_define_if condition def)
   if (${condition})
     set(${def} ON)
-    set(LIBCXX_NEEDS_SITE_CONFIG ON)
   endif()
 endmacro()
 
 macro(config_define_if_not condition def)
   if (NOT ${condition})
     set(${def} ON)
-    set(LIBCXX_NEEDS_SITE_CONFIG ON)
   endif()
 endmacro()
 
 macro(config_define value def)
   set(${def} ${value})
-  set(LIBCXX_NEEDS_SITE_CONFIG ON)
 endmacro()
 
 # Add a list of flags to all of 'CMAKE_CXX_FLAGS', 'CMAKE_C_FLAGS',
@@ -122,6 +119,17 @@ macro(add_target_flags_if condition)
   if (${condition})
     add_target_flags(${ARGN})
   endif()
+endmacro()
+
+# Add all the flags supported by the compiler to all of
+# 'CMAKE_CXX_FLAGS', 'CMAKE_C_FLAGS', 'LIBCXX_COMPILE_FLAGS'
+# and 'LIBCXX_LINK_FLAGS'.
+macro(add_target_flags_if_supported)
+  foreach(flag ${ARGN})
+    mangle_name("${flag}" flagname)
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+    add_target_flags_if(CXX_SUPPORTS_${flagname}_FLAG ${flag})
+  endforeach()
 endmacro()
 
 # Add a specified list of flags to both 'LIBCXX_COMPILE_FLAGS' and
@@ -146,8 +154,8 @@ endmacro()
 macro(add_flags_if_supported)
   foreach(flag ${ARGN})
       mangle_name("${flag}" flagname)
-      check_cxx_compiler_flag("${flag}" "LIBCXX_SUPPORTS_${flagname}_FLAG")
-      add_flags_if(LIBCXX_SUPPORTS_${flagname}_FLAG ${flag})
+      check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+      add_flags_if(CXX_SUPPORTS_${flagname}_FLAG ${flag})
   endforeach()
 endmacro()
 
@@ -171,8 +179,8 @@ endmacro()
 macro(add_compile_flags_if_supported)
   foreach(flag ${ARGN})
       mangle_name("${flag}" flagname)
-      check_cxx_compiler_flag("${flag}" "LIBCXX_SUPPORTS_${flagname}_FLAG")
-      add_compile_flags_if(LIBCXX_SUPPORTS_${flagname}_FLAG ${flag})
+      check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+      add_compile_flags_if(CXX_SUPPORTS_${flagname}_FLAG ${flag})
   endforeach()
 endmacro()
 
@@ -196,8 +204,8 @@ endmacro()
 macro(add_link_flags_if_supported)
   foreach(flag ${ARGN})
     mangle_name("${flag}" flagname)
-    check_cxx_compiler_flag("${flag}" "LIBCXX_SUPPORTS_${flagname}_FLAG")
-    add_link_flags_if(LIBCXX_SUPPORTS_${flagname}_FLAG ${flag})
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+    add_link_flags_if(CXX_SUPPORTS_${flagname}_FLAG ${flag})
   endforeach()
 endmacro()
 
@@ -216,15 +224,31 @@ macro(add_library_flags_if condition)
   endif()
 endmacro()
 
-# Add a list of libraries or link flags to 'LIBCXX_LIBRARIES'.
-macro(add_interface_library)
-  foreach(lib ${ARGN})
-    list(APPEND LIBCXX_LIBRARIES ${lib})
-    list(APPEND LIBCXX_INTERFACE_LIBRARIES ${lib})
-  endforeach()
-endmacro()
-
 # Turn a comma separated CMake list into a space separated string.
 macro(split_list listname)
   string(REPLACE ";" " " ${listname} "${${listname}}")
 endmacro()
+
+# For each specified flag, add that link flag to the provided target.
+# The flags are added with the given visibility, i.e. PUBLIC|PRIVATE|INTERFACE.
+function(target_add_link_flags_if_supported target visibility)
+  foreach(flag ${ARGN})
+    mangle_name("${flag}" flagname)
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+    if (CXX_SUPPORTS_${flagname}_FLAG)
+      target_link_libraries(${target} ${visibility} ${flag})
+    endif()
+  endforeach()
+endfunction()
+
+# For each specified flag, add that compile flag to the provided target.
+# The flags are added with the given visibility, i.e. PUBLIC|PRIVATE|INTERFACE.
+function(target_add_compile_flags_if_supported target visibility)
+  foreach(flag ${ARGN})
+    mangle_name("${flag}" flagname)
+    check_cxx_compiler_flag("${flag}" "CXX_SUPPORTS_${flagname}_FLAG")
+    if (CXX_SUPPORTS_${flagname}_FLAG)
+      target_compile_options(${target} ${visibility} ${flag})
+    endif()
+  endforeach()
+endfunction()

@@ -1,4 +1,4 @@
-//===-- lldb-windows.h ------------------------------------------*- C++ -*-===//
+//===-- windows.h -----------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,9 +17,10 @@
 #undef NOMINMAX // undef a previous definition to avoid warning
 #define NOMINMAX
 #include <windows.h>
+#undef CreateProcess
+#undef GetMessage
 #undef GetUserName
 #undef LoadImage
-#undef CreateProcess
 #undef Yield
 #undef far
 #undef near

@@ -6,14 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef utility_JSON_h_
-#define utility_JSON_h_
+#ifndef LLDB_TOOLS_DEBUGSERVER_SOURCE_JSON_H
+#define LLDB_TOOLS_DEBUGSERVER_SOURCE_JSON_H
 
 #include "StdStringExtractor.h"
 
 // C includes
-#include <inttypes.h>
-#include <stdint.h>
+#include <cinttypes>
+#include <cstdint>
 
 // C++ includes
 #include <map>
@@ -71,7 +71,7 @@ class JSONNumber : public JSONValue {
 public:
   typedef std::shared_ptr<JSONNumber> SP;
 
-  // We cretae a constructor for all integer and floating point type with using
+  // We create a constructor for all integer and floating point type with using
   // templates and
   // SFINAE to avoid having ambiguous overloads because of the implicit type
   // promotion. If we
@@ -203,21 +203,19 @@ public:
 
   JSONValue::SP GetObject(const std::string &key) const;
 
-  // -------------------------------------------------------------------------
   /// Return keyed value as bool
   ///
-  /// @param[in] key
+  /// \param[in] key
   ///     The value of the key to lookup
   ///
-  /// @param[out] value
+  /// \param[out] value
   ///     The value of the key as a bool.  Undefined if the key doesn't
   ///     exist or if the key is not either true or false.
   ///
-  /// @return
+  /// \return
   ///     true if the key existed as was a bool value; false otherwise.
   ///     Note the return value is *not* the value of the bool, use
   ///     \b value for that.
-  // -------------------------------------------------------------------------
   bool GetObjectAsBool(const std::string &key, bool &value) const;
 
   bool GetObjectAsString(const std::string &key, std::string &value) const;
@@ -294,9 +292,11 @@ public:
   JSONValue::SP ParseJSONValue();
 
 protected:
+  JSONValue::SP ParseJSONValue(const std::string &value, const Token &token);
+
   JSONValue::SP ParseJSONObject();
 
   JSONValue::SP ParseJSONArray();
 };
 
-#endif // utility_JSON_h_
+#endif // LLDB_TOOLS_DEBUGSERVER_SOURCE_JSON_H

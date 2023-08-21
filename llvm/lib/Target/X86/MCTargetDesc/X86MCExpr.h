@@ -14,10 +14,11 @@
 #ifndef LLVM_LIB_TARGET_X86_MCTARGETDESC_X86MCEXPR_H
 #define LLVM_LIB_TARGET_X86_MCTARGETDESC_X86MCEXPR_H
 
-#include "InstPrinter/X86ATTInstPrinter.h"
+#include "X86ATTInstPrinter.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {

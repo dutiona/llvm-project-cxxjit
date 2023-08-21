@@ -6,20 +6,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CoreFoundationCPP_CFBundle_h_
-#define CoreFoundationCPP_CFBundle_h_
+#ifndef LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCBUNDLE_H
+#define LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCBUNDLE_H
 
 #include "CFCReleaser.h"
 
 class CFCBundle : public CFCReleaser<CFBundleRef> {
 public:
-  //------------------------------------------------------------------
   // Constructors and Destructors
-  //------------------------------------------------------------------
   CFCBundle(const char *path = NULL);
   CFCBundle(CFURLRef url);
 
-  virtual ~CFCBundle();
+  ~CFCBundle() override;
 
   CFURLRef CopyExecutableURL() const;
 
@@ -33,9 +31,9 @@ public:
 
 private:
   // Disallow copy and assignment constructors
-  CFCBundle(const CFCBundle &);
+  CFCBundle(const CFCBundle &) = delete;
 
-  const CFCBundle &operator=(const CFCBundle &);
+  const CFCBundle &operator=(const CFCBundle &) = delete;
 };
 
-#endif // #ifndef CoreFoundationCPP_CFBundle_h_
+#endif // LLDB_SOURCE_HOST_MACOSX_CFCPP_CFCBUNDLE_H

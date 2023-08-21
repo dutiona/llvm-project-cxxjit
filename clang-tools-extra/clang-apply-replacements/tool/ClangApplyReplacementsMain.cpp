@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// \brief This file provides the main function for the
+/// This file provides the main function for the
 /// clang-apply-replacements tool.
 ///
 //===----------------------------------------------------------------------===//
@@ -40,6 +40,11 @@ static cl::opt<bool> RemoveTUReplacementFiles(
     "remove-change-desc-files",
     cl::desc("Remove the change description files regardless of successful\n"
              "merging/replacing."),
+    cl::init(false), cl::cat(ReplacementCategory));
+
+static cl::opt<bool> IgnoreInsertConflict(
+    "ignore-insert-conflict",
+    cl::desc("Ignore insert conflict and keep running to fix."),
     cl::init(false), cl::cat(ReplacementCategory));
 
 static cl::opt<bool> DoFormat(
@@ -86,7 +91,7 @@ static void printVersion(raw_ostream &OS) {
 }
 
 int main(int argc, char **argv) {
-  cl::HideUnrelatedOptions(makeArrayRef(VisibleCategories));
+  cl::HideUnrelatedOptions(ArrayRef(VisibleCategories));
 
   cl::SetVersionPrinter(printVersion);
   cl::ParseCommandLineOptions(argc, argv);
@@ -131,7 +136,7 @@ int main(int argc, char **argv) {
   SourceManager SM(Diagnostics, Files);
 
   FileToChangesMap Changes;
-  if (!mergeAndDeduplicate(TURs, TUDs, Changes, SM))
+  if (!mergeAndDeduplicate(TURs, TUDs, Changes, SM, IgnoreInsertConflict))
     return 1;
 
   tooling::ApplyChangesSpec Spec;
@@ -152,7 +157,7 @@ int main(int argc, char **argv) {
 
     // Write new file to disk
     std::error_code EC;
-    llvm::raw_fd_ostream FileStream(FileName, EC, llvm::sys::fs::F_None);
+    llvm::raw_fd_ostream FileStream(FileName, EC, llvm::sys::fs::OF_None);
     if (EC) {
       llvm::errs() << "Could not open " << FileName << " for writing\n";
       continue;

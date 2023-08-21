@@ -21,28 +21,18 @@ namespace clang {
 namespace ento {
 
 class SimpleConstraintManager : public ConstraintManager {
-  SubEngine *SU;
+  ExprEngine *EE;
   SValBuilder &SVB;
 
 public:
-  SimpleConstraintManager(SubEngine *subengine, SValBuilder &SB)
-      : SU(subengine), SVB(SB) {}
+  SimpleConstraintManager(ExprEngine *exprengine, SValBuilder &SB)
+      : EE(exprengine), SVB(SB) {}
 
   ~SimpleConstraintManager() override;
 
   //===------------------------------------------------------------------===//
   // Implementation for interface from ConstraintManager.
   //===------------------------------------------------------------------===//
-
-  /// Ensures that the DefinedSVal conditional is expressed as a NonLoc by
-  /// creating boolean casts to handle Loc's.
-  ProgramStateRef assume(ProgramStateRef State, DefinedSVal Cond,
-                         bool Assumption) override;
-
-  ProgramStateRef assumeInclusiveRange(ProgramStateRef State, NonLoc Value,
-                                       const llvm::APSInt &From,
-                                       const llvm::APSInt &To,
-                                       bool InRange) override;
 
 protected:
   //===------------------------------------------------------------------===//
@@ -73,6 +63,17 @@ protected:
   //===------------------------------------------------------------------===//
   // Internal implementation.
   //===------------------------------------------------------------------===//
+
+  /// Ensures that the DefinedSVal conditional is expressed as a NonLoc by
+  /// creating boolean casts to handle Loc's.
+  ProgramStateRef assumeInternal(ProgramStateRef State, DefinedSVal Cond,
+                                 bool Assumption) override;
+
+  ProgramStateRef assumeInclusiveRangeInternal(ProgramStateRef State,
+                                               NonLoc Value,
+                                               const llvm::APSInt &From,
+                                               const llvm::APSInt &To,
+                                               bool InRange) override;
 
   SValBuilder &getSValBuilder() const { return SVB; }
   BasicValueFactory &getBasicVals() const { return SVB.getBasicValueFactory(); }

@@ -9,11 +9,9 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_MOVEFORWARDINGREFERENCECHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_MOVEFORWARDINGREFERENCECHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 /// The check warns if std::move is applied to a forwarding reference (i.e. an
 /// rvalue reference of a function template argument type).
@@ -32,17 +30,18 @@ namespace bugprone {
 /// The check suggests replacing the std::move with a std::forward.
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone-move-forwarding-reference.html
+/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone/move-forwarding-reference.html
 class MoveForwardingReferenceCheck : public ClangTidyCheck {
 public:
   MoveForwardingReferenceCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context) {}
+  bool isLanguageVersionSupported(const LangOptions &LangOpts) const override {
+    return LangOpts.CPlusPlus11;
+  }
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_MOVEFORWARDINGREFERENCECHECK_H

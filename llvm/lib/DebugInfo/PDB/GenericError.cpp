@@ -8,7 +8,6 @@
 
 #include "llvm/DebugInfo/PDB/GenericError.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ManagedStatic.h"
 
 using namespace llvm;
 using namespace llvm::pdb;
@@ -34,15 +33,17 @@ public:
       return "The PDB file path is an invalid UTF8 sequence.";
     case pdb_error_code::signature_out_of_date:
       return "The signature does not match; the file(s) might be out of date.";
-    case pdb_error_code::external_cmdline_ref:
-      return "The path to this file must be provided on the command-line.";
+    case pdb_error_code::no_matching_pch:
+      return "No matching precompiled header could be located.";
     }
     llvm_unreachable("Unrecognized generic_error_code");
   }
 };
 } // namespace
 
-static llvm::ManagedStatic<PDBErrorCategory> PDBCategory;
-const std::error_category &llvm::pdb::PDBErrCategory() { return *PDBCategory; }
+const std::error_category &llvm::pdb::PDBErrCategory() {
+  static PDBErrorCategory PDBCategory;
+  return PDBCategory;
+}
 
 char PDBError::ID;

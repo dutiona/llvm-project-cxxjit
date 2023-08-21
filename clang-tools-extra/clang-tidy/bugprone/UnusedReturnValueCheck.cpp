@@ -14,9 +14,7 @@
 using namespace clang::ast_matchers;
 using namespace clang::ast_matchers::internal;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 namespace {
 
@@ -43,7 +41,90 @@ UnusedReturnValueCheck::UnusedReturnValueCheck(llvm::StringRef Name,
                                    "::std::unique;"
                                    "::std::unique_ptr::release;"
                                    "::std::basic_string::empty;"
-                                   "::std::vector::empty")) {}
+                                   "::std::vector::empty;"
+                                   "::std::back_inserter;"
+                                   "::std::distance;"
+                                   "::std::find;"
+                                   "::std::find_if;"
+                                   "::std::inserter;"
+                                   "::std::lower_bound;"
+                                   "::std::make_pair;"
+                                   "::std::map::count;"
+                                   "::std::map::find;"
+                                   "::std::map::lower_bound;"
+                                   "::std::multimap::equal_range;"
+                                   "::std::multimap::upper_bound;"
+                                   "::std::set::count;"
+                                   "::std::set::find;"
+                                   "::std::setfill;"
+                                   "::std::setprecision;"
+                                   "::std::setw;"
+                                   "::std::upper_bound;"
+                                   "::std::vector::at;"
+                                   // C standard library
+                                   "::bsearch;"
+                                   "::ferror;"
+                                   "::feof;"
+                                   "::isalnum;"
+                                   "::isalpha;"
+                                   "::isblank;"
+                                   "::iscntrl;"
+                                   "::isdigit;"
+                                   "::isgraph;"
+                                   "::islower;"
+                                   "::isprint;"
+                                   "::ispunct;"
+                                   "::isspace;"
+                                   "::isupper;"
+                                   "::iswalnum;"
+                                   "::iswprint;"
+                                   "::iswspace;"
+                                   "::isxdigit;"
+                                   "::memchr;"
+                                   "::memcmp;"
+                                   "::strcmp;"
+                                   "::strcoll;"
+                                   "::strncmp;"
+                                   "::strpbrk;"
+                                   "::strrchr;"
+                                   "::strspn;"
+                                   "::strstr;"
+                                   "::wcscmp;"
+                                   // POSIX
+                                   "::access;"
+                                   "::bind;"
+                                   "::connect;"
+                                   "::difftime;"
+                                   "::dlsym;"
+                                   "::fnmatch;"
+                                   "::getaddrinfo;"
+                                   "::getopt;"
+                                   "::htonl;"
+                                   "::htons;"
+                                   "::iconv_open;"
+                                   "::inet_addr;"
+                                   "::isascii;"
+                                   "::isatty;"
+                                   "::mmap;"
+                                   "::newlocale;"
+                                   "::openat;"
+                                   "::pathconf;"
+                                   "::pthread_equal;"
+                                   "::pthread_getspecific;"
+                                   "::pthread_mutex_trylock;"
+                                   "::readdir;"
+                                   "::readlink;"
+                                   "::recvmsg;"
+                                   "::regexec;"
+                                   "::scandir;"
+                                   "::semget;"
+                                   "::setjmp;"
+                                   "::shm_open;"
+                                   "::shmget;"
+                                   "::sigismember;"
+                                   "::strcasecmp;"
+                                   "::strsignal;"
+                                   "::ttyname")) {}
 
 void UnusedReturnValueCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "CheckedFunctions", CheckedFunctions);
@@ -55,8 +136,7 @@ void UnusedReturnValueCheck::registerMatchers(MatchFinder *Finder) {
       callExpr(callee(functionDecl(
                    // Don't match void overloads of checked functions.
                    unless(returns(voidType())),
-                   isInstantiatedFrom(hasAnyName(
-                       std::vector<StringRef>(FunVec.begin(), FunVec.end()))))))
+                   isInstantiatedFrom(hasAnyName(FunVec)))))
           .bind("match"))));
 
   auto UnusedInCompoundStmt =
@@ -94,6 +174,4 @@ void UnusedReturnValueCheck::check(const MatchFinder::MatchResult &Result) {
   }
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

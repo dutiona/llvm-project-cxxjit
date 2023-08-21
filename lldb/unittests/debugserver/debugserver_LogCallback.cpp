@@ -1,4 +1,4 @@
-//===-- debugserver_LogCallback.cpp -----------------------------*- C++ -*-===//
+//===-- debugserver_LogCallback.cpp ---------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,11 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-//------------------------------------------------------------------------------
 // this function is defined in debugserver.cpp, but is needed to link the
 // debugserver Common library. It is for logging only, so it is left
 // unimplemented here.
-//------------------------------------------------------------------------------
 
 #include <stdint.h>
 #include <stdarg.h>

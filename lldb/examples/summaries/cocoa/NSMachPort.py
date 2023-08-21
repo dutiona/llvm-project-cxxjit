@@ -130,7 +130,7 @@ def NSMachPort_SummaryProvider(valobj, dict):
         logger >> "got summary " + str(summary)
         if summary is None:
             summary = '<variable is not NSMachPort>'
-        if isinstance(summary, basestring):
+        if isinstance(summary, str):
             return summay
         return 'mach port: ' + str(summary)
     return 'Summary Unavailable'

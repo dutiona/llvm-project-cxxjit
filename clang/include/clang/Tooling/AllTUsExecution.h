@@ -16,6 +16,7 @@
 
 #include "clang/Tooling/ArgumentsAdjusters.h"
 #include "clang/Tooling/Execution.h"
+#include <optional>
 
 namespace clang {
 namespace tooling {
@@ -44,8 +45,6 @@ public:
 
   StringRef getExecutorName() const override { return ExecutorName; }
 
-  bool isSingleProcess() const override { return true; }
-
   using ToolExecutor::execute;
 
   llvm::Error
@@ -58,12 +57,12 @@ public:
   ToolResults *getToolResults() override { return Results.get(); }
 
   void mapVirtualFile(StringRef FilePath, StringRef Content) override {
-    OverlayFiles[FilePath] = Content;
+    OverlayFiles[FilePath] = std::string(Content);
   }
 
 private:
   // Used to store the parser when the executor is initialized with parser.
-  llvm::Optional<CommonOptionsParser> OptionsParser;
+  std::optional<CommonOptionsParser> OptionsParser;
   const CompilationDatabase &Compilations;
   std::unique_ptr<ToolResults> Results;
   ExecutionContext Context;
@@ -71,6 +70,7 @@ private:
   unsigned ThreadCount;
 };
 
+extern llvm::cl::opt<unsigned> ExecutorConcurrency;
 extern llvm::cl::opt<std::string> Filter;
 
 } // end namespace tooling

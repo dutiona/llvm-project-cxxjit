@@ -9,6 +9,7 @@
 // libc++ cannot safely provide the auto_ptr constructor without rvalue
 // references.
 // REQUIRES: c++11 || c++14
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 // <memory>
 
@@ -34,7 +35,7 @@ int A::count = 0;
 struct B : public A {
   static int count;
   B() { ++count; }
-  B(const B&) { ++count; }
+  B(const B& b) : A(b) { ++count; }
   virtual ~B() { --count; }
 };
 

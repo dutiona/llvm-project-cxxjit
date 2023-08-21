@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_TOOLING_REFACTOR_REFACTORING_ACTION_RULES_INTERNAL_H
-#define LLVM_CLANG_TOOLING_REFACTOR_REFACTORING_ACTION_RULES_INTERNAL_H
+#ifndef LLVM_CLANG_TOOLING_REFACTORING_REFACTORINGACTIONRULESINTERNAL_H
+#define LLVM_CLANG_TOOLING_REFACTORING_REFACTORINGACTIONRULESINTERNAL_H
 
 #include "clang/Basic/LLVM.h"
 #include "clang/Tooling/Refactoring/RefactoringActionRule.h"
@@ -47,7 +47,7 @@ template <typename RuleType, typename... RequirementTypes, size_t... Is>
 void invokeRuleAfterValidatingRequirements(
     RefactoringResultConsumer &Consumer, RefactoringRuleContext &Context,
     const std::tuple<RequirementTypes...> &Requirements,
-    llvm::index_sequence<Is...>) {
+    std::index_sequence<Is...>) {
   // Check if the requirements we're interested in can be evaluated.
   auto Values =
       std::make_tuple(std::get<Is>(Requirements).evaluate(Context)...);
@@ -87,16 +87,16 @@ template <typename... RequirementTypes, size_t... Is>
 void visitRefactoringOptions(
     RefactoringOptionVisitor &Visitor,
     const std::tuple<RequirementTypes...> &Requirements,
-    llvm::index_sequence<Is...>) {
+    std::index_sequence<Is...>) {
   visitRefactoringOptionsImpl(Visitor, std::get<Is>(Requirements)...);
 }
 
 /// A type trait that returns true when the given type list has at least one
 /// type whose base is the given base type.
 template <typename Base, typename First, typename... Rest>
-struct HasBaseOf : std::conditional<HasBaseOf<Base, First>::value ||
-                                        HasBaseOf<Base, Rest...>::value,
-                                    std::true_type, std::false_type>::type {};
+struct HasBaseOf : std::conditional_t<HasBaseOf<Base, First>::value ||
+                                          HasBaseOf<Base, Rest...>::value,
+                                      std::true_type, std::false_type> {};
 
 template <typename Base, typename T>
 struct HasBaseOf<Base, T> : std::is_base_of<Base, T> {};
@@ -104,9 +104,9 @@ struct HasBaseOf<Base, T> : std::is_base_of<Base, T> {};
 /// A type trait that returns true when the given type list contains types that
 /// derive from Base.
 template <typename Base, typename First, typename... Rest>
-struct AreBaseOf : std::conditional<AreBaseOf<Base, First>::value &&
-                                        AreBaseOf<Base, Rest...>::value,
-                                    std::true_type, std::false_type>::type {};
+struct AreBaseOf : std::conditional_t<AreBaseOf<Base, First>::value &&
+                                          AreBaseOf<Base, Rest...>::value,
+                                      std::true_type, std::false_type> {};
 
 template <typename Base, typename T>
 struct AreBaseOf<Base, T> : std::is_base_of<Base, T> {};
@@ -131,7 +131,7 @@ createRefactoringActionRule(const RequirementTypes &... Requirements) {
                 RefactoringRuleContext &Context) override {
       internal::invokeRuleAfterValidatingRequirements<RuleType>(
           Consumer, Context, Requirements,
-          llvm::index_sequence_for<RequirementTypes...>());
+          std::index_sequence_for<RequirementTypes...>());
     }
 
     bool hasSelectionRequirement() override {
@@ -142,16 +142,16 @@ createRefactoringActionRule(const RequirementTypes &... Requirements) {
     void visitRefactoringOptions(RefactoringOptionVisitor &Visitor) override {
       internal::visitRefactoringOptions(
           Visitor, Requirements,
-          llvm::index_sequence_for<RequirementTypes...>());
+          std::index_sequence_for<RequirementTypes...>());
     }
   private:
     std::tuple<RequirementTypes...> Requirements;
   };
 
-  return llvm::make_unique<Rule>(std::make_tuple(Requirements...));
+  return std::make_unique<Rule>(std::make_tuple(Requirements...));
 }
 
 } // end namespace tooling
 } // end namespace clang
 
-#endif // LLVM_CLANG_TOOLING_REFACTOR_REFACTORING_ACTION_RULES_INTERNAL_H
+#endif // LLVM_CLANG_TOOLING_REFACTORING_REFACTORINGACTIONRULESINTERNAL_H

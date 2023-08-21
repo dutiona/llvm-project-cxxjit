@@ -1,9 +1,9 @@
 # REQUIRES: arm
 # RUN: yaml2obj %s -o %t.o
 # RUN: ld.lld %t.o -o %t
-# RUN: llvm-readelf -sections %t | FileCheck %s
+# RUN: llvm-readelf -S %t | FileCheck %s
 # RUN: ld.lld -shared %t.o -o %t
-# RUN: llvm-readelf -sections %t | FileCheck %s
+# RUN: llvm-readelf -S %t | FileCheck %s
 
 # CHECK: .text
 
@@ -26,15 +26,11 @@ Sections:
     AddressAlign:    0x0000000000000004
     Info:            .text
     Relocations:
-      - Offset:          0x0000000000000000
-        Symbol:          ''
-        Type:            R_ARM_V4BX
+      - Type:        R_ARM_V4BX
 Symbols:
-  Global:
-    - Name:            _start
-      Section:         .text
-  Local:
-    - Name:            .text
-      Type:            STT_SECTION
-      Section:         .text
-DynamicSymbols:
+  - Name:            .text
+    Type:            STT_SECTION
+    Section:         .text
+  - Name:            _start
+    Section:         .text
+    Binding:         STB_GLOBAL

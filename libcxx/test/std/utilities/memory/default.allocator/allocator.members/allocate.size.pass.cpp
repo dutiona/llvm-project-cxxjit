@@ -6,14 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: libcpp-no-exceptions
+// UNSUPPORTED: no-exceptions
 // <memory>
 
 // allocator:
-// pointer allocate(size_type n, allocator<void>::const_pointer hint=0);
+// constexpr T* allocate(size_t n);
 
 #include <memory>
 #include <cassert>
+#include <new>
 
 #include "test_macros.h"
 
@@ -24,7 +25,7 @@ void test_max(size_t count)
     try {
         TEST_IGNORE_NODISCARD a.allocate(count);
         assert(false);
-    } catch (const std::exception &) {
+    } catch (const std::bad_array_new_length &) {
     }
 }
 
@@ -32,9 +33,11 @@ template <typename T>
 void test()
 {
     // Bug 26812 -- allocating too large
-    std::allocator<T> a;
-    test_max<T> (a.max_size() + 1);                // just barely too large
-    test_max<T> (a.max_size() * 2);                // significantly too large
+    typedef std::allocator<T> A;
+    typedef std::allocator_traits<A> AT;
+    A a;
+    test_max<T> (AT::max_size(a) + 1);             // just barely too large
+    test_max<T> (AT::max_size(a) * 2);             // significantly too large
     test_max<T> (((size_t) -1) / sizeof(T) + 1);   // multiply will overflow
     test_max<T> ((size_t) -1);                     // way too large
 }

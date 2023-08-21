@@ -12,11 +12,9 @@
 #include "lldb/lldb-private.h"
 #include <map>
 
-//--------------------------------------------------------------------
 /// A class to represent register numbers, and able to convert between
 /// different register numbering schemes that may be used in a single
 /// debug session.
-//--------------------------------------------------------------------
 
 class RegisterNumber {
 public:
@@ -52,10 +50,10 @@ private:
   typedef std::map<lldb::RegisterKind, uint32_t> Collection;
 
   lldb::RegisterContextSP m_reg_ctx_sp;
-  uint32_t m_regnum;
-  lldb::RegisterKind m_kind;
+  uint32_t m_regnum = LLDB_INVALID_REGNUM;
+  lldb::RegisterKind m_kind = lldb::kNumRegisterKinds;
   Collection m_kind_regnum_map;
-  const char *m_name;
+  const char *m_name = nullptr;
 };
 
-#endif // liblldb_RegisterNumber_h
+#endif // LLDB_TARGET_REGISTERNUMBER_H

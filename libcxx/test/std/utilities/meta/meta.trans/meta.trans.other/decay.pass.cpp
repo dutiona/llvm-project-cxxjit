@@ -17,9 +17,9 @@
 template <class T, class U>
 void test_decay()
 {
-    static_assert((std::is_same<typename std::decay<T>::type, U>::value), "");
+    ASSERT_SAME_TYPE(U, typename std::decay<T>::type);
 #if TEST_STD_VER > 11
-    static_assert((std::is_same<std::decay_t<T>,     U>::value), "");
+    ASSERT_SAME_TYPE(U,        std::decay_t<T>);
 #endif
 }
 
@@ -29,10 +29,14 @@ int main(int, char**)
     test_decay<int, int>();
     test_decay<const volatile int, int>();
     test_decay<int*, int*>();
+    test_decay<int&, int>();
+    test_decay<const volatile int&, int>();
     test_decay<int[3], int*>();
     test_decay<const int[3], const int*>();
     test_decay<void(), void (*)()>();
 #if TEST_STD_VER > 11
+    test_decay<int&&, int>();
+    test_decay<const volatile int&&, int>();
     test_decay<int(int) const, int(int) const>();
     test_decay<int(int) volatile, int(int) volatile>();
     test_decay<int(int)  &, int(int)  &>();

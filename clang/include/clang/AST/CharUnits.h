@@ -14,6 +14,7 @@
 #define LLVM_CLANG_AST_CHARUNITS_H
 
 #include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -61,6 +62,12 @@ namespace clang {
       /// fromQuantity - Construct a CharUnits quantity from a raw integer type.
       static CharUnits fromQuantity(QuantityType Quantity) {
         return CharUnits(Quantity);
+      }
+
+      /// fromQuantity - Construct a CharUnits quantity from an llvm::Align
+      /// quantity.
+      static CharUnits fromQuantity(llvm::Align Quantity) {
+        return CharUnits(Quantity.value());
       }
 
       // Compound assignment.
@@ -176,6 +183,17 @@ namespace clang {
 
       /// getQuantity - Get the raw integer representation of this quantity.
       QuantityType getQuantity() const { return Quantity; }
+
+      /// getAsAlign - Returns Quantity as a valid llvm::Align,
+      /// Beware llvm::Align assumes power of two 8-bit bytes.
+      llvm::Align getAsAlign() const { return llvm::Align(Quantity); }
+
+      /// getAsMaybeAlign - Returns Quantity as a valid llvm::Align or
+      /// std::nullopt, Beware llvm::MaybeAlign assumes power of two 8-bit
+      /// bytes.
+      llvm::MaybeAlign getAsMaybeAlign() const {
+        return llvm::MaybeAlign(Quantity);
+      }
 
       /// alignTo - Returns the next integer (mod 2**64) that is
       /// greater than or equal to this quantity and is a multiple of \p Align.

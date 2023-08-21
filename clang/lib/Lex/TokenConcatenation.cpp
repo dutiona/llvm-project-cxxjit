@@ -103,7 +103,7 @@ TokenConcatenation::TokenConcatenation(const Preprocessor &pp) : PP(pp) {
     TokenInfo[tok::utf8_char_constant] |= aci_custom;
 
   // These tokens have custom code in C++2a mode.
-  if (PP.getLangOpts().CPlusPlus2a)
+  if (PP.getLangOpts().CPlusPlus20)
     TokenInfo[tok::lessequal ] |= aci_custom_firstchar;
 
   // These tokens change behavior if followed by an '='.
@@ -160,6 +160,11 @@ static char GetFirstChar(const Preprocessor &PP, const Token &Tok) {
 bool TokenConcatenation::AvoidConcat(const Token &PrevPrevTok,
                                      const Token &PrevTok,
                                      const Token &Tok) const {
+  // Conservatively assume that every annotation token that has a printable
+  // form requires whitespace.
+  if (PrevTok.isAnnotation())
+    return true;
+
   // First, check to see if the tokens were directly adjacent in the original
   // source.  If they were, it must be okay to stick them together: if there
   // were an issue, the tokens would have been lexed differently.
@@ -235,7 +240,7 @@ bool TokenConcatenation::AvoidConcat(const Token &PrevPrevTok,
     // it as an identifier.
     if (!PrevTok.hasUDSuffix())
       return false;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case tok::identifier:   // id+id or id+number or id+L"foo".
     // id+'.'... will not append.
     if (Tok.is(tok::numeric_constant))
@@ -287,6 +292,6 @@ bool TokenConcatenation::AvoidConcat(const Token &PrevPrevTok,
   case tok::arrow:           // ->*
     return PP.getLangOpts().CPlusPlus && FirstChar == '*';
   case tok::lessequal:       // <=> (C++2a)
-    return PP.getLangOpts().CPlusPlus2a && FirstChar == '>';
+    return PP.getLangOpts().CPlusPlus20 && FirstChar == '>';
   }
 }

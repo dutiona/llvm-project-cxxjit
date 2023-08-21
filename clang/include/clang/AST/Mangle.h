@@ -14,10 +14,12 @@
 #define LLVM_CLANG_AST_MANGLE_H
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/GlobalDecl.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
+#include <optional>
 
 namespace llvm {
   class raw_ostream;
@@ -55,18 +57,23 @@ private:
   ASTContext &Context;
   DiagnosticsEngine &Diags;
   const ManglerKind Kind;
+  /// For aux target. If true, uses mangling number for aux target from
+  /// ASTContext.
+  bool IsAux = false;
 
   llvm::DenseMap<const BlockDecl*, unsigned> GlobalBlockIds;
   llvm::DenseMap<const BlockDecl*, unsigned> LocalBlockIds;
-  llvm::DenseMap<const TagDecl*, uint64_t> AnonStructIds;
+  llvm::DenseMap<const NamedDecl*, uint64_t> AnonStructIds;
+  llvm::DenseMap<const FunctionDecl*, unsigned> FuncAnonStructSize;
 
 public:
   ManglerKind getKind() const { return Kind; }
 
-  explicit MangleContext(ASTContext &Context,
-                         DiagnosticsEngine &Diags,
-                         ManglerKind Kind)
-      : Context(Context), Diags(Diags), Kind(Kind) {}
+  bool isAux() const { return IsAux; }
+
+  explicit MangleContext(ASTContext &Context, DiagnosticsEngine &Diags,
+                         ManglerKind Kind, bool IsAux = false)
+      : Context(Context), Diags(Diags), Kind(Kind), IsAux(IsAux) {}
 
   virtual ~MangleContext() { }
 
@@ -84,11 +91,30 @@ public:
     return Result.first->second;
   }
 
-  uint64_t getAnonymousStructId(const TagDecl *TD) {
-    std::pair<llvm::DenseMap<const TagDecl *, uint64_t>::iterator, bool>
-        Result = AnonStructIds.insert(std::make_pair(TD, AnonStructIds.size()));
+  uint64_t getAnonymousStructId(const NamedDecl *D,
+                                const FunctionDecl *FD = nullptr) {
+    auto FindResult = AnonStructIds.find(D);
+    if (FindResult != AnonStructIds.end())
+      return FindResult->second;
+
+    // If FunctionDecl is passed in, the anonymous structID will be per-function
+    // based.
+    unsigned Id = FD ? FuncAnonStructSize[FD]++ : AnonStructIds.size();
+    std::pair<llvm::DenseMap<const NamedDecl *, uint64_t>::iterator, bool>
+        Result = AnonStructIds.insert(std::make_pair(D, Id));
     return Result.first->second;
   }
+
+  uint64_t getAnonymousStructIdForDebugInfo(const NamedDecl *D) {
+    llvm::DenseMap<const NamedDecl *, uint64_t>::iterator Result =
+        AnonStructIds.find(D);
+    // The decl should already be inserted, but return 0 in case it is not.
+    if (Result == AnonStructIds.end())
+      return 0;
+    return Result->second;
+  }
+
+  virtual std::string getLambdaString(const CXXRecordDecl *Lambda) = 0;
 
   /// @name Mangler Entry Points
   /// @{
@@ -97,9 +123,15 @@ public:
   virtual bool shouldMangleCXXName(const NamedDecl *D) = 0;
   virtual bool shouldMangleStringLiteral(const StringLiteral *SL) = 0;
 
+  virtual bool isUniqueInternalLinkageDecl(const NamedDecl *ND) {
+    return false;
+  }
+
+  virtual void needsUniqueInternalLinkageNames() { }
+
   // FIXME: consider replacing raw_ostream & with something like SmallString &.
-  void mangleName(const NamedDecl *D, raw_ostream &);
-  virtual void mangleCXXName(const NamedDecl *D, raw_ostream &) = 0;
+  void mangleName(GlobalDecl GD, raw_ostream &);
+  virtual void mangleCXXName(GlobalDecl GD, raw_ostream &) = 0;
   virtual void mangleThunk(const CXXMethodDecl *MD,
                           const ThunkInfo &Thunk,
                           raw_ostream &) = 0;
@@ -111,11 +143,8 @@ public:
                                         raw_ostream &) = 0;
   virtual void mangleCXXRTTI(QualType T, raw_ostream &) = 0;
   virtual void mangleCXXRTTIName(QualType T, raw_ostream &) = 0;
-  virtual void mangleCXXCtor(const CXXConstructorDecl *D, CXXCtorType Type,
-                             raw_ostream &) = 0;
-  virtual void mangleCXXDtor(const CXXDestructorDecl *D, CXXDtorType Type,
-                             raw_ostream &) = 0;
   virtual void mangleStringLiteral(const StringLiteral *SL, raw_ostream &) = 0;
+  virtual void mangleMSGuidDecl(const MSGuidDecl *GD, raw_ostream&);
 
   void mangleGlobalBlock(const BlockDecl *BD,
                          const NamedDecl *ID,
@@ -127,8 +156,11 @@ public:
   void mangleBlock(const DeclContext *DC, const BlockDecl *BD,
                    raw_ostream &Out);
 
-  void mangleObjCMethodNameWithoutSize(const ObjCMethodDecl *MD, raw_ostream &);
-  void mangleObjCMethodName(const ObjCMethodDecl *MD, raw_ostream &);
+  void mangleObjCMethodName(const ObjCMethodDecl *MD, raw_ostream &OS,
+                            bool includePrefixByte = true,
+                            bool includeCategoryNamespace = true);
+  void mangleObjCMethodNameAsSourceName(const ObjCMethodDecl *MD,
+                                        raw_ostream &);
 
   virtual void mangleStaticGuardVariable(const VarDecl *D, raw_ostream &) = 0;
 
@@ -137,10 +169,10 @@ public:
   virtual void mangleDynamicAtExitDestructor(const VarDecl *D,
                                              raw_ostream &) = 0;
 
-  virtual void mangleSEHFilterExpression(const NamedDecl *EnclosingDecl,
+  virtual void mangleSEHFilterExpression(GlobalDecl EnclosingDecl,
                                          raw_ostream &Out) = 0;
 
-  virtual void mangleSEHFinallyBlock(const NamedDecl *EnclosingDecl,
+  virtual void mangleSEHFinallyBlock(GlobalDecl EnclosingDecl,
                                      raw_ostream &Out) = 0;
 
   virtual void mangleTemplateArgument(const TemplateDecl *TD,
@@ -159,8 +191,11 @@ public:
 
 class ItaniumMangleContext : public MangleContext {
 public:
-  explicit ItaniumMangleContext(ASTContext &C, DiagnosticsEngine &D)
-      : MangleContext(C, D, MK_Itanium) {}
+  using DiscriminatorOverrideTy =
+      std::optional<unsigned> (*)(ASTContext &, const NamedDecl *);
+  explicit ItaniumMangleContext(ASTContext &C, DiagnosticsEngine &D,
+                                bool IsAux = false)
+      : MangleContext(C, D, MK_Itanium, IsAux) {}
 
   virtual void mangleCXXVTable(const CXXRecordDecl *RD, raw_ostream &) = 0;
   virtual void mangleCXXVTT(const CXXRecordDecl *RD, raw_ostream &) = 0;
@@ -177,18 +212,32 @@ public:
   virtual void mangleCXXDtorComdat(const CXXDestructorDecl *D,
                                    raw_ostream &) = 0;
 
+  virtual void mangleLambdaSig(const CXXRecordDecl *Lambda, raw_ostream &) = 0;
+
+  virtual void mangleDynamicStermFinalizer(const VarDecl *D, raw_ostream &) = 0;
+
+  virtual void mangleModuleInitializer(const Module *Module, raw_ostream &) = 0;
+
+  // This has to live here, otherwise the CXXNameMangler won't have access to
+  // it.
+  virtual DiscriminatorOverrideTy getDiscriminatorOverride() const = 0;
   static bool classof(const MangleContext *C) {
     return C->getKind() == MK_Itanium;
   }
 
+  static ItaniumMangleContext *
+  create(ASTContext &Context, DiagnosticsEngine &Diags, bool IsAux = false);
   static ItaniumMangleContext *create(ASTContext &Context,
-                                      DiagnosticsEngine &Diags);
+                                      DiagnosticsEngine &Diags,
+                                      DiscriminatorOverrideTy Discriminator,
+                                      bool IsAux = false);
 };
 
 class MicrosoftMangleContext : public MangleContext {
 public:
-  explicit MicrosoftMangleContext(ASTContext &C, DiagnosticsEngine &D)
-      : MangleContext(C, D, MK_Microsoft) {}
+  explicit MicrosoftMangleContext(ASTContext &C, DiagnosticsEngine &D,
+                                  bool IsAux = false)
+      : MangleContext(C, D, MK_Microsoft, IsAux) {}
 
   /// Mangle vftable symbols.  Only a subset of the bases along the path
   /// to the vftable are included in the name.  It's up to the caller to pick
@@ -247,8 +296,29 @@ public:
     return C->getKind() == MK_Microsoft;
   }
 
-  static MicrosoftMangleContext *create(ASTContext &Context,
-                                        DiagnosticsEngine &Diags);
+  static MicrosoftMangleContext *
+  create(ASTContext &Context, DiagnosticsEngine &Diags, bool IsAux = false);
+};
+
+class ASTNameGenerator {
+public:
+  explicit ASTNameGenerator(ASTContext &Ctx);
+  ~ASTNameGenerator();
+
+  /// Writes name for \p D to \p OS.
+  /// \returns true on failure, false on success.
+  bool writeName(const Decl *D, raw_ostream &OS);
+
+  /// \returns name for \p D
+  std::string getName(const Decl *D);
+
+  /// \returns all applicable mangled names.
+  /// For example C++ constructors/destructors can have multiple.
+  std::vector<std::string> getAllManglings(const Decl *D);
+
+private:
+  class Implementation;
+  std::unique_ptr<Implementation> Impl;
 };
 }
 

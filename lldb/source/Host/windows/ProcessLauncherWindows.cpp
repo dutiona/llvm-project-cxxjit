@@ -1,4 +1,4 @@
-//===-- ProcessLauncherWindows.cpp ------------------------------*- C++ -*-===//
+//===-- ProcessLauncherWindows.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -20,37 +20,43 @@
 using namespace lldb;
 using namespace lldb_private;
 
-namespace {
-void CreateEnvironmentBuffer(const Environment &env,
-                             std::vector<char> &buffer) {
-  if (env.size() == 0)
-    return;
-
-  // Environment buffer is a null terminated list of null terminated strings
+static void CreateEnvironmentBuffer(const Environment &env,
+                                    std::vector<char> &buffer) {
+  // The buffer is a list of null-terminated UTF-16 strings, followed by an
+  // extra L'\0' (two bytes of 0).  An empty environment must have one
+  // empty string, followed by an extra L'\0'.
   for (const auto &KV : env) {
     std::wstring warg;
     if (llvm::ConvertUTF8toWide(Environment::compose(KV), warg)) {
-      buffer.insert(buffer.end(), (char *)warg.c_str(),
-                    (char *)(warg.c_str() + warg.size() + 1));
+      buffer.insert(
+          buffer.end(), reinterpret_cast<const char *>(warg.c_str()),
+          reinterpret_cast<const char *>(warg.c_str() + warg.size() + 1));
     }
   }
   // One null wchar_t (to end the block) is two null bytes
   buffer.push_back(0);
   buffer.push_back(0);
+  // Insert extra two bytes, just in case the environment was empty.
+  buffer.push_back(0);
+  buffer.push_back(0);
 }
 
-bool GetFlattenedWindowsCommandString(Args args, std::string &command) {
+static bool GetFlattenedWindowsCommandString(Args args, std::wstring &command) {
   if (args.empty())
     return false;
 
   std::vector<llvm::StringRef> args_ref;
   for (auto &entry : args.entries())
-    args_ref.push_back(entry.ref);
+    args_ref.push_back(entry.ref());
 
-  command = llvm::sys::flattenWindowsCommandLine(args_ref);
+  llvm::ErrorOr<std::wstring> result =
+      llvm::sys::flattenWindowsCommandLine(args_ref);
+  if (result.getError())
+    return false;
+
+  command = *result;
   return true;
 }
-} // namespace
 
 HostProcess
 ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
@@ -58,7 +64,6 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
   error.Clear();
 
   std::string executable;
-  std::string commandLine;
   std::vector<char> environment;
   STARTUPINFO startupinfo = {};
   PROCESS_INFORMATION pi = {};
@@ -79,7 +84,7 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
   const char *hide_console_var =
       getenv("LLDB_LAUNCH_INFERIORS_WITHOUT_CONSOLE");
   if (hide_console_var &&
-      llvm::StringRef(hide_console_var).equals_lower("true")) {
+      llvm::StringRef(hide_console_var).equals_insensitive("true")) {
     startupinfo.dwFlags |= STARTF_USESHOWWINDOW;
     startupinfo.wShowWindow = SW_HIDE;
   }
@@ -93,28 +98,31 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
 
   LPVOID env_block = nullptr;
   ::CreateEnvironmentBuffer(launch_info.GetEnvironment(), environment);
-  if (!environment.empty())
-    env_block = environment.data();
+  env_block = environment.data();
 
   executable = launch_info.GetExecutableFile().GetPath();
-  GetFlattenedWindowsCommandString(launch_info.GetArguments(), commandLine);
+  std::wstring wcommandLine;
+  GetFlattenedWindowsCommandString(launch_info.GetArguments(), wcommandLine);
 
-  std::wstring wexecutable, wcommandLine, wworkingDirectory;
+  std::wstring wexecutable, wworkingDirectory;
   llvm::ConvertUTF8toWide(executable, wexecutable);
-  llvm::ConvertUTF8toWide(commandLine, wcommandLine);
-  llvm::ConvertUTF8toWide(launch_info.GetWorkingDirectory().GetCString(),
+  llvm::ConvertUTF8toWide(launch_info.GetWorkingDirectory().GetPath(),
                           wworkingDirectory);
+  // If the command line is empty, it's best to pass a null pointer to tell
+  // CreateProcessW to use the executable name as the command line.  If the
+  // command line is not empty, its contents may be modified by CreateProcessW.
+  WCHAR *pwcommandLine = wcommandLine.empty() ? nullptr : &wcommandLine[0];
 
-  wcommandLine.resize(PATH_MAX); // Needs to be over-allocated because
-                                 // CreateProcessW can modify it
   BOOL result = ::CreateProcessW(
-      wexecutable.c_str(), &wcommandLine[0], NULL, NULL, TRUE, flags, env_block,
+      wexecutable.c_str(), pwcommandLine, NULL, NULL, TRUE, flags, env_block,
       wworkingDirectory.size() == 0 ? NULL : wworkingDirectory.c_str(),
       &startupinfo, &pi);
 
   if (!result) {
     // Call GetLastError before we make any other system calls.
     error.SetError(::GetLastError(), eErrorTypeWin32);
+    // Note that error 50 ("The request is not supported") will occur if you
+    // try debug a 64-bit inferior from a 32-bit LLDB.
   }
 
   if (result) {

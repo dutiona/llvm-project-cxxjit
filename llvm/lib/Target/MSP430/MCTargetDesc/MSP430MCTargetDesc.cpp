@@ -11,16 +11,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "MSP430MCTargetDesc.h"
-#include "InstPrinter/MSP430InstPrinter.h"
+#include "MSP430InstPrinter.h"
 #include "MSP430MCAsmInfo.h"
+#include "TargetInfo/MSP430TargetInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
 
 using namespace llvm;
 
 #define GET_INSTRINFO_MC_DESC
+#define ENABLE_INSTR_PREDICATE_VERIFIER
 #include "MSP430GenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_MC_DESC
@@ -43,7 +45,7 @@ static MCRegisterInfo *createMSP430MCRegisterInfo(const Triple &TT) {
 
 static MCSubtargetInfo *
 createMSP430MCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
-  return createMSP430MCSubtargetInfoImpl(TT, CPU, FS);
+  return createMSP430MCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
 }
 
 static MCInstPrinter *createMSP430MCInstPrinter(const Triple &T,
@@ -56,7 +58,7 @@ static MCInstPrinter *createMSP430MCInstPrinter(const Triple &T,
   return nullptr;
 }
 
-extern "C" void LLVMInitializeMSP430TargetMC() {
+extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMSP430TargetMC() {
   Target &T = getTheMSP430Target();
 
   RegisterMCAsmInfo<MSP430MCAsmInfo> X(T);

@@ -6,14 +6,14 @@
 ; RUN: llvm-ar cru %t.lib %T/lto-chkstk-chkstk.obj
 ; RUN: lld-link /out:%t.exe /entry:main /subsystem:console %t.obj %T/lto-chkstk-foo.obj %t.lib
 
-target datalayout = "e-m:w-i64:64-f80:128-n8:16:32:64-S128"
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-windows-msvc"
 
 define void @main() {
 entry:
   %array4096 = alloca [4096 x i8]
-  call void @foo([4096 x i8]* %array4096)
+  call void @foo(ptr %array4096)
   ret void
 }
 
-declare void @foo([4096 x i8]*)
+declare void @foo(ptr)

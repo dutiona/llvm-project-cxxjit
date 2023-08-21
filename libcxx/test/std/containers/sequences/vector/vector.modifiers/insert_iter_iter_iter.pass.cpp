@@ -21,15 +21,20 @@
 #include "min_allocator.h"
 #include "asan_testing.h"
 
-int main(int, char**)
+namespace adl {
+struct S {};
+void make_move_iterator(S*) {}
+}
+
+TEST_CONSTEXPR_CXX20 bool tests()
 {
     {
         typedef std::vector<int> V;
         V v(100);
         int a[] = {1, 2, 3, 4, 5};
         const int N = sizeof(a)/sizeof(a[0]);
-        V::iterator i = v.insert(v.cbegin() + 10, input_iterator<const int*>(a),
-                                 input_iterator<const int*>(a+N));
+        V::iterator i = v.insert(v.cbegin() + 10, cpp17_input_iterator<const int*>(a),
+                                 cpp17_input_iterator<const int*>(a+N));
         assert(v.size() == 100 + N);
         assert(is_contiguous_container_asan_correct(v));
         assert(i == v.begin() + 10);
@@ -102,8 +107,8 @@ int main(int, char**)
         V v(100);
         int a[] = {1, 2, 3, 4, 5};
         const int N = sizeof(a)/sizeof(a[0]);
-        V::iterator i = v.insert(v.cbegin() + 10, input_iterator<const int*>(a),
-                                 input_iterator<const int*>(a+N));
+        V::iterator i = v.insert(v.cbegin() + 10, cpp17_input_iterator<const int*>(a),
+                                 cpp17_input_iterator<const int*>(a+N));
         assert(v.size() == 100 + N);
         assert(is_contiguous_container_asan_correct(v));
         assert(i == v.begin() + 10);
@@ -139,8 +144,8 @@ int main(int, char**)
         V v(100);
         int a[] = {1, 2, 3, 4, 5};
         const int N = sizeof(a)/sizeof(a[0]);
-        V::iterator i = v.insert(v.cbegin() + 10, input_iterator<const int*>(a),
-                                 input_iterator<const int*>(a+N));
+        V::iterator i = v.insert(v.cbegin() + 10, cpp17_input_iterator<const int*>(a),
+                                 cpp17_input_iterator<const int*>(a+N));
         assert(v.size() == 100 + N);
         assert(is_contiguous_container_asan_correct(v));
         assert(i == v.begin() + 10);
@@ -172,5 +177,19 @@ int main(int, char**)
     }
 #endif
 
-  return 0;
+    {
+        std::vector<adl::S> s;
+        s.insert(s.end(), cpp17_input_iterator<adl::S*>(nullptr), cpp17_input_iterator<adl::S*>(nullptr));
+    }
+
+    return true;
+}
+
+int main(int, char**)
+{
+    tests();
+#if TEST_STD_VER > 17
+    static_assert(tests());
+#endif
+    return 0;
 }

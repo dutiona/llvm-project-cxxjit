@@ -1,36 +1,36 @@
-; RUN: llc -filetype=obj %s -o - | obj2yaml | FileCheck %s
+; RUN: llc -mcpu=mvp -filetype=obj %s -o - | obj2yaml | FileCheck %s
 
 target triple = "wasm32-unknown-unknown"
 
-@g0 = global i8* null, align 4
+@g0 = global ptr null, align 4
 @g1 = global i32 0, align 4
 
 %union.u1 = type {}
 @foo = global %union.u1 zeroinitializer, align 1
 @bar = global %union.u1 zeroinitializer, align 1
 
-; CHECK:        - Type:            DATA
+; CHECK:        - Type:            DATA{{$}}
 ; CHECK-NEXT:     Segments:
 ; CHECK-NEXT:       - SectionOffset:   6
-; CHECK-NEXT:         MemoryIndex:     0
+; CHECK-NEXT:         InitFlags:       0
 ; CHECK-NEXT:         Offset:
 ; CHECK-NEXT:           Opcode:          I32_CONST
 ; CHECK-NEXT:           Value:           0
 ; CHECK-NEXT:         Content:         '00000000'
 ; CHECK-NEXT:       - SectionOffset:   15
-; CHECK-NEXT:         MemoryIndex:     0
+; CHECK-NEXT:         InitFlags:       0
 ; CHECK-NEXT:         Offset:
 ; CHECK-NEXT:           Opcode:          I32_CONST
 ; CHECK-NEXT:           Value:           4
 ; CHECK-NEXT:         Content:         '00000000'
 ; CHECK-NEXT:       - SectionOffset:   24
-; CHECK-NEXT:         MemoryIndex:     0
+; CHECK-NEXT:         InitFlags:       0
 ; CHECK-NEXT:         Offset:
 ; CHECK-NEXT:           Opcode:          I32_CONST
 ; CHECK-NEXT:           Value:           8
 ; CHECK-NEXT:         Content:         ''
 ; CHECK-NEXT:       - SectionOffset:   29
-; CHECK-NEXT:         MemoryIndex:     0
+; CHECK-NEXT:         InitFlags:       0
 ; CHECK-NEXT:         Offset:
 ; CHECK-NEXT:           Opcode:          I32_CONST
 ; CHECK-NEXT:           Value:           8
@@ -61,7 +61,7 @@ target triple = "wasm32-unknown-unknown"
 ; CHECK-NEXT:         Flags:           [  ]
 ; CHECK-NEXT:         Segment:         3
 ; CHECK-NEXT:         Size:            0
-; CHECK-NEXT:     SegmentInfo:    
+; CHECK-NEXT:     SegmentInfo:
 ; CHECK-NEXT:       - Index:           0
 ; CHECK-NEXT:         Name:            .bss.g0
 ; CHECK-NEXT:         Alignment:       2

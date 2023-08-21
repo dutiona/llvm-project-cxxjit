@@ -11,11 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/StmtObjC.h"
+#include "clang/AST/Type.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include <optional>
 #include <utility>
 
 using namespace clang;
@@ -54,10 +57,13 @@ public:
   void checkBranchCondition(const Stmt *Condition, CheckerContext &Ctx) const;
 };
 
-}
+} // namespace
 
 void UndefBranchChecker::checkBranchCondition(const Stmt *Condition,
                                               CheckerContext &Ctx) const {
+  // ObjCForCollection is a loop, but has no actual condition.
+  if (isa<ObjCForCollectionStmt>(Condition))
+    return;
   SVal X = Ctx.getSVal(Condition);
   if (X.isUndef()) {
     // Generate a sink node, which implicitly marks both outgoing branches as
@@ -88,7 +94,7 @@ void UndefBranchChecker::checkBranchCondition(const Stmt *Condition,
       ProgramPoint P = PrevN->getLocation();
       ProgramStateRef St = N->getState();
 
-      if (Optional<PostStmt> PS = P.getAs<PostStmt>())
+      if (std::optional<PostStmt> PS = P.getAs<PostStmt>())
         if (PS->getStmt() == Ex)
           St = PrevN->getState();
 
@@ -96,7 +102,8 @@ void UndefBranchChecker::checkBranchCondition(const Stmt *Condition,
       Ex = FindIt.FindExpr(Ex);
 
       // Emit the bug report.
-      auto R = llvm::make_unique<BugReport>(*BT, BT->getDescription(), N);
+      auto R = std::make_unique<PathSensitiveBugReport>(
+          *BT, BT->getDescription(), N);
       bugreporter::trackExpressionValue(N, Ex, *R);
       R->addRange(Ex->getSourceRange());
 
@@ -109,6 +116,6 @@ void ento::registerUndefBranchChecker(CheckerManager &mgr) {
   mgr.registerChecker<UndefBranchChecker>();
 }
 
-bool ento::shouldRegisterUndefBranchChecker(const LangOptions &LO) {
+bool ento::shouldRegisterUndefBranchChecker(const CheckerManager &mgr) {
   return true;
 }

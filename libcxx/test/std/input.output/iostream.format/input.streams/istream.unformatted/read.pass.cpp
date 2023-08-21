@@ -6,12 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+// XFAIL: use_system_cxx_lib && target={{.+}}-apple-macosx10.{{9|10|11|12|13|14}}
+
 // <istream>
 
 // basic_istream<charT,traits>& read(char_type* s, streamsize n);
 
 #include <istream>
 #include <cassert>
+#include "test_macros.h"
 
 template <class CharT>
 struct testbuf
@@ -58,6 +61,7 @@ int main(int, char**)
         assert( is.fail());
         assert(is.gcount() == 0);
     }
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
     {
         testbuf<wchar_t> sb(L" 123456789");
         std::wistream is(&sb);
@@ -77,6 +81,43 @@ int main(int, char**)
         assert( is.fail());
         assert(is.gcount() == 0);
     }
+#endif
+#ifndef TEST_HAS_NO_EXCEPTIONS
+    {
+        testbuf<char> sb;
+        std::basic_istream<char> is(&sb);
+        is.exceptions(std::ios_base::eofbit);
+        char s[10];
+        bool threw = false;
+        try {
+            is.read(s, 5);
+        } catch (std::ios_base::failure&) {
+            threw = true;
+        }
+        assert(threw);
+        assert(!is.bad());
+        assert( is.eof());
+        assert( is.fail());
+    }
+#ifndef TEST_HAS_NO_WIDE_CHARACTERS
+    {
+        testbuf<wchar_t> sb;
+        std::basic_istream<wchar_t> is(&sb);
+        is.exceptions(std::ios_base::eofbit);
+        wchar_t s[10];
+        bool threw = false;
+        try {
+            is.read(s, 5);
+        } catch (std::ios_base::failure&) {
+            threw = true;
+        }
+        assert(threw);
+        assert(!is.bad());
+        assert( is.eof());
+        assert( is.fail());
+    }
+#endif
+#endif // TEST_HAS_NO_EXCEPTIONS
 
-  return 0;
+    return 0;
 }

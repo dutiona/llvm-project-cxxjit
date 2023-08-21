@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SBBreakpointOptionCommons_h_
-#define LLDB_SBBreakpointOptionCommons_h_
+#ifndef LLDB_SOURCE_API_SBBREAKPOINTOPTIONCOMMON_H
+#define LLDB_SOURCE_API_SBBREAKPOINTOPTIONCOMMON_H
 
 #include "lldb/API/SBDefines.h"
 #include "lldb/Utility/Baton.h"
@@ -24,7 +24,7 @@ public:
   SBBreakpointCallbackBaton(SBBreakpointHitCallback callback,
                             void *baton);
 
-  ~SBBreakpointCallbackBaton();
+  ~SBBreakpointCallbackBaton() override;
 
   static bool PrivateBreakpointHitCallback(void *baton,
                                            lldb_private::StoppointCallbackContext *ctx,
@@ -33,4 +33,4 @@ public:
 };
 
 } // namespace lldb
-#endif // LLDB_SBBreakpointOptionCommons_h_
+#endif // LLDB_SOURCE_API_SBBREAKPOINTOPTIONCOMMON_H

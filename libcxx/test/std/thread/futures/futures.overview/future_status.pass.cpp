@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <future>
 
@@ -18,6 +18,8 @@
 // };
 
 #include <future>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

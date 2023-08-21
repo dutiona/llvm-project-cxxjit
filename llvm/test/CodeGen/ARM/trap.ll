@@ -6,24 +6,24 @@
 ; RUN: llc < %s -mtriple=thumbv7 | FileCheck %s -check-prefix=THUMB
 
 ; RUN: llc -mtriple=armv7 -mattr=+nacl-trap -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple armv7 -mattr=+nacl-trap - \
+; RUN:  | llvm-objdump -d --triple=armv7 --mattr=+nacl-trap - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-NACL
 ; RUN: llc -verify-machineinstrs -fast-isel -mtriple=armv7 -mattr=+nacl-trap -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple armv7 -mattr=+nacl-trap - \
+; RUN:  | llvm-objdump -d --triple=armv7 --mattr=+nacl-trap - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-NACL
 
 ; RUN: llc -mtriple=armv7 -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple armv7 - \
+; RUN:  | llvm-objdump -d --triple=armv7 - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-ARM
 ; RUN: llc -verify-machineinstrs -fast-isel -mtriple=armv7 -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple armv7 - \
+; RUN:  | llvm-objdump -d --triple=armv7 - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-ARM
 
 ; RUN: llc -mtriple=thumbv7 -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple thumbv7 - \
+; RUN:  | llvm-objdump -d --triple=thumbv7 - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-THUMB
 ; RUN: llc -verify-machineinstrs -fast-isel -mtriple=thumbv7 -filetype=obj %s -o - \
-; RUN:  | llvm-objdump -disassemble -triple thumbv7 - \
+; RUN:  | llvm-objdump -d --triple=thumbv7 - \
 ; RUN:  | FileCheck %s -check-prefix=ENCODING-THUMB
 
 ; rdar://7961298
@@ -46,11 +46,11 @@ entry:
 ; THUMB-LABEL: t:
 ; THUMB: .inst.n 0xdefe
 
-; ENCODING-NACL: f0 de fe e7 trap
+; ENCODING-NACL: e7fedef0    trap
 
-; ENCODING-ARM: fe de ff e7 trap
+; ENCODING-ARM: e7ffdefe    trap
 
-; ENCODING-THUMB: fe de trap
+; ENCODING-THUMB: defe  trap
 
   call void @llvm.trap()
   unreachable
@@ -73,11 +73,11 @@ entry:
 ; THUMB-LABEL: t2:
 ; THUMB: bkpt #0
 
-; ENCODING-NACL: 70 00 20 e1 bkpt #0
+; ENCODING-NACL: e1200070    bkpt #0
 
-; ENCODING-ARM: 70 00 20 e1 bkpt #0
+; ENCODING-ARM: e1200070    bkpt #0
 
-; ENCODING-THUMB: 00 be bkpt #0
+; ENCODING-THUMB: be00  bkpt #0
 
   call void @llvm.debugtrap()
   unreachable

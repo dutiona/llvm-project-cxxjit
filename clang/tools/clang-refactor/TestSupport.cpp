@@ -14,6 +14,7 @@
 
 #include "TestSupport.h"
 #include "clang/Basic/DiagnosticError.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
 #include "llvm/ADT/STLExtras.h"
@@ -23,6 +24,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using namespace llvm;
 
@@ -41,8 +43,8 @@ void TestSelectionRangesInFile::dump(raw_ostream &OS) const {
 bool TestSelectionRangesInFile::foreachRange(
     const SourceManager &SM,
     llvm::function_ref<void(SourceRange)> Callback) const {
-  const FileEntry *FE = SM.getFileManager().getFile(Filename);
-  FileID FID = FE ? SM.translateFile(FE) : FileID();
+  auto FE = SM.getFileManager().getFile(Filename);
+  FileID FID = FE ? SM.translateFile(*FE) : FileID();
   if (!FE || FID.isInvalid()) {
     llvm::errs() << "error: -selection=test:" << Filename
                  << " : given file is not in the target TU";
@@ -74,7 +76,7 @@ bool areChangesSame(const tooling::AtomicChanges &LHS,
                     const tooling::AtomicChanges &RHS) {
   if (LHS.size() != RHS.size())
     return false;
-  for (const auto &I : llvm::zip(LHS, RHS)) {
+  for (auto I : llvm::zip(LHS, RHS)) {
     if (!(std::get<0>(I) == std::get<1>(I)))
       return false;
   }
@@ -176,8 +178,8 @@ bool TestRefactoringResultConsumer::handleAllResults() {
   bool Failed = false;
   for (auto &Group : llvm::enumerate(Results)) {
     // All ranges in the group must produce the same result.
-    Optional<tooling::AtomicChanges> CanonicalResult;
-    Optional<std::string> CanonicalErrorMessage;
+    std::optional<tooling::AtomicChanges> CanonicalResult;
+    std::optional<std::string> CanonicalErrorMessage;
     for (auto &I : llvm::enumerate(Group.value())) {
       Expected<tooling::AtomicChanges> &Result = I.value();
       std::string ErrorMessage;
@@ -190,7 +192,7 @@ bool TestRefactoringResultConsumer::handleAllResults() {
               const PartialDiagnosticAt &Diag = Err.getDiagnostic();
               llvm::SmallString<100> DiagText;
               Diag.second.EmitToString(getDiags(), DiagText);
-              ErrorMessage = DiagText.str().str();
+              ErrorMessage = std::string(DiagText);
             });
       }
       if (!CanonicalResult && !CanonicalErrorMessage) {
@@ -256,7 +258,7 @@ bool TestRefactoringResultConsumer::handleAllResults() {
 
 std::unique_ptr<ClangRefactorToolConsumerInterface>
 TestSelectionRangesInFile::createConsumer() const {
-  return llvm::make_unique<TestRefactoringResultConsumer>(*this);
+  return std::make_unique<TestRefactoringResultConsumer>(*this);
 }
 
 /// Adds the \p ColumnOffset to file offset \p Offset, without going past a
@@ -290,22 +292,23 @@ static unsigned addEndLineOffsetAndEndColumn(StringRef Source, unsigned Offset,
       Source, LineStart == StringRef::npos ? 0 : LineStart + 1, Column - 1);
 }
 
-Optional<TestSelectionRangesInFile>
+std::optional<TestSelectionRangesInFile>
 findTestSelectionRanges(StringRef Filename) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> ErrOrFile =
       MemoryBuffer::getFile(Filename);
   if (!ErrOrFile) {
     llvm::errs() << "error: -selection=test:" << Filename
                  << " : could not open the given file";
-    return None;
+    return std::nullopt;
   }
   StringRef Source = ErrOrFile.get()->getBuffer();
 
   // See the doc comment for this function for the explanation of this
   // syntax.
-  static Regex RangeRegex("range[[:blank:]]*([[:alpha:]_]*)?[[:blank:]]*=[[:"
-                          "blank:]]*(\\+[[:digit:]]+)?[[:blank:]]*(->[[:blank:]"
-                          "]*[\\+\\:[:digit:]]+)?");
+  static const Regex RangeRegex(
+      "range[[:blank:]]*([[:alpha:]_]*)?[[:blank:]]*=[[:"
+      "blank:]]*(\\+[[:digit:]]+)?[[:blank:]]*(->[[:blank:]"
+      "]*[\\+\\:[:digit:]]+)?");
 
   std::map<std::string, SmallVector<TestSelectionRange, 8>> GroupedRanges;
 
@@ -326,8 +329,8 @@ findTestSelectionRanges(StringRef Filename) {
     // Try to detect mistyped 'range:' comments to ensure tests don't miss
     // anything.
     auto DetectMistypedCommand = [&]() -> bool {
-      if (Comment.contains_lower("range") && Comment.contains("=") &&
-          !Comment.contains_lower("run") && !Comment.contains("CHECK")) {
+      if (Comment.contains_insensitive("range") && Comment.contains("=") &&
+          !Comment.contains_insensitive("run") && !Comment.contains("CHECK")) {
         llvm::errs() << "error: suspicious comment '" << Comment
                      << "' that "
                         "resembles the range command found\n";
@@ -338,7 +341,7 @@ findTestSelectionRanges(StringRef Filename) {
     // Allow CHECK: comments to contain range= commands.
     if (!RangeRegex.match(Comment, &Matches) || Comment.contains("CHECK")) {
       if (DetectMistypedCommand())
-        return None;
+        return std::nullopt;
       continue;
     }
     unsigned Offset = Tok.getEndLoc().getRawEncoding();
@@ -352,12 +355,12 @@ findTestSelectionRanges(StringRef Filename) {
     unsigned EndOffset;
 
     if (!Matches[3].empty()) {
-      static Regex EndLocRegex(
+      static const Regex EndLocRegex(
           "->[[:blank:]]*(\\+[[:digit:]]+):([[:digit:]]+)");
       SmallVector<StringRef, 4> EndLocMatches;
       if (!EndLocRegex.match(Matches[3], &EndLocMatches)) {
         if (DetectMistypedCommand())
-          return None;
+          return std::nullopt;
         continue;
       }
       unsigned EndLineOffset = 0, EndColumn = 0;
@@ -378,7 +381,7 @@ findTestSelectionRanges(StringRef Filename) {
   if (GroupedRanges.empty()) {
     llvm::errs() << "error: -selection=test:" << Filename
                  << ": no 'range' commands";
-    return None;
+    return std::nullopt;
   }
 
   TestSelectionRangesInFile TestRanges = {Filename.str(), {}};

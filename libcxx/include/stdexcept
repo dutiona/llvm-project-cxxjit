@@ -1,5 +1,5 @@
 // -*- C++ -*-
-//===--------------------------- stdexcept --------------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -41,19 +41,19 @@ public:
 
 */
 
+#include <__assert> // all public C++ headers provide the assertion handler
 #include <__config>
+#include <cstdlib>
 #include <exception>
 #include <iosfwd>  // for string forward decl
-#ifdef _LIBCPP_NO_EXCEPTIONS
-#include <cstdlib>
-#endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
-#pragma GCC system_header
+#  pragma GCC system_header
 #endif
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
+#ifndef _LIBCPP_ABI_VCRUNTIME
 class _LIBCPP_HIDDEN __libcpp_refstring
 {
     const char* __imp_;
@@ -67,6 +67,7 @@ public:
 
     const char* c_str() const _NOEXCEPT {return __imp_;}
 };
+#endif // !_LIBCPP_ABI_VCRUNTIME
 
 _LIBCPP_END_NAMESPACE_STD
 
@@ -76,6 +77,7 @@ namespace std  // purposefully not using versioning namespace
 class _LIBCPP_EXCEPTION_ABI logic_error
     : public exception
 {
+#ifndef _LIBCPP_ABI_VCRUNTIME
 private:
     _VSTD::__libcpp_refstring __imp_;
 public:
@@ -85,14 +87,20 @@ public:
     logic_error(const logic_error&) _NOEXCEPT;
     logic_error& operator=(const logic_error&) _NOEXCEPT;
 
-    virtual ~logic_error() _NOEXCEPT;
+    ~logic_error() _NOEXCEPT override;
 
-    virtual const char* what() const _NOEXCEPT;
+    const char* what() const _NOEXCEPT override;
+#else
+public:
+    explicit logic_error(const _VSTD::string&); // Symbol uses versioned std::string
+    _LIBCPP_INLINE_VISIBILITY explicit logic_error(const char* __s) : exception(__s) {}
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI runtime_error
     : public exception
 {
+#ifndef _LIBCPP_ABI_VCRUNTIME
 private:
     _VSTD::__libcpp_refstring __imp_;
 public:
@@ -102,9 +110,14 @@ public:
     runtime_error(const runtime_error&) _NOEXCEPT;
     runtime_error& operator=(const runtime_error&) _NOEXCEPT;
 
-    virtual ~runtime_error() _NOEXCEPT;
+    ~runtime_error() _NOEXCEPT override;
 
-    virtual const char* what() const _NOEXCEPT;
+    const char* what() const _NOEXCEPT override;
+#else
+public:
+   explicit runtime_error(const _VSTD::string&); // Symbol uses versioned std::string
+   _LIBCPP_INLINE_VISIBILITY explicit runtime_error(const char* __s) : exception(__s) {}
+#endif // _LIBCPP_ABI_VCRUNTIME
 };
 
 class _LIBCPP_EXCEPTION_ABI domain_error
@@ -114,7 +127,10 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit domain_error(const string& __s) : logic_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit domain_error(const char* __s)   : logic_error(__s) {}
 
-    virtual ~domain_error() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    domain_error(const domain_error&) _NOEXCEPT = default;
+    ~domain_error() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI invalid_argument
@@ -124,7 +140,10 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit invalid_argument(const string& __s) : logic_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit invalid_argument(const char* __s)   : logic_error(__s) {}
 
-    virtual ~invalid_argument() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    invalid_argument(const invalid_argument&) _NOEXCEPT = default;
+    ~invalid_argument() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI length_error
@@ -133,8 +152,10 @@ class _LIBCPP_EXCEPTION_ABI length_error
 public:
     _LIBCPP_INLINE_VISIBILITY explicit length_error(const string& __s) : logic_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit length_error(const char* __s)   : logic_error(__s) {}
-
-    virtual ~length_error() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    length_error(const length_error&) _NOEXCEPT = default;
+    ~length_error() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI out_of_range
@@ -144,7 +165,10 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit out_of_range(const string& __s) : logic_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit out_of_range(const char* __s)   : logic_error(__s) {}
 
-    virtual ~out_of_range() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    out_of_range(const out_of_range&) _NOEXCEPT = default;
+    ~out_of_range() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI range_error
@@ -154,7 +178,10 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit range_error(const string& __s) : runtime_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit range_error(const char* __s)   : runtime_error(__s) {}
 
-    virtual ~range_error() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    range_error(const range_error&) _NOEXCEPT = default;
+    ~range_error() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI overflow_error
@@ -164,7 +191,10 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit overflow_error(const string& __s) : runtime_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit overflow_error(const char* __s)   : runtime_error(__s) {}
 
-    virtual ~overflow_error() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    overflow_error(const overflow_error&) _NOEXCEPT = default;
+    ~overflow_error() _NOEXCEPT override;
+#endif
 };
 
 class _LIBCPP_EXCEPTION_ABI underflow_error
@@ -174,10 +204,13 @@ public:
     _LIBCPP_INLINE_VISIBILITY explicit underflow_error(const string& __s) : runtime_error(__s) {}
     _LIBCPP_INLINE_VISIBILITY explicit underflow_error(const char* __s)   : runtime_error(__s) {}
 
-    virtual ~underflow_error() _NOEXCEPT;
+#ifndef _LIBCPP_ABI_VCRUNTIME
+    underflow_error(const underflow_error&) _NOEXCEPT = default;
+    ~underflow_error() _NOEXCEPT override;
+#endif
 };
 
-}  // std
+} // namespace std
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
@@ -274,4 +307,4 @@ void __throw_underflow_error(const char*__msg)
 
 _LIBCPP_END_NAMESPACE_STD
 
-#endif  // _LIBCPP_STDEXCEPT
+#endif // _LIBCPP_STDEXCEPT

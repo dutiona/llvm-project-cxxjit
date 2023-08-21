@@ -7,8 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 // <functional>
-// REQUIRES: c++98 || c++03 || c++11 || c++14
+// REQUIRES: c++03 || c++11 || c++14
 // unary_function was removed in C++17
+
+// ADDITIONAL_COMPILE_FLAGS: -D_LIBCPP_DISABLE_DEPRECATION_WARNINGS
 
 // template <class Arg, class Result>
 // struct unary_function
@@ -19,6 +21,8 @@
 
 #include <functional>
 #include <type_traits>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

@@ -12,9 +12,7 @@
 //
 #include "polly/Support/ScopLocation.h"
 #include "llvm/Analysis/RegionInfo.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/DebugInfo.h"
-#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 using namespace llvm;
 
@@ -34,7 +32,7 @@ void getDebugLocation(const Region *R, unsigned &LineBegin, unsigned &LineEnd,
       auto *Scope = cast<DIScope>(DL.getScope());
 
       if (FileName.empty())
-        FileName = Scope->getFilename();
+        FileName = Scope->getFilename().str();
 
       unsigned NewLine = DL.getLine();
 

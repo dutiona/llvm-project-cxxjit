@@ -17,6 +17,12 @@
 
 namespace clang {
 
+/// Used to specify the format for printing AST dump information.
+enum ASTDumpOutputFormat {
+  ADOF_Default,
+  ADOF_JSON
+};
+
 // Colors used for various parts of the AST dump
 // Do not use bold yellow for any text.  It is hard to read on white screens.
 
@@ -56,6 +62,8 @@ static const TerminalColor LocationColor = {llvm::raw_ostream::YELLOW, false};
 static const TerminalColor ValueKindColor = {llvm::raw_ostream::CYAN, false};
 // bitfield/objcproperty/objcsubscript/vectorcomponent
 static const TerminalColor ObjectKindColor = {llvm::raw_ostream::CYAN, false};
+// contains-errors
+static const TerminalColor ErrorsColor = {llvm::raw_ostream::RED, true};
 
 // Null statements
 static const TerminalColor NullColor = {llvm::raw_ostream::BLUE, false};

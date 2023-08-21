@@ -1,4 +1,4 @@
-//===-- HighlighterTest.cpp -------------------------------------*- C++ -*-===//
+//===-- HighlighterTest.cpp -----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -14,32 +14,18 @@
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/Language/ObjCPlusPlus/ObjCPlusPlusLanguage.h"
+#include "TestingSupport/SubsystemRAII.h"
+#include <optional>
 
 using namespace lldb_private;
 
 namespace {
 class HighlighterTest : public testing::Test {
-public:
-  static void SetUpTestCase();
-  static void TearDownTestCase();
+  SubsystemRAII<FileSystem, CPlusPlusLanguage, ObjCLanguage,
+                ObjCPlusPlusLanguage>
+      subsystems;
 };
 } // namespace
-
-void HighlighterTest::SetUpTestCase() {
-  // The HighlighterManager uses the language plugins under the hood, so we
-  // have to initialize them here for our test process.
-  FileSystem::Initialize();
-  CPlusPlusLanguage::Initialize();
-  ObjCLanguage::Initialize();
-  ObjCPlusPlusLanguage::Initialize();
-}
-
-void HighlighterTest::TearDownTestCase() {
-  CPlusPlusLanguage::Terminate();
-  ObjCLanguage::Terminate();
-  ObjCPlusPlusLanguage::Terminate();
-  FileSystem::Terminate();
-}
 
 static std::string getName(lldb::LanguageType type) {
   HighlighterManager m;
@@ -73,6 +59,8 @@ TEST_F(HighlighterTest, HighlighterSelectionPath) {
   EXPECT_EQ(getName("a/dir.CC"), "clang");
   EXPECT_EQ(getName("/a/dir.hpp"), "clang");
   EXPECT_EQ(getName("header.h"), "clang");
+  EXPECT_EQ(getName("foo.m"), "clang");
+  EXPECT_EQ(getName("foo.mm"), "clang");
 
   EXPECT_EQ(getName(""), "none");
   EXPECT_EQ(getName("/dev/null"), "none");
@@ -91,14 +79,14 @@ TEST_F(HighlighterTest, FallbackHighlighter) {
   style.semicolons.Set("<", ">");
 
   const char *code = "program Hello;";
-  std::string output = h.Highlight(style, code, llvm::Optional<size_t>());
+  std::string output = h.Highlight(style, code, std::optional<size_t>());
 
   EXPECT_STREQ(output.c_str(), code);
 }
 
 static std::string
 highlightDefault(llvm::StringRef code, HighlightStyle style,
-                 llvm::Optional<size_t> cursor = llvm::Optional<size_t>()) {
+                 std::optional<size_t> cursor = std::optional<size_t>()) {
   HighlighterManager mgr;
   return mgr.getDefaultHighlighter().Highlight(style, code, cursor);
 }
@@ -124,13 +112,11 @@ TEST_F(HighlighterTest, DefaultHighlighterWithCursorOutOfBounds) {
   style.selected.Set("<c>", "</c>");
   EXPECT_EQ("a bc", highlightDefault("a bc", style, 4));
 }
-//------------------------------------------------------------------------------
 // Tests highlighting with the Clang highlighter.
-//------------------------------------------------------------------------------
 
 static std::string
 highlightC(llvm::StringRef code, HighlightStyle style,
-           llvm::Optional<size_t> cursor = llvm::Optional<size_t>()) {
+           std::optional<size_t> cursor = std::optional<size_t>()) {
   HighlighterManager mgr;
   const Highlighter &h = mgr.getHighlighterFor(lldb::eLanguageTypeC, "main.c");
   return h.Highlight(style, code, cursor);
@@ -205,6 +191,44 @@ TEST_F(HighlighterTest, ClangPPDirectives) {
 
   EXPECT_EQ("<pp>#</pp><pp>include</pp><pp> </pp><pp>\"foo\"</pp><pp> </pp>//c",
             highlightC("#include \"foo\" //c", s));
+}
+
+TEST_F(HighlighterTest, ClangPreserveNewLine) {
+  HighlightStyle s;
+  s.comment.Set("<cc>", "</cc>");
+
+  EXPECT_EQ("<cc>//</cc>\n", highlightC("//\n", s));
+}
+
+TEST_F(HighlighterTest, ClangTrailingBackslashBeforeNewline) {
+  HighlightStyle s;
+
+  EXPECT_EQ("\\\n", highlightC("\\\n", s));
+  EXPECT_EQ("\\\r\n", highlightC("\\\r\n", s));
+
+  EXPECT_EQ("#define a \\\n", highlightC("#define a \\\n", s));
+  EXPECT_EQ("#define a \\\r\n", highlightC("#define a \\\r\n", s));
+  EXPECT_EQ("#define a \\\r", highlightC("#define a \\\r", s));
+}
+
+TEST_F(HighlighterTest, ClangTrailingBackslashWithWhitespace) {
+  HighlightStyle s;
+
+  EXPECT_EQ("\\  \n", highlightC("\\  \n", s));
+  EXPECT_EQ("\\ \t\n", highlightC("\\ \t\n", s));
+  EXPECT_EQ("\\ \n", highlightC("\\ \n", s));
+  EXPECT_EQ("\\\t\n", highlightC("\\\t\n", s));
+
+  EXPECT_EQ("#define a \\  \n", highlightC("#define a \\  \n", s));
+  EXPECT_EQ("#define a \\ \t\n", highlightC("#define a \\ \t\n", s));
+  EXPECT_EQ("#define a \\ \n", highlightC("#define a \\ \n", s));
+  EXPECT_EQ("#define a \\\t\n", highlightC("#define a \\\t\n", s));
+}
+
+TEST_F(HighlighterTest, ClangTrailingBackslashMissingNewLine) {
+  HighlightStyle s;
+  EXPECT_EQ("\\", highlightC("\\", s));
+  EXPECT_EQ("#define a\\", highlightC("#define a\\", s));
 }
 
 TEST_F(HighlighterTest, ClangComments) {

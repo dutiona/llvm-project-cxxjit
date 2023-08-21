@@ -1,4 +1,4 @@
-//===-- SingleStepCheck.cpp ----------------------------------- -*- C++ -*-===//
+//===-- SingleStepCheck.cpp -----------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,14 +8,15 @@
 
 #include "SingleStepCheck.h"
 
+#include <csignal>
 #include <sched.h>
-#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "NativeProcessLinux.h"
 
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Errno.h"
 
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
 #include "lldb/Host/linux/Ptrace.h"
@@ -28,7 +29,7 @@ using namespace lldb_private::process_linux;
 #if defined(__arm64__) || defined(__aarch64__)
 namespace {
 
-void LLVM_ATTRIBUTE_NORETURN Child() {
+[[noreturn]] void Child() {
   if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) == -1)
     _exit(1);
 
@@ -51,8 +52,10 @@ struct ChildDeleter {
 
   ~ChildDeleter() {
     int status;
-    kill(pid, SIGKILL);            // Kill the child.
-    waitpid(pid, &status, __WALL); // Pick up the remains.
+    // Kill the child.
+    kill(pid, SIGKILL);
+    // Pick up the remains.
+    llvm::sys::RetryAfterSignal(-1, waitpid, pid, &status, __WALL);
   }
 };
 
@@ -62,7 +65,7 @@ bool WorkaroundNeeded() {
   // turn, and verify that single-stepping works on that cpu. A workaround is
   // needed if we find at least one broken cpu.
 
-  Log *log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
+  Log *log = GetLog(POSIXLog::Thread);
   ::pid_t child_pid = fork();
   if (child_pid == -1) {
     LLDB_LOG(log, "failed to fork(): {0}", Status(errno, eErrorTypePOSIX));
@@ -81,7 +84,8 @@ bool WorkaroundNeeded() {
   }
 
   int status;
-  ::pid_t wpid = waitpid(child_pid, &status, __WALL);
+  ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, waitpid,
+      child_pid, &status, __WALL);
   if (wpid != child_pid || !WIFSTOPPED(status)) {
     LLDB_LOG(log, "waitpid() failed (status = {0:x}): {1}", status,
              Status(errno, eErrorTypePOSIX));
@@ -110,7 +114,8 @@ bool WorkaroundNeeded() {
       break;
     }
 
-    wpid = waitpid(child_pid, &status, __WALL);
+    wpid = llvm::sys::RetryAfterSignal(-1, waitpid,
+        child_pid, &status, __WALL);
     if (wpid != child_pid || !WIFSTOPPED(status)) {
       LLDB_LOG(log, "waitpid() failed (status = {0:x}): {1}", status,
                Status(errno, eErrorTypePOSIX));
@@ -139,7 +144,7 @@ bool WorkaroundNeeded() {
 } // end anonymous namespace
 
 std::unique_ptr<SingleStepWorkaround> SingleStepWorkaround::Get(::pid_t tid) {
-  Log *log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
+  Log *log = GetLog(POSIXLog::Thread);
 
   static bool workaround_needed = WorkaroundNeeded();
   if (!workaround_needed) {
@@ -167,11 +172,11 @@ std::unique_ptr<SingleStepWorkaround> SingleStepWorkaround::Get(::pid_t tid) {
   }
 
   LLDB_LOG(log, "workaround for thread {0} prepared", tid);
-  return llvm::make_unique<SingleStepWorkaround>(tid, original_set);
+  return std::make_unique<SingleStepWorkaround>(tid, original_set);
 }
 
 SingleStepWorkaround::~SingleStepWorkaround() {
-  Log *log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
+  Log *log = GetLog(POSIXLog::Thread);
   LLDB_LOG(log, "Removing workaround");
   if (sched_setaffinity(m_tid, sizeof m_original_set, &m_original_set) != 0) {
     LLDB_LOG(log, "Unable to reset cpu affinity for thread {0}: {1}", m_tid,

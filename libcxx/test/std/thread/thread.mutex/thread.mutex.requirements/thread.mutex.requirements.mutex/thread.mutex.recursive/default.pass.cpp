@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads
+// UNSUPPORTED: no-threads
 
 // <mutex>
 
@@ -15,6 +15,8 @@
 // recursive_mutex();
 
 #include <mutex>
+
+#include "test_macros.h"
 
 int main(int, char**)
 {

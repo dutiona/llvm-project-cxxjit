@@ -6,10 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_CommandHistory_h_
-#define liblldb_CommandHistory_h_
+#ifndef LLDB_INTERPRETER_COMMANDHISTORY_H
+#define LLDB_INTERPRETER_COMMANDHISTORY_H
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,15 +21,15 @@ namespace lldb_private {
 
 class CommandHistory {
 public:
-  CommandHistory();
+  CommandHistory() = default;
 
-  ~CommandHistory();
+  ~CommandHistory() = default;
 
   size_t GetSize() const;
 
   bool IsEmpty() const;
 
-  llvm::Optional<llvm::StringRef> FindString(llvm::StringRef input_str) const;
+  std::optional<llvm::StringRef> FindString(llvm::StringRef input_str) const;
 
   llvm::StringRef GetStringAtIndex(size_t idx) const;
 
@@ -46,7 +47,8 @@ public:
   static const char g_repeat_char = '!';
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(CommandHistory);
+  CommandHistory(const CommandHistory &) = delete;
+  const CommandHistory &operator=(const CommandHistory &) = delete;
 
   typedef std::vector<std::string> History;
   mutable std::recursive_mutex m_mutex;
@@ -55,4 +57,4 @@ private:
 
 } // namespace lldb_private
 
-#endif // liblldb_CommandHistory_h_
+#endif // LLDB_INTERPRETER_COMMANDHISTORY_H

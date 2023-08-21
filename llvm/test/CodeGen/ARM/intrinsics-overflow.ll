@@ -38,8 +38,7 @@ define i32 @sadd_overflow(i32 %a, i32 %b) #0 {
   ; ARM: movvc r[[R0]], #0
   ; ARM: mov pc, lr
 
-  ; THUMBV6: adds    r1, r0, r1
-  ; THUMBV6: cmp     r1, r0
+  ; THUMBV6: adds    r0, r0, r1
   ; THUMBV6: bvc     .LBB1_2
 
   ; THUMBV7: adds  r[[R2:[0-9]+]], r[[R0]], r[[R1:[0-9]+]]
@@ -59,18 +58,18 @@ define i32 @usub_overflow(i32 %a, i32 %b) #0 {
   ; ARM: subs    r[[R0:[0-9]+]], r[[R0]], r[[R1:[0-9]+]]
   ; ARM: mov     r[[R2:[0-9]+]], #0
   ; ARM: adc     r[[R0]], r[[R2]], #0
-  ; ARM: rsb     r[[R0]], r[[R0]], #1
+  ; ARM: eor     r[[R0]], r[[R0]], #1
 
   ; THUMBV6: movs    r[[R2:[0-9]+]], #0
   ; THUMBV6: subs    r[[R0:[0-9]+]], r[[R0]], r[[R1:[0-9]+]]
   ; THUMBV6: adcs    r[[R2]], r[[R2]]
   ; THUMBV6: movs    r[[R0]], #1
-  ; THUMBV6: subs    r[[R0]], r[[R0]], r[[R2]]
+  ; THUMBV6: eors    r[[R0]], r[[R2]]
 
   ; THUMBV7: subs    r[[R0:[0-9]+]], r[[R0]], r[[R1:[0-9]+]]
   ; THUMBV7: mov.w   r[[R2:[0-9]+]], #0
   ; THUMBV7: adc     r[[R0]], r[[R2]], #0
-  ; THUMBV7: rsb.w   r[[R0]], r[[R0]], #1
+  ; THUMBV7: eor     r[[R0]], r[[R0]], #1
 
   ; We should know that the overflow is just 1 bit,
   ; no need to clear any other bit
