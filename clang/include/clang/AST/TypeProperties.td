@@ -822,3 +822,13 @@ let Class = PipeType in {
     return ctx.getPipeType(elementType, isReadOnly);
   }]>;
 }
+
+let Class = JITFromStringType in {
+  def : Property<"expression", ExprRef> {
+    let Read = [{ node->getUnderlyingExpr() }];
+  }
+
+  def : Creator<[{
+    return ctx.getJITFromStringType(expression);
+  }]>;
+}

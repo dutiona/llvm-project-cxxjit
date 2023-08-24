@@ -27,12 +27,16 @@
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/LTO/LTOBackend.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -124,7 +128,7 @@ class EmitAssemblyHelper {
   std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef Path) {
     std::error_code EC;
     auto F = std::make_unique<llvm::ToolOutputFile>(Path, EC,
-                                                     llvm::sys::fs::OF_None);
+                                                    llvm::sys::fs::OF_None);
     if (EC) {
       Diags.Report(diag::err_fe_unable_to_open_output) << Path << EC.message();
       F.reset();
@@ -154,6 +158,8 @@ public:
 
   void EmitAssemblyWithNewPassManager(BackendAction Action,
                                       std::unique_ptr<raw_pwrite_stream> OS);
+
+  void FinalizeForJIT();
 };
 
 // We need this wrapper to access LangOpts and CGOpts from extension functions
@@ -174,19 +180,22 @@ private:
   const CodeGenOptions &CGOpts;
   const LangOptions &LangOpts;
 };
-}
+} // namespace
 
-static void addObjCARCAPElimPass(const PassManagerBuilder &Builder, PassManagerBase &PM) {
+static void addObjCARCAPElimPass(const PassManagerBuilder &Builder,
+                                 PassManagerBase &PM) {
   if (Builder.OptLevel > 0)
     PM.add(createObjCARCAPElimPass());
 }
 
-static void addObjCARCExpandPass(const PassManagerBuilder &Builder, PassManagerBase &PM) {
+static void addObjCARCExpandPass(const PassManagerBuilder &Builder,
+                                 PassManagerBase &PM) {
   if (Builder.OptLevel > 0)
     PM.add(createObjCARCExpandPass());
 }
 
-static void addObjCARCOptPass(const PassManagerBuilder &Builder, PassManagerBase &PM) {
+static void addObjCARCOptPass(const PassManagerBuilder &Builder,
+                              PassManagerBase &PM) {
   if (Builder.OptLevel > 0)
     PM.add(createObjCARCOptPass());
 }
@@ -255,7 +264,7 @@ static bool asanUseGlobalsGC(const Triple &T, const CodeGenOptions &CGOpts) {
 static void addAddressSanitizerPasses(const PassManagerBuilder &Builder,
                                       legacy::PassManagerBase &PM) {
   const PassManagerBuilderWrapper &BuilderWrapper =
-      static_cast<const PassManagerBuilderWrapper&>(Builder);
+      static_cast<const PassManagerBuilderWrapper &>(Builder);
   const Triple &T = BuilderWrapper.getTargetTriple();
   const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
   bool Recover = CGOpts.SanitizeRecover.has(SanitizerKind::Address);
@@ -278,7 +287,7 @@ static void addKernelAddressSanitizerPasses(const PassManagerBuilder &Builder,
 }
 
 static void addHWAddressSanitizerPasses(const PassManagerBuilder &Builder,
-                                            legacy::PassManagerBase &PM) {
+                                        legacy::PassManagerBase &PM) {
   const PassManagerBuilderWrapper &BuilderWrapper =
       static_cast<const PassManagerBuilderWrapper &>(Builder);
   const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
@@ -288,7 +297,7 @@ static void addHWAddressSanitizerPasses(const PassManagerBuilder &Builder,
 }
 
 static void addKernelHWAddressSanitizerPasses(const PassManagerBuilder &Builder,
-                                            legacy::PassManagerBase &PM) {
+                                              legacy::PassManagerBase &PM) {
   PM.add(createHWAddressSanitizerLegacyPassPass(
       /*CompileKernel*/ true, /*Recover*/ true));
 }
@@ -297,7 +306,7 @@ static void addGeneralOptsForMemorySanitizer(const PassManagerBuilder &Builder,
                                              legacy::PassManagerBase &PM,
                                              bool CompileKernel) {
   const PassManagerBuilderWrapper &BuilderWrapper =
-      static_cast<const PassManagerBuilderWrapper&>(Builder);
+      static_cast<const PassManagerBuilderWrapper &>(Builder);
   const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
   int TrackOrigins = CGOpts.SanitizeMemoryTrackOrigins;
   bool Recover = CGOpts.SanitizeRecover.has(SanitizerKind::Memory);
@@ -335,7 +344,7 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
                                      legacy::PassManagerBase &PM) {
   const PassManagerBuilderWrapper &BuilderWrapper =
-      static_cast<const PassManagerBuilderWrapper&>(Builder);
+      static_cast<const PassManagerBuilderWrapper &>(Builder);
   const LangOptions &LangOpts = BuilderWrapper.getLangOpts();
   PM.add(createDataFlowSanitizerPass(LangOpts.SanitizerBlacklistFiles));
 }
@@ -350,7 +359,7 @@ static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
     break;
   case CodeGenOptions::MASSV:
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::MASSV);
-    break;    
+    break;
   case CodeGenOptions::SVML:
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::SVML);
     break;
@@ -521,6 +530,269 @@ static Optional<GCOVOptions> getGCOVOptions(const CodeGenOptions &CodeGenOpts) {
   Options.Exclude = CodeGenOpts.ProfileExcludeFiles;
   Options.ExitBlockBeforeBody = CodeGenOpts.CoverageExitBlockBeforeBody;
   return Options;
+}
+
+void EmitAssemblyHelper::FinalizeForJIT() {
+  if (!LangOpts.isJITEnabled())
+    return;
+
+  if (LangOpts.CUDAIsDevice) {
+    auto DevMod = std::make_unique<llvm::Module>("clang-jit-device",
+                                                 TheModule->getContext());
+
+    // We can't save the IR here and reuse it later as that might effectively
+    // add users to internal functions inconsistent with how they have been
+    // optimized. For kernels, everything will need to be regenerated at
+    // runtime.
+
+    auto *SzTy = llvm::Type::getIntNTy(
+        DevMod->getContext(), DevMod->getDataLayout().getPointerSizeInBits());
+
+    auto &CmdArgs = CodeGenOpts.CmdArgsForJIT;
+
+    auto NewStrGV = [&](StringRef Data,
+                        StringRef Name) -> llvm::GlobalVariable * {
+      auto *Str =
+          llvm::ConstantDataArray::getString(DevMod->getContext(), Data);
+      auto *GV = new llvm::GlobalVariable(*DevMod, Str->getType(), true,
+                                          llvm::GlobalValue::PrivateLinkage,
+                                          Str, Name);
+      GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+      GV->setAlignment(1);
+
+      return GV;
+    };
+
+    auto *CmdArgsGV =
+        NewStrGV(StringRef((const char *)&*CmdArgs.begin(), CmdArgs.size()),
+                 "__clang_jit_cmdline");
+    auto *CmdLineStrLen = llvm::ConstantInt::get(SzTy, CmdArgs.size());
+
+    auto &ASTBuffer = CodeGenOpts.ASTBufferForJIT;
+
+    auto *ASTDataGV = NewStrGV(ASTBuffer, "__clang_jit_ast");
+    auto *ASTDataLen = llvm::ConstantInt::get(SzTy, ASTBuffer.size());
+
+    auto *BytePtrTy = llvm::Type::getInt8PtrTy(DevMod->getContext());
+
+    auto *FileDataTy = llvm::StructType::get(BytePtrTy, BytePtrTy, SzTy);
+    SmallVector<llvm::Constant *, 1> FileData;
+    for (auto &F : CodeGenOpts.LinkBitcodeFiles) {
+      auto DevBCFile = llvm::MemoryBuffer::getFile(F.Filename);
+      if (!DevBCFile)
+        continue;
+
+      auto *FNGV = NewStrGV(F.Filename, "__clang_jit_device_bc_filename");
+      auto *FDataGV =
+          NewStrGV(DevBCFile.get()->getBuffer(), "__clang_jit_device_bc");
+      auto *FDataSz =
+          llvm::ConstantInt::get(SzTy, DevBCFile.get()->getBufferSize());
+      auto *FData = llvm::ConstantStruct::get(
+          FileDataTy, llvm::ConstantExpr::getBitCast(FNGV, BytePtrTy),
+          llvm::ConstantExpr::getBitCast(FDataGV, BytePtrTy), FDataSz);
+      FileData.push_back(FData);
+    }
+
+    auto *FileDataArrTy = llvm::ArrayType::get(FileDataTy, FileData.size());
+    auto *FileDataArr = llvm::ConstantArray::get(FileDataArrTy, FileData);
+    auto *FileDataGV = new llvm::GlobalVariable(
+        *DevMod, FileDataArrTy, true, llvm::GlobalValue::PrivateLinkage,
+        FileDataArr, "__clang_jit_device_files");
+    FileDataGV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+    auto *FileDataCnt = llvm::ConstantInt::get(SzTy, FileData.size());
+
+    auto *STy = llvm::StructType::get(BytePtrTy, BytePtrTy, BytePtrTy, SzTy,
+                                      BytePtrTy, SzTy, BytePtrTy, SzTy);
+
+    auto *TripleGV = NewStrGV(TargetOpts.Triple, "__clang_jit_device_triple");
+    auto *ArchGV = NewStrGV(TargetOpts.CPU, "__clang_jit_device_arch");
+
+    auto *SData = llvm::ConstantStruct::get(
+        STy, llvm::ConstantExpr::getBitCast(TripleGV, BytePtrTy),
+        llvm::ConstantExpr::getBitCast(ArchGV, BytePtrTy),
+        llvm::ConstantExpr::getBitCast(ASTDataGV, BytePtrTy), ASTDataLen,
+        llvm::ConstantExpr::getBitCast(CmdArgsGV, BytePtrTy), CmdLineStrLen,
+        llvm::ConstantExpr::getBitCast(FileDataGV, BytePtrTy), FileDataCnt);
+
+    auto *ASTy = llvm::ArrayType::get(STy, 1);
+    auto *ASData = llvm::ConstantArray::get(ASTy, SData);
+    new llvm::GlobalVariable(*DevMod, ASTy, true,
+                             llvm::GlobalValue::AppendingLinkage, ASData,
+                             "__clang_jit_device");
+
+    // Now we've created a global with a trivial array with the current device
+    // data with appending linkage. If the named .bc file already exists, we
+    // need to link with it (which will concatenate our array to make a larger
+    // array in a global of the same name).
+    {
+      auto OldBCFile = llvm::MemoryBuffer::getFile(CodeGenOpts.DeviceJITBCFile);
+      if (OldBCFile) {
+        SMDiagnostic Err;
+        auto OldDevMod =
+            llvm::parseIR(*OldBCFile->get(), Err, DevMod->getContext());
+        if (OldDevMod)
+          Linker::linkModules(*DevMod, std::move(OldDevMod));
+      }
+    }
+
+    std::error_code EC;
+    llvm::raw_fd_ostream BCOS(CodeGenOpts.DeviceJITBCFile, EC,
+                              llvm::sys::fs::CD_CreateAlways);
+    if (!EC)
+      llvm::WriteBitcodeToFile(*DevMod, BCOS,
+                               /*ShouldPreserveUseListOrder*/ true);
+
+    return;
+  }
+
+  SmallVector<llvm::CallSite, 10> JCalls;
+  for (auto &F : TheModule->functions())
+    for (auto &BB : F)
+      for (auto &I : BB)
+        if (auto CS = CallSite(&I))
+          if (auto *Callee = dyn_cast<llvm::Function>(
+                  CS.getCalledValue()->stripPointerCasts()))
+            if (Callee->getName() == "__clang_jit")
+              JCalls.push_back(CS);
+
+  if (JCalls.empty())
+    return;
+
+  llvm::IRBuilder<> Builder(JCalls[0].getParent());
+
+  std::string Data;
+  llvm::raw_string_ostream OS(Data);
+  llvm::WriteBitcodeToFile(*TheModule, OS,
+                           /* ShouldPreserveUseListOrder */ true);
+  OS.flush();
+
+  llvm::Value *IRData = Builder.CreateGlobalStringPtr(Data, "__clang_jit_bc");
+  llvm::Value *IRDataLen =
+      llvm::ConstantInt::get(JCalls[0].getArgument(5)->getType(), Data.size());
+
+  // Before we optimized the IR, we collected the addresses of local variables
+  // that might be used when instantiating templates dynamically. If we've
+  // generated debugging information, however, we might have references to
+  // other symbols (from the debugging information) that the runtime loader
+  // will expect to resolve. Collect those now (after optimization).
+  llvm::DebugInfoFinder F;
+  F.processModule(*TheModule);
+
+  std::vector<StringRef> DbgLocalNames;
+  for (auto *DSP : F.subprograms())
+    DbgLocalNames.push_back(DSP->getLinkageName());
+  for (auto *DGVE : F.global_variables())
+    if (auto *DGV = DGVE->getVariable())
+      DbgLocalNames.push_back(DGV->getLinkageName());
+
+  if (!DbgLocalNames.empty()) {
+    DenseSet<StringRef> LocalNames;
+    auto *LocalsGV =
+        cast<GlobalVariable>(TheModule->getNamedValue("__clang_jit_locals"));
+    auto *LocalsInit = LocalsGV->getInitializer();
+    unsigned NumLocals = LocalsInit->getType()->getArrayNumElements();
+    for (unsigned i = 0; i < NumLocals; i += 2) {
+      llvm::Value *AI = LocalsInit->getAggregateElement(i);
+      if (auto *SGV = dyn_cast<GlobalVariable>(AI->stripPointerCasts()))
+        AI = SGV->getInitializer();
+
+      LocalNames.insert(cast<ConstantDataSequential>(AI)->getAsCString());
+    }
+
+    llvm::SetVector<GlobalValue *> DLocals;
+    for (auto &DLocalName : DbgLocalNames) {
+      if (LocalNames.count(DLocalName))
+        continue;
+      auto *GV = TheModule->getNamedValue(DLocalName);
+      if (!GV || (!GV->hasLocalLinkage() && !GV->hasHiddenVisibility()))
+        continue;
+      DLocals.insert(GV);
+    }
+
+    if (!DLocals.empty()) {
+      auto *VoidPtrPtrTy = JCalls[0]->getOperand(8)->getType();
+      auto *VoidPtrTy = VoidPtrPtrTy->getPointerElementType();
+
+      llvm::SmallVector<llvm::Constant *, 32> DLocalPtrs;
+      for (auto &DLocal : DLocals) {
+        llvm::Constant *Name =
+            Builder.CreateGlobalStringPtr(DLocal->getName(), ".cjl.str");
+        DLocalPtrs.push_back(Name);
+        DLocalPtrs.push_back(
+            llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(DLocal,
+                                                                 VoidPtrTy));
+      }
+
+      auto *DLNAType = llvm::ArrayType::get(VoidPtrTy, DLocalPtrs.size());
+      auto *DLNAValue = ConstantArray::get(DLNAType, DLocalPtrs);
+
+      auto *DPtrsGbl = new llvm::GlobalVariable(
+          *TheModule, DLNAType, true, llvm::GlobalValue::PrivateLinkage,
+          DLNAValue, "__clang_jit_dbg_locals");
+      DPtrsGbl->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+      llvm::Value *DPtrsCnt = llvm::ConstantInt::get(
+          JCalls[0]->getOperand(9)->getType(), DLocalPtrs.size() / 2);
+
+      for (auto &JCS : JCalls) {
+        JCS.setArgument(8, llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+                               DPtrsGbl, VoidPtrPtrTy));
+        JCS.setArgument(9, DPtrsCnt);
+      }
+    }
+  }
+
+  auto OldBCFile = llvm::MemoryBuffer::getFile(CodeGenOpts.DeviceJITBCFile);
+  if (OldBCFile) {
+    SMDiagnostic Err;
+    auto OldDevMod =
+        llvm::parseIR(*OldBCFile->get(), Err, TheModule->getContext());
+    if (OldDevMod) {
+      OldDevMod->setDataLayout(TheModule->getDataLayout());
+      Linker::linkModules(*TheModule, std::move(OldDevMod));
+    }
+
+    if (auto *DevGV = cast<llvm::GlobalObject>(
+            TheModule->getNamedValue("__clang_jit_device"))) {
+      DevGV->setLinkage(llvm::GlobalValue::PrivateLinkage);
+
+      auto *NumDevs = llvm::ConstantInt::get(
+          JCalls[0]->getOperand(11)->getType(),
+          DevGV->getType()->getPointerElementType()->getArrayNumElements());
+
+      for (auto &JCS : JCalls) {
+        JCS.setArgument(10,
+                        llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+                            DevGV, JCalls[0].getArgument(10)->getType()));
+        JCS.setArgument(11, NumDevs);
+      }
+    }
+  }
+
+  // Now that we've serialized the base IR module, add the AST and other
+  // information to it.
+
+  auto &CmdArgs = CodeGenOpts.CmdArgsForJIT;
+  llvm::Value *CmdLineStr = Builder.CreateGlobalStringPtr(
+      std::string(CmdArgs.begin(), CmdArgs.end()), "__clang_jit_cmdline");
+  llvm::Value *CmdLineStrLen = llvm::ConstantInt::get(
+      JCalls[0].getArgument(1)->getType(), CmdArgs.size());
+
+  auto &ASTBuffer = CodeGenOpts.ASTBufferForJIT;
+  llvm::Value *ASTData =
+      Builder.CreateGlobalStringPtr(ASTBuffer, "__clang_jit_ast");
+  llvm::Value *ASTDataLen = llvm::ConstantInt::get(
+      JCalls[0].getArgument(3)->getType(), ASTBuffer.size());
+
+  for (auto &JCS : JCalls) {
+    JCS.setArgument(0, CmdLineStr);
+    JCS.setArgument(1, CmdLineStrLen);
+    JCS.setArgument(2, ASTData);
+    JCS.setArgument(3, ASTDataLen);
+    JCS.setArgument(4, IRData);
+    JCS.setArgument(5, IRDataLen);
+  }
 }
 
 static Optional<InstrProfOptions>
@@ -744,8 +1016,7 @@ static void setCommandLineOpts(const CodeGenOptions &CodeGenOpts) {
     BackendArgs.push_back(CodeGenOpts.LimitFloatPrecision.c_str());
   }
   BackendArgs.push_back(nullptr);
-  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
-                                    BackendArgs.data());
+  llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1, BackendArgs.data());
 }
 
 void EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
@@ -807,8 +1078,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
   setCommandLineOpts(CodeGenOpts);
 
   bool UsesCodeGen = (Action != Backend_EmitNothing &&
-                      Action != Backend_EmitBC &&
-                      Action != Backend_EmitLL);
+                      Action != Backend_EmitBC && Action != Backend_EmitLL);
   CreateTargetMachine(UsesCodeGen);
 
   if (UsesCodeGen && !TM)
@@ -851,8 +1121,7 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
       // Emit a module summary by default for Regular LTO except for ld64
       // targets
       bool EmitLTOSummary =
-          (CodeGenOpts.PrepareForLTO &&
-           !CodeGenOpts.DisableLLVMPasses &&
+          (CodeGenOpts.PrepareForLTO && !CodeGenOpts.DisableLLVMPasses &&
            llvm::Triple(TheModule->getTargetTriple()).getVendor() !=
                llvm::Triple::Apple);
       if (EmitLTOSummary) {
@@ -905,6 +1174,8 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
     llvm::TimeTraceScope TimeScope("PerModulePasses");
     PerModulePasses.run(*TheModule);
   }
+
+  FinalizeForJIT();
 
   {
     PrettyStackTraceString CrashInfo("Code generation");
@@ -999,8 +1270,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   setCommandLineOpts(CodeGenOpts);
 
   bool RequiresCodeGen = (Action != Backend_EmitNothing &&
-                          Action != Backend_EmitBC &&
-                          Action != Backend_EmitLL);
+                          Action != Backend_EmitBC && Action != Backend_EmitLL);
   CreateTargetMachine(RequiresCodeGen);
 
   if (RequiresCodeGen && !TM)
@@ -1155,8 +1425,8 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
             EntryExitInstrumenterPass(/*PostInlining=*/false)));
       });
 
-      // Register callbacks to schedule sanitizer passes at the appropriate part of
-      // the pipeline.
+      // Register callbacks to schedule sanitizer passes at the appropriate part
+      // of the pipeline.
       // FIXME: either handle asan/the remaining sanitizers or error out
       if (LangOpts.Sanitize.has(SanitizerKind::LocalBounds))
         PB.registerScalarOptimizerLateEPCallback(
@@ -1277,8 +1547,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
       // Emit a module summary by default for Regular LTO except for ld64
       // targets
       bool EmitLTOSummary =
-          (CodeGenOpts.PrepareForLTO &&
-           !CodeGenOpts.DisableLLVMPasses &&
+          (CodeGenOpts.PrepareForLTO && !CodeGenOpts.DisableLLVMPasses &&
            llvm::Triple(TheModule->getTargetTriple()).getVendor() !=
                llvm::Triple::Apple);
       if (EmitLTOSummary) {
@@ -1323,6 +1592,8 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
     MPM.run(*TheModule, MAM);
   }
 
+  FinalizeForJIT();
+
   // Now if needed, run the legacy PM for codegen.
   if (NeedCodeGen) {
     PrettyStackTraceString CrashInfo("Code generation");
@@ -1358,15 +1629,12 @@ BitcodeModule *clang::FindThinLTOModule(MutableArrayRef<BitcodeModule> BMs) {
   return nullptr;
 }
 
-static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
-                              const HeaderSearchOptions &HeaderOpts,
-                              const CodeGenOptions &CGOpts,
-                              const clang::TargetOptions &TOpts,
-                              const LangOptions &LOpts,
-                              std::unique_ptr<raw_pwrite_stream> OS,
-                              std::string SampleProfile,
-                              std::string ProfileRemapping,
-                              BackendAction Action) {
+static void runThinLTOBackend(
+    ModuleSummaryIndex *CombinedIndex, Module *M,
+    const HeaderSearchOptions &HeaderOpts, const CodeGenOptions &CGOpts,
+    const clang::TargetOptions &TOpts, const LangOptions &LOpts,
+    std::unique_ptr<raw_pwrite_stream> OS, std::string SampleProfile,
+    std::string ProfileRemapping, BackendAction Action) {
   StringMap<DenseMap<GlobalValue::GUID, GlobalValueSummary *>>
       ModuleToDefinedGVSummaries;
   CombinedIndex->collectDefinedGVSummariesPerModule(ModuleToDefinedGVSummaries);
@@ -1494,14 +1762,11 @@ static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
   }
 }
 
-void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
-                              const HeaderSearchOptions &HeaderOpts,
-                              const CodeGenOptions &CGOpts,
-                              const clang::TargetOptions &TOpts,
-                              const LangOptions &LOpts,
-                              const llvm::DataLayout &TDesc, Module *M,
-                              BackendAction Action,
-                              std::unique_ptr<raw_pwrite_stream> OS) {
+void clang::EmitBackendOutput(
+    DiagnosticsEngine &Diags, const HeaderSearchOptions &HeaderOpts,
+    const CodeGenOptions &CGOpts, const clang::TargetOptions &TOpts,
+    const LangOptions &LOpts, const llvm::DataLayout &TDesc, Module *M,
+    BackendAction Action, std::unique_ptr<raw_pwrite_stream> OS) {
 
   llvm::TimeTraceScope TimeScope("Backend");
 
@@ -1511,12 +1776,13 @@ void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
     // into memory and pass it into runThinLTOBackend, which will run the
     // function importer and invoke LTO passes.
     Expected<std::unique_ptr<ModuleSummaryIndex>> IndexOrErr =
-        llvm::getModuleSummaryIndexForFile(CGOpts.ThinLTOIndexFile,
-                                           /*IgnoreEmptyThinLTOIndexFile*/true);
+        llvm::getModuleSummaryIndexForFile(
+            CGOpts.ThinLTOIndexFile,
+            /*IgnoreEmptyThinLTOIndexFile*/ true);
     if (!IndexOrErr) {
       logAllUnhandledErrors(IndexOrErr.takeError(), errs(),
                             "Error loading index file '" +
-                            CGOpts.ThinLTOIndexFile + "': ");
+                                CGOpts.ThinLTOIndexFile + "': ");
       return;
     }
     std::unique_ptr<ModuleSummaryIndex> CombinedIndex = std::move(*IndexOrErr);

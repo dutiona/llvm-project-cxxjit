@@ -121,10 +121,9 @@ def GlobalVar : SubsetSubject<Var,
 def InlineFunction : SubsetSubject<Function,
                              [{S->isInlineSpecified()}], "inline functions">;
 
-def FunctionTmpl
-    : SubsetSubject<Function, [{S->getTemplatedKind() ==
-                                 FunctionDecl::TK_FunctionTemplate}],
-                    "function templates">;
+def FunctionTmpl : SubsetSubject<Function,
+                             [{S->getTemplatedKind() == FunctionDecl::TK_FunctionTemplate}],
+                             "function templates">;
 
 // FIXME: this hack is needed because DeclNodes.td defines the base Decl node
 // type to be a class, not a definition. This makes it impossible to create an
@@ -3498,6 +3497,20 @@ def AcquireHandle : DeclOrTypeAttr {
   let Args = [StringArgument<"HandleType">];
   let Subjects = SubjectList<[Function, TypedefName, ParmVar]>;
   let Documentation = [AcquireHandleDocs];
+}
+
+def JITFunc : InheritableAttr {
+  let Spellings = [Clang<"jit">];
+  let Subjects = SubjectList<[FunctionTmpl]>;
+  let Documentation = [JITFuncDocs];
+}
+
+def JITFuncInstantiation : Attr {
+  // This attribute has no spellings as it is only ever created implicitly.
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Args = [UnsignedArgument<"Id">];
+  let Documentation = [Undocumented];
 }
 
 def UseHandle : InheritableParamAttr {

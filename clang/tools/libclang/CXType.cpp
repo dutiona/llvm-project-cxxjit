@@ -115,6 +115,7 @@ static CXTypeKind GetTypeKind(QualType T) {
     TKCASE(Elaborated);
     TKCASE(Pipe);
     TKCASE(Attributed);
+    TKCASE(JITFromString);
     default:
       return CXType_Unexposed;
   }
@@ -616,6 +617,7 @@ CXString clang_getTypeKindSpelling(enum CXTypeKind K) {
     TKIND(OCLEvent);
     TKIND(OCLQueue);
     TKIND(OCLReserveID);
+    TKIND(JITFromString);
   }
 #undef TKIND
   return cxstring::createRef(s);

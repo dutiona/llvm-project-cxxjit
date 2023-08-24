@@ -73,6 +73,7 @@ void EmptyPragmaHandler::HandlePragma(Preprocessor &PP,
 
 PragmaNamespace::~PragmaNamespace() {
   llvm::DeleteContainerSeconds(Handlers);
+  Handlers.clear();
 }
 
 /// FindHandler - Check to see if there is already a handler for the

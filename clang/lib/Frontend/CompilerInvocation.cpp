@@ -1076,6 +1076,23 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
     }
   }
 
+  // For the JIT engine, we need to keep command-line arguments. Unlike for
+  // -fembed-bitcode, we keep all options for the JIT.
+  if (Args.hasArg(OPT_fjit)) {
+    for (const auto &A : Args) {
+      ArgStringList ASL;
+      A->render(Args, ASL);
+      for (const auto &arg : ASL) {
+        StringRef ArgStr(arg);
+        Opts.CmdArgsForJIT.insert(Opts.CmdArgsForJIT.end(),
+                                  ArgStr.begin(), ArgStr.end());
+        Opts.CmdArgsForJIT.push_back('\0');
+      }
+    }
+  }
+
+  Opts.DeviceJITBCFile = Args.getLastArgValue(OPT_fjit_device_ir_file_path);
+
   Opts.PreserveVec3Type = Args.hasArg(OPT_fpreserve_vec3_type);
   Opts.InstrumentFunctions = Args.hasArg(OPT_finstrument_functions);
   Opts.InstrumentFunctionsAfterInlining =
@@ -3263,6 +3280,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.AllowEditorPlaceholders = Args.hasArg(OPT_fallow_editor_placeholders);
 
   Opts.RegisterStaticDestructors = !Args.hasArg(OPT_fno_cxx_static_destructors);
+
+  if (Args.hasArg(OPT_fjit))
+    Opts.setCPlusPlusJIT(LangOptions::JITMode::JM_Enabled);
 
   if (Arg *A = Args.getLastArg(OPT_fclang_abi_compat_EQ)) {
     Opts.setClangABICompat(LangOptions::ClangABI::Latest);

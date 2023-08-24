@@ -3360,7 +3360,8 @@ enum CXTypeKind {
 
   CXType_OCLIntelSubgroupAVCImeDualRefStreamin = 175,
 
-  CXType_ExtVector = 176
+  CXType_JITFromString = 176,
+  CXType_ExtVector = 177
 };
 
 /**
