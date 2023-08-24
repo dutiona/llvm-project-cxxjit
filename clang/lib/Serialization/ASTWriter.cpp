@@ -581,6 +581,11 @@ ASTTypeWriter::VisitPipeType(const PipeType *T) {
   Code = TYPE_PIPE;
 }
 
+void ASTTypeWriter::VisitJITFromStringType(const JITFromStringType *T) {
+  Record.AddStmt(T->getUnderlyingExpr());
+  Code = TYPE_JIT_FROM_STRING;
+}
+
 namespace {
 
 class TypeLocWriter : public TypeLocVisitor<TypeLocWriter> {
@@ -873,6 +878,10 @@ void TypeLocWriter::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
 
 void TypeLocWriter::VisitPipeTypeLoc(PipeTypeLoc TL) {
   Record.AddSourceLocation(TL.getKWLoc());
+}
+
+void TypeLocWriter::VisitJITFromStringTypeLoc(JITFromStringTypeLoc TL) {
+  Record.AddSourceLocation(TL.getNameLoc());
 }
 
 void ASTWriter::WriteTypeAbbrevs() {
@@ -1805,7 +1814,7 @@ void ASTWriter::WriteInputFiles(SourceManager &SourceMgr,
     InputFileEntry Entry;
     Entry.File = Cache->OrigEntry;
     Entry.IsSystemFile = Cache->IsSystemFile;
-    Entry.IsTransient = Cache->IsTransient;
+    Entry.IsTransient = Cache->IsTransient || TreatAllFilesAsTransient;
     Entry.BufferOverridden = Cache->BufferOverridden;
     Entry.IsTopLevelModuleMap = isModuleMap(File.getFileCharacteristic()) &&
                                 File.getIncludeLoc().isInvalid();
@@ -2305,7 +2314,8 @@ void ASTWriter::WriteSourceManagerBlock(SourceManager &SourceMgr,
 
         Stream.EmitRecordWithAbbrev(SLocFileAbbrv, Record);
 
-        if (Content->BufferOverridden || Content->IsTransient)
+        if (Content->BufferOverridden || Content->IsTransient ||
+            TreatAllFilesAsTransient)
           EmitBlob = true;
       } else {
         // The source location entry is a buffer. The blob associated
@@ -4619,9 +4629,10 @@ ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream,
                      SmallVectorImpl<char> &Buffer,
                      InMemoryModuleCache &ModuleCache,
                      ArrayRef<std::shared_ptr<ModuleFileExtension>> Extensions,
-                     bool IncludeTimestamps)
+                     bool IncludeTimestamps, bool TreatAllFilesAsTransient)
     : Stream(Stream), Buffer(Buffer), ModuleCache(ModuleCache),
-      IncludeTimestamps(IncludeTimestamps) {
+      IncludeTimestamps(IncludeTimestamps),
+      TreatAllFilesAsTransient(TreatAllFilesAsTransient) {
   for (const auto &Ext : Extensions) {
     if (auto Writer = Ext->createExtensionWriter(*this))
       ModuleFileExtensionWriters.push_back(std::move(Writer));

@@ -1246,6 +1246,8 @@ public:
   /// currently being copy-initialized. Can be empty.
   llvm::SmallVector<QualType, 4> CurrentParameterCopyTypes;
 
+  unsigned NextJITFuncId;
+
   void ReadMethodPool(Selector Sel);
   void updateOutOfDateSelector(Selector Sel);
 
@@ -1544,6 +1546,8 @@ public:
                          SourceLocation Loc);
   QualType BuildWritePipeType(QualType T,
                          SourceLocation Loc);
+
+  QualType BuildJITFromStringType(Expr *E, SourceLocation Loc);
 
   TypeSourceInfo *GetTypeForDeclarator(Declarator &D, Scope *S);
   TypeSourceInfo *GetTypeForDeclaratorCast(Declarator &D, QualType FromTy);
@@ -2676,6 +2680,8 @@ public:
                                     const SpeculativeLoadHardeningAttr &AL);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D, SourceRange Range,
                                           unsigned AttrSpellingListIndex);
+  JITFuncAttr *mergeJITFuncAttr(Decl *D, SourceRange Range,
+                                unsigned AttrSpellingListIndex);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, const ParsedAttr &AL);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D,
                                                 const InternalLinkageAttr &AL);
@@ -6744,14 +6750,16 @@ public:
 
   bool CheckTemplateTypeArgument(TemplateTypeParmDecl *Param,
                                  TemplateArgumentLoc &Arg,
-                           SmallVectorImpl<TemplateArgument> &Converted);
+                           SmallVectorImpl<TemplateArgument> &Converted,
+                           bool IsForJIT = false);
 
   bool CheckTemplateArgument(TemplateTypeParmDecl *Param,
                              TypeSourceInfo *Arg);
   ExprResult CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
                                    QualType InstantiatedParamType, Expr *Arg,
                                    TemplateArgument &Converted,
-                               CheckTemplateArgumentKind CTAK = CTAK_Specified);
+                               CheckTemplateArgumentKind CTAK = CTAK_Specified,
+                               bool IsForJIT = false);
   bool CheckTemplateTemplateArgument(TemplateParameterList *Params,
                                      TemplateArgumentLoc &Arg);
 
@@ -11134,6 +11142,9 @@ public:
   void incrementMSManglingNumber() const {
     return CurScope->incrementMSManglingNumber();
   }
+
+  // Used for JIT.
+  void setCurScope(Scope *S) { CurScope = S; }
 
   IdentifierInfo *getSuperIdentifier() const;
   IdentifierInfo *getFloat128Identifier() const;

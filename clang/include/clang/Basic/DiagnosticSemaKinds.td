@@ -3005,6 +3005,13 @@ def err_cconv_incomplete_param_type : Error<
 def ext_cannot_use_trivial_abi : ExtWarn<
   "'trivial_abi' cannot be applied to %0">, InGroup<IgnoredAttributes>;
 
+def warn_jit_attribute_ignored :
+  Warning<"'jit' attribute ignored; use -fjit to enable the attribute">,
+  InGroup<IgnoredAttributes>;
+def err_template_arg_is_jit_func : Error<
+  "cannot use just-in-time compiled function-template instantiation %0 as "
+  "a template parameter to a non-just-in-time-compiled type">;
+
 // Availability attribute
 def warn_availability_unknown_platform : Warning<
   "unknown platform %0 in availability macro">, InGroup<Availability>;

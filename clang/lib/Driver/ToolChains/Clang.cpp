@@ -4008,6 +4008,19 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fsplit_stack))
     CmdArgs.push_back("-split-stacks");
 
+  if (Args.hasFlag(options::OPT_fjit, options::OPT_fno_jit, false)) {
+    CmdArgs.push_back("-fjit");
+
+    if (IsCuda) {
+      std::string BCName =
+        D.GetDeviceJITBCFile(C, JA.isDeviceOffloading(Action::OFK_Cuda));
+      if (!BCName.empty()) {
+        CmdArgs.push_back("-fjit-device-ir-file-path");
+        CmdArgs.push_back(Args.MakeArgString(BCName));
+      }
+    }
+  }
+
   RenderFloatingPointOptions(TC, D, OFastEnabled, Args, CmdArgs);
 
   if (Arg *A = Args.getLastArg(options::OPT_mlong_double_64,

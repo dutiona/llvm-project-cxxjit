@@ -148,6 +148,10 @@ public:
                            const CXXRecordDecl *Type, raw_ostream &) override;
   void mangleCXXRTTI(QualType T, raw_ostream &) override;
   void mangleCXXRTTIName(QualType T, raw_ostream &) override;
+  void mangleTemplateArgument(const TemplateDecl *TD,
+                              const TemplateArgument &TA,
+                              const NamedDecl *Parm,
+                              raw_ostream &Out) override;
   void mangleTypeName(QualType T, raw_ostream &) override;
   void mangleCXXCtor(const CXXConstructorDecl *D, CXXCtorType Type,
                      raw_ostream &) override;
@@ -424,6 +428,7 @@ public:
   void mangleName(const NamedDecl *ND);
   void mangleType(QualType T);
   void mangleNameOrStandardSubstitution(const NamedDecl *ND);
+  void mangleTemplateArg(TemplateArgument A);
 
 private:
 
@@ -548,7 +553,6 @@ private:
   void mangleTemplateArgs(const TemplateArgument *TemplateArgs,
                           unsigned NumTemplateArgs);
   void mangleTemplateArgs(const TemplateArgumentList &AL);
-  void mangleTemplateArg(TemplateArgument A);
 
   void mangleTemplateParameter(unsigned Index);
 
@@ -1966,6 +1970,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::Atomic:
   case Type::Pipe:
   case Type::MacroQualified:
+  case Type::JITFromString:
     llvm_unreachable("type is illegal as a nested name specifier");
 
   case Type::SubstTemplateTypeParmPack:
@@ -3403,6 +3408,10 @@ void CXXNameMangler::mangleType(const PipeType *T) {
   // A.1 Data types and A.3 Summary of changes
   // <type> ::= 8ocl_pipe
   Out << "8ocl_pipe";
+}
+
+void CXXNameMangler::mangleType(const JITFromStringType *T) {
+  llvm_unreachable("Cannot mangle JIT from-string type.");
 }
 
 void CXXNameMangler::mangleIntegerLiteral(QualType T,
@@ -5065,6 +5074,14 @@ void ItaniumMangleContextImpl::mangleCXXRTTIName(QualType Ty,
 
 void ItaniumMangleContextImpl::mangleTypeName(QualType Ty, raw_ostream &Out) {
   mangleCXXRTTIName(Ty, Out);
+}
+
+void ItaniumMangleContextImpl::mangleTemplateArgument(const TemplateDecl *TD,
+                                                      const TemplateArgument &TA,
+                                                      const NamedDecl *Parm,
+                                                      raw_ostream &Out) {
+  CXXNameMangler Mangler(*this, Out);
+  Mangler.mangleTemplateArg(TA);
 }
 
 void ItaniumMangleContextImpl::mangleStringLiteral(const StringLiteral *, raw_ostream &) {

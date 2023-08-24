@@ -3,6 +3,7 @@ set(LLVM_LINK_COMPONENTS
   BitReader
   BitWriter
   Core
+  CodeGen
   Coroutines
   Coverage
   IPO
@@ -15,14 +16,23 @@ set(LLVM_LINK_COMPONENTS
   MC
   ObjCARCOpts
   Object
+  Option
+  OrcJIT
   Passes
   ProfileData
   Remarks
+  RuntimeDyld
   ScalarOpts
   Support
   Target
   TransformUtils
+  Vectorize
+  ExecutionEngine
+  Interpreter
+  ${LLVM_TARGETS_TO_BUILD}
   )
+# Note that above we depend on ${LLVM_TARGETS_TO_BUILD} instead of just native
+# because we might need NVPTX, etc.
 
 # In a standard Clang+LLVM build, we need to generate intrinsics before
 # building codegen. In a standalone build, LLVM is already built and we don't
@@ -94,6 +104,7 @@ add_clang_library(clangCodeGen
   SwiftCallingConv.cpp
   TargetInfo.cpp
   VarBypassDetector.cpp
+  JIT.cpp
 
   DEPENDS
   ${codegen_deps}
@@ -103,7 +114,10 @@ add_clang_library(clangCodeGen
   clangAST
   clangASTMatchers
   clangBasic
+  clangDriver
   clangFrontend
   clangLex
+  clangParse
+  clangSema
   clangSerialization
   )
